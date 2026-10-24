@@ -26,26 +26,38 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build runtime archive
-        if: steps.config.outputs.configured == 'true'
-        run: |
-          files=$(find . -maxdepth 1 -type f \
-            \( -name '*.ts' ! -name '*.test.ts' ! -name 'watchdog.ts' \) \
-            -printf '%f\n')
-          tar -czf deploy.tar.gz $files \
-            package.json bun.lock emojis.json emojis-ability.json emojis-skins.json
-          tar -tzf deploy.tar.gz
-
-      - name: Upload and restart
+      - name: Upload runtime files and restart
         if: steps.config.outputs.configured == 'true'
         uses: rexlmanu/pterodactyl-upload-action@4bae1933575fa712463da38493f5c768232d76ab # v2.5
         with:
           panel-host: ${{ secrets.PTERO_PANEL_URL }}
           api-key: ${{ secrets.PTERO_API_KEY }}
           server-id: ${{ secrets.PTERO_SERVER_ID }}
-          source: deploy.tar.gz
+          sources: |
+            ai.ts
+            backups.ts
+            balance.ts
+            battle-state.ts
+            boss.ts
+            bot.ts
+            cosmetics.ts
+            emoji.ts
+            errors.ts
+            forsaken.ts
+            i18n.ts
+            names.ts
+            progress.ts
+            pvp.ts
+            skins.ts
+            store.ts
+            survival.ts
+            synergies.ts
+            package.json
+            bun.lock
+            emojis.json
+            emojis-ability.json
+            emojis-skins.json
           target: "./"
-          decompress-target: true
           restart: true
 
       - name: Verify deployment target
@@ -64,10 +76,18 @@ jobs:
             | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(s["attributes"].get("identifier"), "|", s["attributes"].get("name"), "|", s["attributes"].get("status")) for s in d.get("data", [])]' \
             || true
 
-          echo "Server state:"
-          curl -fsS -H "$auth" -H "Accept: application/json" "$base/servers/$SERVER_ID/resources" \
-            | python3 -c 'import json,sys; a=json.load(sys.stdin).get("attributes",{}); r=a.get("resources",{}); print("state:", a.get("current_state"), "| uptime:", r.get("uptime"), "| memory:", r.get("memory_bytes"))' \
-            || true
+          sleep 10
+          state=$(curl -fsS -H "$auth" -H "Accept: application/json" "$base/servers/$SERVER_ID/resources" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("attributes",{}).get("current_state"))' \
+            || true)
+          echo "Server state: $state"
+
+          if [ "$state" = "offline" ]; then
+            echo "Server is offline; sending start."
+            curl -fsS -X POST -H "$auth" -H "Content-Type: application/json" -H "Accept: application/json" \
+              -d '{"signal":"start"}' "$base/servers/$SERVER_ID/power" || true
+            sleep 10
+          fi
 
           echo "Root files:"
           curl -fsS -G -H "$auth" -H "Accept: application/json" \
@@ -75,10 +95,14 @@ jobs:
             | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f["attributes"].get("name"), f["attributes"].get("size"), f["attributes"].get("modified_at")) for f in d.get("data",[]) if f.get("attributes",{}).get("is_file")]' \
             || true
 
+          content=$(curl -fsS -G -H "$auth" -H "Accept: application/json" \
+            --data-urlencode "file=bot.ts" "$base/servers/$SERVER_ID/files/content" || true)
+          if ! printf '%s' "$content" | grep -q "testCommandEmbed"; then
+            content=$(curl -fsS -G -H "$auth" -H "Accept: application/json" \
+              --data-urlencode "file=/bot.ts" "$base/servers/$SERVER_ID/files/content" || true)
+          fi
           echo -n "bot.ts contains /тест definition: "
-          if curl -fsS -G -H "$auth" -H "Accept: application/json" \
-            --data-urlencode "file=/bot.ts" "$base/servers/$SERVER_ID/files/content" \
-            | grep -q "testCommandEmbed"; then
+          if printf '%s' "$content" | grep -q "testCommandEmbed"; then
             echo "YES"
           else
             echo "NO"
