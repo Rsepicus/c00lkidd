@@ -892,6 +892,10 @@ export function commandDefinitions(): SlashCommandBuilder[] {
       ru: 'Язык интерфейса и описаний способностей',
       'en-US': 'Interface and ability description language',
     }),
+    baseCommand('тест', 'Проверка работоспособности бота').setDescriptionLocalizations({
+      ru: 'Проверка работоспособности бота',
+      'en-US': 'Bot health check',
+    }),
   ]
 }
 
@@ -1758,6 +1762,35 @@ export function debugStatusEmbed(client?: Client): EmbedBuilder {
     .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
 }
 
+export type TestCommandStatus = {
+  ping: number
+  uptimeMs: number
+  commands: number
+  users: number
+  battles: number
+}
+
+export function testCommandEmbed(status: TestCommandStatus): EmbedBuilder {
+  const ping =
+    Number.isFinite(status.ping) && status.ping >= 0
+      ? `${Math.round(status.ping)} мс`
+      : 'нет данных'
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.victory)
+    .setTitle(`${emojiText('settings', '⚙️')} Тест`)
+    .setDescription(
+      [
+        '**Бот работает.**',
+        `Пинг: **${ping}**`,
+        `Аптайм: **${formatDuration(status.uptimeMs)}**`,
+        `Команд: **${status.commands}**`,
+        `Пользователей: **${status.users}**`,
+        `Активных боёв: **${status.battles}**`,
+      ].join('\n'),
+    )
+    .setFooter({ text: 'Forsaken Simulator · проверка связи' })
+}
+
 export function debugCoinsModal(): ModalBuilder {
   return new ModalBuilder()
     .setCustomId('debug:coins:modal')
@@ -1944,6 +1977,7 @@ export function helpEmbed(user: UserData): EmbedBuilder {
         `${emojiText('abilities', '📖')} \`/гайд\` — quick guide to modes, statuses and progression.`,
         `${emojiText('settings', '⚙️')} \`/settings\` — interface and ability description language.`,
         `${emojiText('abilities', '📖')} \`/команды\` — this command list.`,
+        `${emojiText('settings', '⚙️')} \`/тест\` — check that the bot responds, with ping and uptime.`,
         `${emojiText('settings', '⚙️')} \`/дебаг\` — creator panel: coins and balance test (owner only).`,
       ].join('\n')
     : [
@@ -1954,6 +1988,7 @@ export function helpEmbed(user: UserData): EmbedBuilder {
         `${emojiText('abilities', '📖')} \`/гайд\` — краткий гайд по режимам, статусам и прогрессу.`,
         `${emojiText('settings', '⚙️')} \`/settings\` — язык интерфейса и описаний способностей.`,
         `${emojiText('abilities', '📖')} \`/команды\` — этот список команд.`,
+        `${emojiText('settings', '⚙️')} \`/тест\` — проверить, что бот отвечает: пинг и аптайм.`,
         `${emojiText('settings', '⚙️')} \`/дебаг\` — панель создателя: монеты и тест баланса (только владелец).`,
       ].join('\n')
 
@@ -3706,6 +3741,21 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       await interaction.reply({
         embeds: [settingsEmbed(user)],
         components: settingsComponents(user),
+        flags: MessageFlags.Ephemeral,
+      })
+      return
+    }
+    case 'тест': {
+      await interaction.reply({
+        embeds: [
+          testCommandEmbed({
+            ping: interaction.client.ws.ping,
+            uptimeMs: process.uptime() * 1000,
+            commands: commandDefinitions().length,
+            users: Object.keys(store.users).length,
+            battles: battles.size,
+          }),
+        ],
         flags: MessageFlags.Ephemeral,
       })
       return

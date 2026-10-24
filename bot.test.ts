@@ -60,6 +60,7 @@ import {
   trainingSetupEmbed,
   targetComponents,
   teamLabel,
+  testCommandEmbed,
   topEmbed,
 } from './bot'
 import { bossCharacter } from './boss'
@@ -176,6 +177,7 @@ describe('embeds', () => {
     expect(description).toContain('/settings')
     expect(description).toContain('/команды')
     expect(description).toContain('/пве')
+    expect(description).toContain('/тест')
   })
 
   test('help and guide keep their content separate', () => {
@@ -1037,6 +1039,28 @@ describe('commandDefinitions', () => {
       expect(find(name)).toBeUndefined()
     }
     expect(find('пве')?.options).toHaveLength(0)
+  })
+
+  test('registers /тест as a no-option diagnostic command', () => {
+    const command = find('тест')
+    expect(command).toBeDefined()
+    expect(command?.options ?? []).toHaveLength(0)
+  })
+
+  test('test command reports ping, uptime and runtime counts', () => {
+    const embed = testCommandEmbed({
+      ping: 37,
+      uptimeMs: 3_725_000,
+      commands: 8,
+      users: 3,
+      battles: 2,
+    }).toJSON()
+    expect(embed.title).toContain('Тест')
+    expect(embed.description).toContain('Пинг: **37 мс**')
+    expect(embed.description).toContain('Аптайм: **1 ч 2 мин**')
+    expect(embed.description).toContain('Команд: **8**')
+    expect(embed.description).toContain('Пользователей: **3**')
+    expect(embed.description).toContain('Активных боёв: **2**')
   })
 
   test('registers /пвп with an optional opponent and a mode setup', () => {
