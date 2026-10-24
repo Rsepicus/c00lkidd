@@ -47,3 +47,39 @@ jobs:
           target: "./"
           decompress-target: true
           restart: true
+
+      - name: Verify deployment target
+        if: steps.config.outputs.configured == 'true'
+        env:
+          PANEL_URL: ${{ secrets.PTERO_PANEL_URL }}
+          API_KEY: ${{ secrets.PTERO_API_KEY }}
+          SERVER_ID: ${{ secrets.PTERO_SERVER_ID }}
+        run: |
+          set -uo pipefail
+          base="${PANEL_URL%/}/api/client"
+          auth="Authorization: Bearer $API_KEY"
+
+          echo "Servers visible to this API key:"
+          curl -fsS -H "$auth" -H "Accept: application/json" "$base" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(s["attributes"].get("identifier"), "|", s["attributes"].get("name"), "|", s["attributes"].get("status")) for s in d.get("data", [])]' \
+            || true
+
+          echo "Server state:"
+          curl -fsS -H "$auth" -H "Accept: application/json" "$base/servers/$SERVER_ID/resources" \
+            | python3 -c 'import json,sys; a=json.load(sys.stdin).get("attributes",{}); r=a.get("resources",{}); print("state:", a.get("current_state"), "| uptime:", r.get("uptime"), "| memory:", r.get("memory_bytes"))' \
+            || true
+
+          echo "Root files:"
+          curl -fsS -G -H "$auth" -H "Accept: application/json" \
+            --data-urlencode "directory=/" "$base/servers/$SERVER_ID/files/list" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f["attributes"].get("name"), f["attributes"].get("size"), f["attributes"].get("modified_at")) for f in d.get("data",[]) if f.get("attributes",{}).get("is_file")]' \
+            || true
+
+          echo -n "bot.ts contains /тест definition: "
+          if curl -fsS -G -H "$auth" -H "Accept: application/json" \
+            --data-urlencode "file=/bot.ts" "$base/servers/$SERVER_ID/files/content" \
+            | grep -q "testCommandEmbed"; then
+            echo "YES"
+          else
+            echo "NO"
+          fi
