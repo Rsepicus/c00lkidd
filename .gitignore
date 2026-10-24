@@ -7,3 +7,4 @@ errors.log
 *.log
 backups/
 .remember/
+deploy.tar.gz

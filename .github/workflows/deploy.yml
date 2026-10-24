@@ -1,0 +1,49 @@
+name: Deploy to ACLClouds
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check deployment secrets
+        id: config
+        env:
+          PANEL_URL: ${{ secrets.PTERO_PANEL_URL }}
+          API_KEY: ${{ secrets.PTERO_API_KEY }}
+          SERVER_ID: ${{ secrets.PTERO_SERVER_ID }}
+        run: |
+          if [ -z "$PANEL_URL" ] || [ -z "$API_KEY" ] || [ -z "$SERVER_ID" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Pterodactyl secrets are not set; skipping deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build runtime archive
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          files=$(find . -maxdepth 1 -type f \
+            \( -name '*.ts' ! -name '*.test.ts' ! -name 'watchdog.ts' \) \
+            -printf '%f\n')
+          tar -czf deploy.tar.gz $files \
+            package.json bun.lock emojis.json emojis-ability.json emojis-skins.json
+          tar -tzf deploy.tar.gz
+
+      - name: Upload and restart
+        if: steps.config.outputs.configured == 'true'
+        uses: rexlmanu/pterodactyl-upload-action@4bae1933575fa712463da38493f5c768232d76ab # v2.5
+        with:
+          panel-host: ${{ secrets.PTERO_PANEL_URL }}
+          api-key: ${{ secrets.PTERO_API_KEY }}
+          server-id: ${{ secrets.PTERO_SERVER_ID }}
+          source: deploy.tar.gz
+          target: "./"
+          decompress-target: true
+          restart: true
