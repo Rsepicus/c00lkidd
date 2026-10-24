@@ -89,21 +89,20 @@ jobs:
             sleep 10
           fi
 
+          files_json=$(curl -fsS -G -H "$auth" -H "Accept: application/json" \
+            --data-urlencode "directory=/" "$base/servers/$SERVER_ID/files/list" || true)
           echo "Root files:"
-          curl -fsS -G -H "$auth" -H "Accept: application/json" \
-            --data-urlencode "directory=/" "$base/servers/$SERVER_ID/files/list" \
+          printf '%s' "$files_json" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(f["attributes"].get("name"), f["attributes"].get("size"), f["attributes"].get("modified_at")) for f in d.get("data",[]) if f.get("attributes",{}).get("is_file")]' \
             || true
 
-          content=$(curl -fsS -G -H "$auth" -H "Accept: application/json" \
-            --data-urlencode "file=bot.ts" "$base/servers/$SERVER_ID/files/content" || true)
-          if ! printf '%s' "$content" | grep -q "testCommandEmbed"; then
-            content=$(curl -fsS -G -H "$auth" -H "Accept: application/json" \
-              --data-urlencode "file=/bot.ts" "$base/servers/$SERVER_ID/files/content" || true)
-          fi
-          echo -n "bot.ts contains /тест definition: "
-          if printf '%s' "$content" | grep -q "testCommandEmbed"; then
-            echo "YES"
+          expected_size=$(wc -c < bot.ts)
+          actual_size=$(printf '%s' "$files_json" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((f["attributes"].get("size") for f in d.get("data",[]) if f["attributes"].get("name") == "bot.ts"), ""))' \
+            || true)
+          echo "bot.ts size: host=$actual_size expected=$expected_size"
+          if [ "$actual_size" = "$expected_size" ]; then
+            echo "bot.ts matches the pushed version: YES"
           else
-            echo "NO"
+            echo "bot.ts matches the pushed version: NO"
           fi

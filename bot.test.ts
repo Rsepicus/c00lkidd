@@ -25,6 +25,7 @@ import {
   cosmeticsEmbed,
   debugPanelComponents,
   debugPanelEmbed,
+  debugStatusEmbed,
   debugTestComponents,
   debugTestEmbed,
   draftComponents,
@@ -50,6 +51,7 @@ import {
   pvpSetupEmbed,
   questsComponents,
   randomBattleFor,
+  recordSurvivalWave,
   questsEmbed,
   rematchComponents,
   settingsComponents,
@@ -60,7 +62,6 @@ import {
   trainingSetupEmbed,
   targetComponents,
   teamLabel,
-  testCommandEmbed,
   topEmbed,
 } from './bot'
 import { bossCharacter } from './boss'
@@ -177,7 +178,7 @@ describe('embeds', () => {
     expect(description).toContain('/settings')
     expect(description).toContain('/команды')
     expect(description).toContain('/пве')
-    expect(description).toContain('/тест')
+    expect(description).not.toContain('/тест')
   })
 
   test('help and guide keep their content separate', () => {
@@ -1006,6 +1007,14 @@ describe('draft', () => {
   })
 })
 
+describe('survival mastery', () => {
+  test('clearing a wave grants mastery XP without PvP wins', () => {
+    const progress = recordSurvivalWave(defaultUser(), 'Jason')
+    expect(progress.xpGained).toBe(20)
+    expect(progress.user.characterStats.Jason).toEqual({ wins: 0, losses: 0, xp: 20 })
+  })
+})
+
 describe('commandDefinitions', () => {
   const commands = commandDefinitions().map(command => command.toJSON())
   const find = (name: string) => commands.find(command => command.name === name)
@@ -1041,26 +1050,18 @@ describe('commandDefinitions', () => {
     expect(find('пве')?.options).toHaveLength(0)
   })
 
-  test('registers /тест as a no-option diagnostic command', () => {
-    const command = find('тест')
-    expect(command).toBeDefined()
-    expect(command?.options ?? []).toHaveLength(0)
+  test('does not register a separate /тест command', () => {
+    expect(find('тест')).toBeUndefined()
   })
 
-  test('test command reports ping, uptime and runtime counts', () => {
-    const embed = testCommandEmbed({
-      ping: 37,
-      uptimeMs: 3_725_000,
-      commands: 8,
-      users: 3,
-      battles: 2,
-    }).toJSON()
-    expect(embed.title).toContain('Тест')
-    expect(embed.description).toContain('Пинг: **37 мс**')
-    expect(embed.description).toContain('Аптайм: **1 ч 2 мин**')
-    expect(embed.description).toContain('Команд: **8**')
-    expect(embed.description).toContain('Пользователей: **3**')
-    expect(embed.description).toContain('Активных боёв: **2**')
+  test('debug status includes the bot health check', () => {
+    const embed = debugStatusEmbed().toJSON()
+    expect(embed.title).toContain('Проверка')
+    expect(embed.description).toContain('Пинг: **нет данных**')
+    expect(embed.description).toContain(`Команд: **${commandDefinitions().length}**`)
+    expect(embed.description).toContain('Аптайм:')
+    expect(embed.description).toContain('Пользователей в базе:')
+    expect(embed.description).toContain('Активных боёв:')
   })
 
   test('registers /пвп with an optional opponent and a mode setup', () => {

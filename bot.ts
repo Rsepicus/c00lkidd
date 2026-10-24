@@ -892,10 +892,6 @@ export function commandDefinitions(): SlashCommandBuilder[] {
       ru: 'Язык интерфейса и описаний способностей',
       'en-US': 'Interface and ability description language',
     }),
-    baseCommand('тест', 'Проверка работоспособности бота').setDescriptionLocalizations({
-      ru: 'Проверка работоспособности бота',
-      'en-US': 'Bot health check',
-    }),
   ]
 }
 
@@ -1712,6 +1708,7 @@ export function debugPanelEmbed(): EmbedBuilder {
       [
         '**Выдать монеты** — начислить монеты себе или игроку по ID.',
         '**Тест баланса** — AI-прогон 1×1 или 2×2, при необходимости с фиксированным героем и способностью.',
+        '**Проверка** — пинг, аптайм, команды и состояние базы.',
         '',
         'Панель видна только создателю.',
       ].join('\n'),
@@ -1732,10 +1729,12 @@ export function debugPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setLabel(settings ? 'Тест баланса' : '⚙️ Тест баланса')
     .setStyle(ButtonStyle.Secondary)
   if (settings) testButton.setEmoji(settings)
+  const timer = emojiData('timer')
   const statusButton = new ButtonBuilder()
     .setCustomId('debug:status')
-    .setLabel('Статус')
+    .setLabel(timer ? 'Проверка' : '⏳ Проверка')
     .setStyle(ButtonStyle.Secondary)
+  if (timer) statusButton.setEmoji(timer)
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(coinsButton, testButton, statusButton),
   ]
@@ -1744,14 +1743,20 @@ export function debugPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
 export function debugStatusEmbed(client?: Client): EmbedBuilder {
   const errorSize = existsSync(ERROR_LOG_PATH) ? statSync(ERROR_LOG_PATH).size : 0
   const memory = Math.round(process.memoryUsage().rss / 1024 / 1024)
+  const ping = client?.ws.ping ?? -1
+  const pingText =
+    Number.isFinite(ping) && ping >= 0 ? `${Math.round(ping)} мс` : 'нет данных'
   return new EmbedBuilder()
-    .setColor(EMBED_COLORS.choose)
-    .setTitle(`${emojiText('timer', '⏳')} Статус`)
+    .setColor(EMBED_COLORS.victory)
+    .setTitle(`${emojiText('timer', '⏳')} Проверка`)
     .setDescription(
       [
-        `Активные бои: **${battles.size}**`,
-        `Пользователей в базе: **${Object.keys(store.users).length}**`,
+        '**Бот работает.**',
+        `Пинг: **${pingText}**`,
+        `Команд: **${commandDefinitions().length}**`,
         `Аптайм: **${formatDuration(process.uptime() * 1000)}**`,
+        `Пользователей в базе: **${Object.keys(store.users).length}**`,
+        `Активных боёв: **${battles.size}**`,
         `Ошибок в errors.log: **${errorSize} байт**`,
         `Память: **${memory} MB**`,
         client?.user ? `Бот: **${client.user.tag}**` : '',
@@ -1760,35 +1765,6 @@ export function debugStatusEmbed(client?: Client): EmbedBuilder {
         .join('\n'),
     )
     .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
-}
-
-export type TestCommandStatus = {
-  ping: number
-  uptimeMs: number
-  commands: number
-  users: number
-  battles: number
-}
-
-export function testCommandEmbed(status: TestCommandStatus): EmbedBuilder {
-  const ping =
-    Number.isFinite(status.ping) && status.ping >= 0
-      ? `${Math.round(status.ping)} мс`
-      : 'нет данных'
-  return new EmbedBuilder()
-    .setColor(EMBED_COLORS.victory)
-    .setTitle(`${emojiText('settings', '⚙️')} Тест`)
-    .setDescription(
-      [
-        '**Бот работает.**',
-        `Пинг: **${ping}**`,
-        `Аптайм: **${formatDuration(status.uptimeMs)}**`,
-        `Команд: **${status.commands}**`,
-        `Пользователей: **${status.users}**`,
-        `Активных боёв: **${status.battles}**`,
-      ].join('\n'),
-    )
-    .setFooter({ text: 'Forsaken Simulator · проверка связи' })
 }
 
 export function debugCoinsModal(): ModalBuilder {
@@ -1977,8 +1953,7 @@ export function helpEmbed(user: UserData): EmbedBuilder {
         `${emojiText('abilities', '📖')} \`/гайд\` — quick guide to modes, statuses and progression.`,
         `${emojiText('settings', '⚙️')} \`/settings\` — interface and ability description language.`,
         `${emojiText('abilities', '📖')} \`/команды\` — this command list.`,
-        `${emojiText('settings', '⚙️')} \`/тест\` — check that the bot responds, with ping and uptime.`,
-        `${emojiText('settings', '⚙️')} \`/дебаг\` — creator panel: coins and balance test (owner only).`,
+        `${emojiText('settings', '⚙️')} \`/дебаг\` — creator panel: coins, balance test and health check (owner only).`,
       ].join('\n')
     : [
         '**Команды**',
@@ -1988,8 +1963,7 @@ export function helpEmbed(user: UserData): EmbedBuilder {
         `${emojiText('abilities', '📖')} \`/гайд\` — краткий гайд по режимам, статусам и прогрессу.`,
         `${emojiText('settings', '⚙️')} \`/settings\` — язык интерфейса и описаний способностей.`,
         `${emojiText('abilities', '📖')} \`/команды\` — этот список команд.`,
-        `${emojiText('settings', '⚙️')} \`/тест\` — проверить, что бот отвечает: пинг и аптайм.`,
-        `${emojiText('settings', '⚙️')} \`/дебаг\` — панель создателя: монеты и тест баланса (только владелец).`,
+        `${emojiText('settings', '⚙️')} \`/дебаг\` — панель создателя: монеты, тест баланса и проверка (только владелец).`,
       ].join('\n')
 
   return new EmbedBuilder()
@@ -3228,6 +3202,13 @@ function masteryProgressNotes(
   return notes
 }
 
+export function recordSurvivalWave(
+  user: UserData,
+  characterName: string,
+): ReturnType<typeof recordCharacterResult> {
+  return recordCharacterResult(user, characterName, true, false)
+}
+
 function recordBattle(
   battle: Battle,
   winnerTeam: 0 | 1,
@@ -3420,9 +3401,16 @@ function finishBattleState(
         player.hp + survivalHeal(survival.maxHp),
       )
       survivalRuns.set(messageId, survival)
+      const progress = recordSurvivalWave(userOf(survival.userId), player.character.name)
+      store.users[survival.userId] = progress.user
+      persist()
       note = [
         notePrefix,
         `${emojiText('skull', '💀')} Волна **${cleared}** пройдена. HP: **${survival.hp}/${survival.maxHp}**.`,
+        progress.xpGained > 0
+          ? `${emojiText('xp', '⭐')} Опыт: **+${progress.xpGained} XP**.`
+          : '',
+        ...masteryProgressNotes(progress, player.character.name, progress.user.language),
         `Награда за забег: **${survival.reward}** ${emojiText('points', '🪙')}.`,
       ]
         .filter(Boolean)
@@ -3741,21 +3729,6 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       await interaction.reply({
         embeds: [settingsEmbed(user)],
         components: settingsComponents(user),
-        flags: MessageFlags.Ephemeral,
-      })
-      return
-    }
-    case 'тест': {
-      await interaction.reply({
-        embeds: [
-          testCommandEmbed({
-            ping: interaction.client.ws.ping,
-            uptimeMs: process.uptime() * 1000,
-            commands: commandDefinitions().length,
-            users: Object.keys(store.users).length,
-            battles: battles.size,
-          }),
-        ],
         flags: MessageFlags.Ephemeral,
       })
       return
