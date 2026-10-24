@@ -1,0 +1,13 @@
+{
+  "name": "discord-commands-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun bot.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "sharp": "^0.35.5"
+  }
+}
