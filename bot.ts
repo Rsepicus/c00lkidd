@@ -484,6 +484,7 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
   bossRushRuns.clear()
   towerRuns.clear()
   trialRuns.clear()
+  lastTurnPingUser.clear()
   battleChannels.clear()
   battleDeadlines.clear()
   timeoutStrikes.clear()
@@ -612,6 +613,7 @@ const turnPings = new Map<
   string,
   { applicationId: string; token: string; messageId: string; channelId: string; at: number }
 >()
+const lastTurnPingUser = new Map<string, string>()
 export let store: Store = { users: {} }
 
 export function parseToken(contents: string): string {
@@ -3656,6 +3658,23 @@ function clearTurnPing(client: Client, messageId: string): void {
     })
 }
 
+/**
+ * Pings only make sense when another player has to act: solo PvE is excluded,
+ * automated sides never get pinged, and one user is not pinged twice in a row.
+ */
+export function shouldPingNextTurn(battle: Battle, lastUserId?: string): boolean {
+  if (battle.finished) return false
+  const humans = new Set(
+    battle.sides
+      .filter(side => !side.fake && !side.minion && !isAutomatedSide(side) && side.hp > 0)
+      .map(side => side.userId),
+  )
+  if (humans.size <= 1) return false
+  const next = battle.sides[battle.turn]
+  if (!next || isAutomatedSide(next)) return false
+  return next.userId !== lastUserId
+}
+
 function notifyNextTurn(
   client: Client,
   battle: Battle,
@@ -3663,9 +3682,9 @@ function notifyNextTurn(
   messageId: string,
 ): void {
   clearTurnPing(client, messageId)
-  if (battle.finished || !channelId) return
+  if (!channelId) return
+  if (!shouldPingNextTurn(battle, lastTurnPingUser.get(messageId))) return
   const next = battle.sides[battle.turn]
-  if (!next || isAutomatedSide(next)) return
 
   const channels = userInteractionTokens.get(next.userId)
   let saved = channels?.get(channelId)
@@ -3680,6 +3699,7 @@ function notifyNextTurn(
   }
   if (!saved) return
   const webhook = saved
+  lastTurnPingUser.set(messageId, next.userId)
 
   const user = userOf(next.userId)
   const content = translateText(
@@ -4156,6 +4176,7 @@ function cleanupBattle(messageId: string): void {
   battles.delete(messageId)
   battleLogs.delete(messageId)
   turnPings.delete(messageId)
+  lastTurnPingUser.delete(messageId)
   wagers.delete(messageId)
   trainingBattles.delete(messageId)
   battleGameModes.delete(messageId)
@@ -6528,8 +6549,9 @@ async function executeBattleAction(
     armBattleTimer(interaction.client, interaction.message.id, battle)
     throw error
   }
-  clearTurnPing(interaction.client, interaction.message.id)
   const messageId = interaction.message.id
+  lastTurnPingUser.set(messageId, side.userId)
+  clearTurnPing(interaction.client, messageId)
   let current = result.battle
   const events = [...result.events]
   current = runAutomatedTurns(current, events)

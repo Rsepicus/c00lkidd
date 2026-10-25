@@ -3,6 +3,7 @@ import {
   achievementsEmbed,
   resolveToken,
   botPresence,
+  shouldPingNextTurn,
   BATTLE_TURN_MS,
   battleComponents,
   battleEmbed,
@@ -275,6 +276,29 @@ describe('embeds', () => {
 
     const next = takeTurn(battle, 'attack', () => 0).battle
     expect(String(battleEmbed(next).toJSON().description)).toContain('Ход 2:')
+  })
+
+  test('turn pings skip solo PvE, automated sides and the same user', () => {
+    const pvp = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('Noob')! },
+      { userId: 'b', name: 'B', character: characterByName('Jason')! },
+    )
+    expect(shouldPingNextTurn(pvp, undefined)).toBe(true)
+    expect(shouldPingNextTurn(pvp, 'a')).toBe(false)
+
+    pvp.turn = 1
+    expect(shouldPingNextTurn(pvp, 'a')).toBe(true)
+    expect(shouldPingNextTurn(pvp, 'b')).toBe(false)
+
+    const solo = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('Noob')! },
+      { userId: 'a', name: 'A', character: characterByName('Jason')! },
+    )
+    expect(shouldPingNextTurn(solo, undefined)).toBe(false)
+    expect(shouldPingNextTurn(solo, 'a')).toBe(false)
+
+    pvp.sides[1].userId = 'bot:tower:1'
+    expect(shouldPingNextTurn(pvp, 'a')).toBe(false)
   })
 
   test('battle offers an on-demand forecast with combat details', () => {
