@@ -67,6 +67,8 @@ import {
   targetComponents,
   teamLabel,
   topEmbed,
+  userCharacterEmojiData,
+  userCharacterLabel,
 } from './bot'
 import { bossCharacter } from './boss'
 import { buyCosmetic } from './cosmetics'
@@ -398,6 +400,58 @@ describe('embeds', () => {
       'jason-gold',
       'none',
     ])
+  })
+
+  test('uses the equipped mastery skin in every user-facing character label', () => {
+    const user = {
+      ...defaultUser(),
+      owned: ['Noob', 'Jason'],
+      active: 'Jason',
+      partner: 'Noob',
+      characterStats: { Jason: { wins: 5, losses: 0, xp: 900 } },
+      equippedSkins: { Jason: 'jason-gold' },
+    }
+    expect(userCharacterLabel(user, 'Jason')).toContain('<:jason_gold:')
+    expect(userCharacterEmojiData(user, 'Jason')?.name).toBe('jason_gold')
+    expect(userCharacterLabel(user, 'Noob')).toContain('<:noob:')
+    expect(userCharacterEmojiData(user, 'Noob')?.name).toBe('noob')
+
+    const profile = profileEmbed('1', user, 'Tester').toJSON()
+    const field = (name: string) =>
+      String(profile.fields?.find(entry => entry.name.includes(name))?.value ?? '')
+    expect(field('Активный')).toContain('<:jason_gold:')
+    expect(field('Напарник')).toContain('<:noob:')
+    expect(field('Любимый персонаж')).toContain('<:jason_gold:')
+    expect(field('Мастерство')).toContain('<:jason_gold:')
+
+    expect(characterEmbed(characterByName('Jason')!, user).toJSON().title).toContain(
+      '<:jason_gold:',
+    )
+    expect(String(shopEmbed(user).toJSON().description)).toContain('<:jason_gold:')
+    expect(String(trainingSetupEmbed(user, { ownerId: '1', mode: '1x1' }).toJSON().description))
+      .toContain('<:jason_gold:')
+
+    const chooseOption = chooseComponents(user)
+      .flatMap(row => row.toJSON().components)
+      .find(component => component.custom_id === 'hub:select')
+      ?.options?.find(option => option.value === 'Jason')
+    expect(chooseOption?.emoji?.name).toBe('jason_gold')
+
+    const browserOption = characterBrowserComponents(
+      false,
+      characterByName('Jason')!,
+      user,
+      true,
+    )
+      .flatMap(row => row.toJSON().components)
+      .find(component => component.custom_id === 'char:view')
+      ?.options?.find(option => option.value === 'Jason')
+    expect(browserOption?.emoji?.name).toBe('jason_gold')
+
+    const chooseButton = hubComponents(user)[0]
+      .toJSON()
+      .components.find(component => component.custom_id === 'hub:choose')
+    expect(chooseButton?.emoji?.name).toBe('jason_gold')
   })
 
   test('battle cooldown display shows remaining and base cooldown', () => {

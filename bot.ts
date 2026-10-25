@@ -953,7 +953,7 @@ function backRow(): ActionRowBuilder<ButtonBuilder> {
 
 export function hubComponents(user: UserData): ActionRowBuilder<ButtonBuilder>[] {
   const shopEmoji = emojiData('inventory')
-  const chooseEmoji = characterEmojiData(user.active ?? '') ?? emojiData('masks')
+  const chooseEmoji = userCharacterEmojiData(user, user.active ?? '') ?? emojiData('masks')
   const topEmoji = emojiData('achievement')
   const bonusEmoji = emojiData('robux')
 
@@ -1079,7 +1079,7 @@ export function chooseComponents(
         .setPlaceholder('Активный персонаж')
         .addOptions(
           ownedCharacters(user).map(character => {
-            const emoji = characterEmojiData(character.name)
+            const emoji = userCharacterEmojiData(user, character.name)
             return {
               label: character.name,
               description: characterOptionDescription(character, characterClass(character)),
@@ -1095,7 +1095,7 @@ export function chooseComponents(
   const partnerOptions: APISelectMenuOption[] = ownedCharacters(user)
     .filter(character => character.name !== user.active)
     .map(character => {
-      const emoji = characterEmojiData(character.name)
+      const emoji = userCharacterEmojiData(user, character.name)
       return {
         label: character.name,
         description: characterOptionDescription(character, characterClass(character)),
@@ -1189,7 +1189,7 @@ export function shopEmbed(user: UserData, note?: string): EmbedBuilder {
     characters
       .map(character => {
         const price = character.price === 0 ? 'бесплатно' : `${character.price} ${coin}`
-        return `**${characterLabel(character.name)}** — ${price}`
+        return `**${userCharacterLabel(user, character.name)}** — ${price}`
       })
       .join('\n')
   const characters = list(CHARACTERS)
@@ -1232,15 +1232,13 @@ export function profileEmbed(
   const skinCharacter = favorite?.name ?? active?.name
   const profileSkin = skinCharacter ? equippedSkin(user, skinCharacter) : undefined
   const favoriteValue = favorite
-    ? `${characterLabel(favorite.name)} — ${favorite.battles} ${plural(favorite.battles, 'бой', 'боя', 'боёв')} · ${favorite.winrate}% побед` +
+    ? `${userCharacterLabel(user, favorite.name)} — ${favorite.battles} ${plural(favorite.battles, 'бой', 'боя', 'боёв')} · ${favorite.winrate}% побед` +
       (favoriteTrial ? ` · ${favoriteTrial}` : '') +
-      (profileSkin
-        ? ` · ${emojiText(profileSkin.emoji, '')} ${skinName(profileSkin, user.language)}`.trim()
-        : '')
+      (profileSkin ? ` · ${skinName(profileSkin, user.language)}` : '')
     : '—'
   const topBadge = topMastery ? masteryBadge(topMastery.level) : null
   const masteryValue = topMastery
-    ? `${characterLabel(topMastery.name)} — ур. ${topMastery.level} «${topMastery.title}»` +
+    ? `${userCharacterLabel(user, topMastery.name)} — ур. ${topMastery.level} «${topMastery.title}»` +
       (topBadge ? ` · ${topBadge}` : '')
     : '—'
 
@@ -1258,8 +1256,16 @@ export function profileEmbed(
       { name: `${emojiText('points', '🪙')} Монеты`, value: `${user.coins}`, inline: true },
       { name: `${emojiText('achievement', '🏆')} Победы`, value: `${user.wins}`, inline: true },
       { name: `${emojiText('skull', '💀')} Поражения`, value: `${user.losses}`, inline: true },
-      { name: 'Активный', value: active ? characterLabel(active.name) : '—', inline: true },
-      { name: 'Напарник', value: partner ? characterLabel(partner.name) : '—', inline: true },
+      {
+        name: 'Активный',
+        value: active ? userCharacterLabel(user, active.name) : '—',
+        inline: true,
+      },
+      {
+        name: 'Напарник',
+        value: partner ? userCharacterLabel(user, partner.name) : '—',
+        inline: true,
+      },
       {
         name: `${emojiText('inventory', '📦')} Коллекция`,
         value: `${user.owned.length}/${CHARACTERS.length}`,
@@ -1649,7 +1655,7 @@ export function trainingSetupEmbed(user: UserData, setup: TrainingSetup): EmbedB
     .setTitle(`${emojiText('swordwhite', '⚔️')} Тренировка`)
     .setDescription(
       [
-        `Твой герой: ${characterLabel(activeCharacter(user).name)}`,
+        `Твой герой: ${userCharacterLabel(user, activeCharacter(user).name)}`,
         `Герой бота: **${setup.botCharacter ?? 'случайный'}**`,
         `Формат: **${setup.mode === '2x2' ? '2 на 2' : '1 на 1'}**`,
       ].join('\n'),
@@ -2230,11 +2236,11 @@ export function chooseEmbed(user: UserData): EmbedBuilder {
   const lines = [
     `Куплено: **${user.owned.length}/${CHARACTERS.length}**`,
     active
-      ? `Активный: ${characterLabel(active.name)} · ${characterClass(active)}`
+      ? `Активный: ${userCharacterLabel(user, active.name)} · ${characterClass(active)}`
       : 'Активный: —',
     activePassive ? `Пассивка: ${passiveText(activePassive)}` : '',
     partner
-      ? `Второй персонаж (2 на 2): ${characterLabel(partner.name)}${user.partner ? '' : ' · авто'}`
+      ? `Второй персонаж (2 на 2): ${userCharacterLabel(user, partner.name)}${user.partner ? '' : ' · авто'}`
       : 'Второй персонаж: —',
     partnerPassive ? `Пассивка напарника: ${passiveText(partnerPassive)}` : '',
     selected
@@ -2318,7 +2324,7 @@ export function characterEmbed(character: Character, user: UserData): EmbedBuild
 
   return new EmbedBuilder()
     .setColor(character.role === 'killer' ? EMBED_COLORS.battle : EMBED_COLORS.victory)
-    .setTitle(characterLabel(character.name))
+    .setTitle(userCharacterLabel(user, character.name))
     .setDescription(characterClass(character))
     .addFields(
       {
@@ -2365,7 +2371,9 @@ export function characterBrowserComponents(
         .setPlaceholder('Выбери персонажа')
         .addOptions(
           CHARACTERS.map(entry => {
-            const emoji = characterEmojiData(entry.name)
+            const emoji = user
+              ? userCharacterEmojiData(user, entry.name)
+              : characterEmojiData(entry.name)
             return {
               label: entry.name,
               description: characterOptionDescription(entry, characterClass(entry)),
@@ -2510,9 +2518,22 @@ export function teamLabel(battle: Battle, team: 0 | 1): string {
   return `${owners.join(' и ')} (${characters})`
 }
 
+export function userCharacterLabel(user: UserData, characterName: string): string {
+  const skin = equippedSkin(user, characterName)
+  return skinnedCharacterLabel(characterName, skin?.emoji)
+}
+
+export function userCharacterEmojiData(
+  user: UserData,
+  characterName: string,
+): { id: string; name: string } | undefined {
+  const skin = equippedSkin(user, characterName)
+  const skinEmoji = skin ? emojiData(skin.emoji) : undefined
+  return skinEmoji ?? characterEmojiData(characterName)
+}
+
 function sideCharacterLabel(side: Side): string {
-  const skin = equippedSkin(userOf(side.userId), side.character.name)
-  return skinnedCharacterLabel(side.character.name, skin?.emoji)
+  return userCharacterLabel(userOf(side.userId), side.character.name)
 }
 
 export function battleStatsText(battle: Battle): string {
@@ -2574,7 +2595,7 @@ export function forecastEmbed(
     '**Цели:**',
     ...enemies.map(
       enemy =>
-        `${characterLabel(enemy.character.name)} ${enemy.name} — HP ${enemy.hp}/${enemy.maxHp} · уворот ${Math.round(jukeChanceOf(enemy) * 100)}%${dodgePenalty(enemy)}`,
+        `${sideCharacterLabel(enemy)} ${enemy.name} — HP ${enemy.hp}/${enemy.maxHp} · уворот ${Math.round(jukeChanceOf(enemy) * 100)}%${dodgePenalty(enemy)}`,
     ),
     '',
     '**Статусы:**',
@@ -2741,7 +2762,7 @@ export function battleEmbed(
     ? ''
     : `${emojiText('timer', '⏳')} Ход: ${
         isBoss || battle.sides.length > 2
-          ? `${active.name} · ${active.character.name}`
+          ? `${active.name} · ${sideCharacterLabel(active)}`
           : active.name
       }${timer}`
   const playerDamage = new Map<string, { name: string; damage: number }>()
@@ -2871,7 +2892,7 @@ export function targetComponents(
   const row = new ActionRowBuilder<ButtonBuilder>()
   for (const index of targets) {
     const side = battle.sides[index]
-    const emoji = characterEmojiData(side.character.name)
+    const emoji = userCharacterEmojiData(userOf(side.userId), side.character.name)
     const button = new ButtonBuilder()
       .setCustomId(`pvp:target:${index}`)
       .setLabel(emoji ? `${side.character.name} — ${side.name}` : `🎯 ${side.character.name} — ${side.name}`)
@@ -3244,22 +3265,23 @@ function masteryProgressNotes(
   language: UserData['language'],
 ): string[] {
   const notes: string[] = []
+  const label = userCharacterLabel(progress.user, characterName)
   if (progress.leveledUp) {
     notes.push(
-      `${emojiText('xp', '⭐')} Мастерство: ${characterLabel(characterName)} — ур. ${progress.level} ` +
+      `${emojiText('xp', '⭐')} Мастерство: ${label} — ур. ${progress.level} ` +
         `(+${progress.reward} ${emojiText('points', '🪙')})`,
     )
   }
   for (const milestone of progress.milestones) {
     notes.push(
-      `${emojiText('xp', '⭐')} Мастерство: ${characterLabel(characterName)} — ` +
+      `${emojiText('xp', '⭐')} Мастерство: ${label} — ` +
         `${milestone.badge} (+${milestone.reward} ${emojiText('points', '🪙')})`,
     )
   }
   const skin = progress.skinsUnlocked.at(-1)
   if (skin) {
     notes.push(
-      `${emojiText('mvp', '🏅')} Открыт скин: ${characterLabel(characterName)} — ` +
+      `${emojiText('mvp', '🏅')} Открыт скин: ${label} — ` +
         `${skinName(skin, language)}`,
     )
   }
@@ -3320,20 +3342,20 @@ function recordBattle(
         user = progress.user
         if (progress.leveledUp) {
           notes.push(
-            `${emojiText('xp', '⭐')} Мастерство: ${characterLabel(characterName)} — ур. ${progress.level} ` +
+            `${emojiText('xp', '⭐')} Мастерство: ${userCharacterLabel(user, characterName)} — ур. ${progress.level} ` +
               `(+${progress.reward} ${emojiText('points', '🪙')})`,
           )
         }
         for (const milestone of progress.milestones) {
           notes.push(
-            `${emojiText('xp', '⭐')} Мастерство: ${characterLabel(characterName)} — ` +
+            `${emojiText('xp', '⭐')} Мастерство: ${userCharacterLabel(user, characterName)} — ` +
               `${milestone.badge} (+${milestone.reward} ${emojiText('points', '🪙')})`,
           )
         }
         const skin = progress.skinsUnlocked.at(-1)
         if (skin) {
           notes.push(
-            `${emojiText('mvp', '🏅')} Открыт скин: ${characterLabel(characterName)} — ` +
+            `${emojiText('mvp', '🏅')} Открыт скин: ${userCharacterLabel(user, characterName)} — ` +
               `${skinName(skin, user.language)}`,
           )
           skinUnlocks.push({ userId, character: characterName, skin })
@@ -3342,7 +3364,7 @@ function recordBattle(
         user = trial.user
         for (const completion of trial.completed) {
           notes.push(
-            `${emojiText('mvp', '🏅')} Испытание: ${characterLabel(completion.name)} — ` +
+            `${emojiText('mvp', '🏅')} Испытание: ${userCharacterLabel(user, completion.name)} — ` +
               `${completion.title} (+${completion.reward} ${emojiText('points', '🪙')})`,
           )
         }
@@ -4071,7 +4093,10 @@ export function draftEmbed(state: DraftState): EmbedBuilder {
       : pickedBy
         ? ` — пик ${pickedBy.name}`
         : ' — свободен'
-    return `${mark} ${characterLabel(character.name)}${suffix}`
+    const label = pickedBy
+      ? userCharacterLabel(userOf(pickedBy.userId), character.name)
+      : characterLabel(character.name)
+    return `${mark} ${label}${suffix}`
   })
   const current = draftCurrent(state)
   const abilityCharacter =
