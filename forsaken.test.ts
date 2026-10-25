@@ -119,6 +119,12 @@ describe('ability loadouts', () => {
     expect(characterWithSpecial(guest, 'Charge').special.name).toBe('Charge')
   })
 
+  test('choosing an alternate keeps both ability options available', () => {
+    const guest = characterByName('Guest 1337')!
+    const charged = characterWithSpecial(guest, 'Charge')
+    expect(availableSpecials(charged).map(special => special.name)).toEqual(['Charge', 'Block'])
+  })
+
   test('Dusekkar can choose Shield or Plasma Beam', () => {
     const dusekkar = characterByName('Dusekkar')!
     expect(availableSpecials(dusekkar).map(special => special.name)).toEqual([

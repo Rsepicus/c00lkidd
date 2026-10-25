@@ -157,7 +157,10 @@ export function characterClass(character: Character): string {
 }
 
 export function availableSpecials(character: Character): Special[] {
-  return [character.special, ...(character.alternates ?? [])]
+  const all = [character.special, ...(character.alternates ?? [])]
+  return all.filter(
+    (special, index) => all.findIndex(candidate => candidate.name === special.name) === index,
+  )
 }
 
 export function selectedSpecial(character: Character, chosenName?: string): Special {
@@ -165,8 +168,14 @@ export function selectedSpecial(character: Character, chosenName?: string): Spec
 }
 
 export function characterWithSpecial(character: Character, chosenName?: string): Character {
-  const special = selectedSpecial(character, chosenName)
-  return special.name === character.special.name ? character : { ...character, special }
+  const specials = availableSpecials(character)
+  const special = specials.find(candidate => candidate.name === chosenName) ?? character.special
+  if (special.name === character.special.name) return character
+  return {
+    ...character,
+    special,
+    alternates: specials.filter(candidate => candidate.name !== special.name),
+  }
 }
 
 export const KILLERS: readonly Character[] = [
