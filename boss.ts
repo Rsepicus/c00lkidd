@@ -7,6 +7,7 @@ export const BOSS_ROSTER = [
   'John Doe',
   '1x1x1x1',
   'Azure',
+  'Nosferatu',
 ] as const
 
 export const BOSS_HP_1V1 = 160
@@ -30,6 +31,7 @@ const BOSS_TUNING: Record<string, BossTuning> = {
   c00lkidd: { hp1: 160, attack1: 11, hp2: 260, attack2: 17 },
   'John Doe': { hp1: 120, attack1: 9, hp2: 220, attack2: 13 },
   '1x1x1x1': { hp1: 200, attack1: 14, hp2: 390, attack2: 19 },
+  Nosferatu: { hp1: 150, attack1: 13, hp2: 260, attack2: 17 },
 }
 
 export function bossTuning(name: string): BossTuning {

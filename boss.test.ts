@@ -27,6 +27,22 @@ describe('boss week', () => {
     expect(first.alternates?.length).toBeGreaterThan(0)
   })
 
+  test('includes Nosferatu as the sixth weekly boss', () => {
+    expect(BOSS_ROSTER).toHaveLength(6)
+    expect(BOSS_ROSTER).toContain('Nosferatu')
+
+    const week = '2026-W01'
+    const solo = bossCharacter('1x1', week)
+    const duo = bossCharacter('2x2', week)
+    expect(bossForWeek(week).name).toBe('Nosferatu')
+    expect(solo.name).toBe('Nosferatu')
+    expect(duo.name).toBe('Nosferatu')
+    expect(solo.hp).toBe(150)
+    expect(solo.attack).toBe(13)
+    expect(duo.hp).toBe(260)
+    expect(duo.attack).toBe(17)
+  })
+
   test('scales HP and attack with the battle mode and keeps both abilities', () => {
     const solo = bossCharacter('1x1', '2026-W01')
     const duo = bossCharacter('2x2', '2026-W01')
