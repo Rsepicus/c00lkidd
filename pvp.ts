@@ -102,6 +102,8 @@ export type Side = {
   dotSourceId: number | null
   lifesteal: boolean
   abilityUses: number
+  turns?: number
+  rests?: number
   blocking: boolean
   blockTargetId: number | null
   purified: boolean
@@ -1637,6 +1639,7 @@ export function takeTurn(
   // A queued priority turn is consumed by starting this turn; only a speed
   // ability used during the turn can queue another one.
   side.extraTurn = false
+  side.turns = (side.turns ?? 0) + 1
   const initialHp = battle.sides.map(candidate => candidate.hp)
 
   const events: string[] = []
@@ -2060,6 +2063,7 @@ export function takeTurn(
       break
     }
     case 'rest': {
+      side.rests = (side.rests ?? 0) + 1
       if (hasStatus(side, 'hemorrhage')) {
         delete side.effects.hemorrhage
         events.push(

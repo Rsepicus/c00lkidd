@@ -65,6 +65,23 @@ import {
   type BossRushRun,
 } from './boss-rush'
 import {
+  TOWER_FLOORS,
+  advanceTowerRun,
+  createTowerBattle,
+  createTowerRun,
+  towerFloor,
+  towerReward,
+  towerRunSummary,
+  type TowerRun,
+} from './tower'
+import {
+  TRIALS,
+  checkTrialResult,
+  claimTrialResult,
+  createTrialBattle,
+  type Trial,
+} from './trials'
+import {
   buyCosmetic,
   clearCosmetics,
   COSMETICS,
@@ -367,6 +384,8 @@ const duels = new Map<string, DuelSeries>()
 const pveOwners = new Map<string, string>()
 const trainingSetups = new Map<string, TrainingSetup>()
 const bossRushRuns = new Map<string, { ownerId: string; run: BossRushRun }>()
+const towerRuns = new Map<string, { ownerId: string; run: TowerRun }>()
+const trialRuns = new Map<string, { ownerId: string; trialId: string }>()
 const debugTests = new Map<string, DebugTestSetup>()
 const survivalRuns = new Map<string, SurvivalRun>()
 const drafts = new Map<string, DraftState>()
@@ -403,6 +422,8 @@ type PersistedBattleState = {
   gameModes: Array<[string, PvpMode]>
   boss: Array<[string, { mode: BossMode; week: string; day?: string; coop?: boolean }]>
   bossRush?: Array<[string, { ownerId: string; run: BossRushRun }]>
+  tower?: Array<[string, { ownerId: string; run: TowerRun }]>
+  trials?: Array<[string, { ownerId: string; trialId: string }]>
   channels: Array<[string, string]>
   deadlines: Array<[string, number]>
   strikes: Array<[string, Array<[string, number]>]>
@@ -430,6 +451,8 @@ function serializeBattleState(): PersistedBattleState {
     gameModes: [...battleGameModes.entries()],
     boss: [...bossBattles.entries()],
     bossRush: [...bossRushRuns.entries()],
+    tower: [...towerRuns.entries()],
+    trials: [...trialRuns.entries()],
     channels: [...battleChannels.entries()],
     deadlines: [...battleDeadlines.entries()],
     strikes: [...timeoutStrikes.entries()].map(([id, strikes]) => [id, [...strikes.entries()]]),
@@ -457,6 +480,8 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
   battleGameModes.clear()
   bossBattles.clear()
   bossRushRuns.clear()
+  towerRuns.clear()
+  trialRuns.clear()
   battleChannels.clear()
   battleDeadlines.clear()
   timeoutStrikes.clear()
@@ -491,6 +516,31 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
       typeof stateRun.run === 'object'
     ) {
       bossRushRuns.set(id, stateRun)
+    }
+  }
+  for (const [id, stateRun] of snapshotEntries<{ ownerId: string; run: TowerRun }>(
+    state.tower,
+  )) {
+    if (
+      stateRun &&
+      typeof stateRun === 'object' &&
+      typeof stateRun.ownerId === 'string' &&
+      stateRun.run &&
+      typeof stateRun.run === 'object'
+    ) {
+      towerRuns.set(id, stateRun)
+    }
+  }
+  for (const [id, stateRun] of snapshotEntries<{ ownerId: string; trialId: string }>(
+    state.trials,
+  )) {
+    if (
+      stateRun &&
+      typeof stateRun === 'object' &&
+      typeof stateRun.ownerId === 'string' &&
+      typeof stateRun.trialId === 'string'
+    ) {
+      trialRuns.set(id, stateRun)
     }
   }
   for (const [id, channel] of snapshotEntries<string>(state.channels)) battleChannels.set(id, channel)
@@ -1742,6 +1792,8 @@ export function pvePanelEmbed(): EmbedBuilder {
         '**Тренировка** — бой с ботами без наград и статистики; можно выбрать героев и способности обеих сторон.',
         '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.',
         '**Выживание** — забег по волнам. Каждая волна сильнее: у врага +25 HP и +2 атаки. Между волнами восстанавливается 25% HP, награда копится за каждую пройденную волну. После поражения или кнопки «Забрать награду» забег заканчивается.',
+        '**Башня** — 10 этажей по два усиленных противника. Играешь своей парой, награда за каждый пройденный этаж.',
+        '**Испытания** — особые цели для каждого персонажа за опыт мастерства.',
       ].join('\n\n'),
     )
     .setFooter({ text: 'Forsaken Simulator' })
@@ -1771,12 +1823,166 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setLabel('Boss Rush')
     .setStyle(ButtonStyle.Danger)
   if (boss) rushButton.setEmoji(boss)
+  const towerButton = new ButtonBuilder()
+    .setCustomId('pve:tower')
+    .setLabel('Башня')
+    .setStyle(ButtonStyle.Primary)
+  const trialsButton = new ButtonBuilder()
+    .setCustomId('pve:trials')
+    .setLabel('Испытания')
+    .setStyle(ButtonStyle.Success)
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       survivalButton,
       bossButton,
       rushButton,
       trainingButton,
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(towerButton, trialsButton),
+  ]
+}
+
+export function towerPanelEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.battle)
+    .setTitle(`${emojiText('swordwhite', '⚔️')} Башня`)
+    .setDescription(
+      [
+        `${TOWER_FLOORS} этажей, на каждом — двое противников с растущими HP и атакой.`,
+        `За победу на этаже: ${towerReward(1)} → ${towerReward(TOWER_FLOORS)} ${emojiText('points', '🪙')} по этажам.`,
+        'Играешь своей парой: герой и напарник. Поражение заканчивает забег.',
+        'Мастерство начисляется, PvP-статистика и квесты — нет.',
+      ].join('\n\n'),
+    )
+    .setFooter({ text: 'Forsaken Simulator' })
+}
+
+export function towerPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('tower:start')
+        .setLabel('Начать забег')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+function towerNextComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('tower:next')
+        .setLabel('Следующий этаж')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('В меню PvE')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+function towerAgainComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('tower:start')
+        .setLabel('Ещё забег')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('В меню PvE')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+const TRIAL_OBJECTIVE_LABELS: Record<Trial['objective'], string> = {
+  win: 'Победить',
+  survive: 'Продержаться {n} ходов',
+  special: 'Применить способность {n} раз',
+  win_without_rest: 'Победить без отдыха',
+}
+
+const TRIAL_OBJECTIVE_LABELS_EN: Record<Trial['objective'], string> = {
+  win: 'Win',
+  survive: 'Survive {n} turns',
+  special: 'Use the ability {n} times',
+  win_without_rest: 'Win without resting',
+}
+
+function trialObjectiveText(trial: Trial): string {
+  const labels =
+    activeLanguage() === 'en' ? TRIAL_OBJECTIVE_LABELS_EN : TRIAL_OBJECTIVE_LABELS
+  return labels[trial.objective].replace('{n}', String(trial.target))
+}
+
+function trialGoalLine(trial: Trial): string {
+  return activeLanguage() === 'en'
+    ? `Goal: ${trialObjectiveText(trial)}.`
+    : `Цель: ${trialObjectiveText(trial)}.`
+}
+
+export function trialsPanelEmbed(selected?: Trial): EmbedBuilder {
+  const lines = selected
+    ? [
+        `**${selected.characterName}** · ${selected.mode}`,
+        trialGoalLine(selected),
+        `Награда: **+${selected.bonusXp} XP**.`,
+        'В 2 на 2 напарник — бот. Мастерство начисляется один раз за испытание.',
+      ]
+    : [
+        'Испытания персонажей: сыграй за героя и выполни его цель.',
+        `Всего испытаний: **${TRIALS.length}**. Награда — опыт мастерства этого персонажа.`,
+        'Выбери персонажа в меню ниже.',
+      ]
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.battle)
+    .setTitle(`${emojiText('mvp', '🏅')} Испытания`)
+    .setDescription(lines.join('\n\n'))
+    .setFooter({ text: 'Forsaken Simulator' })
+}
+
+export function trialsPanelComponents(): Array<
+  ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
+> {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId('trials:select')
+    .setPlaceholder('Выбрать испытание')
+    .addOptions(
+      TRIALS.map(trial => ({
+        label: trial.characterName,
+        description: `${trial.mode} · ${trialObjectiveText(trial)}`.slice(0, 100),
+        value: trial.id,
+      })),
+    )
+  return [
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+function trialStartComponents(trial: Trial): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`trials:start:${trial.id}`)
+        .setLabel('Начать испытание')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pve:trials')
+        .setLabel('← К списку')
+        .setStyle(ButtonStyle.Secondary),
     ),
   ]
 }
@@ -3506,7 +3712,9 @@ function isPveBattle(messageId: string): boolean {
     trainingBattles.has(messageId) ||
     bossBattles.has(messageId) ||
     survivalRuns.has(messageId) ||
-    bossRushRuns.has(messageId)
+    bossRushRuns.has(messageId) ||
+    towerRuns.has(messageId) ||
+    trialRuns.has(messageId)
   )
 }
 
@@ -3949,6 +4157,8 @@ function finishBattleState(
   const gameMode = battleGameModes.get(messageId) ?? 'classic'
   const boss = bossBattles.get(messageId)
   const bossRush = bossRushRuns.get(messageId)
+  const tower = towerRuns.get(messageId)
+  const trialState = trialRuns.get(messageId)
   let note = ''
   let components: ActionRowBuilder<ButtonBuilder>[] = []
 
@@ -4174,6 +4384,100 @@ function finishBattleState(
       nextRun.status === 'active'
         ? bossRushNextComponents()
         : bossRushAgainComponents(run.mode)
+  } else if (tower) {
+    const ownerId = tower.ownerId
+    const run = tower.run
+    const won = battle.winner === 0
+    const nextRun = advanceTowerRun(run, won)
+    const summary = towerRunSummary(nextRun)
+    let user = userOf(ownerId)
+    let reward = 0
+    if (won) {
+      reward = towerReward(run.floor)
+      user = grantCoins(user, reward)
+    }
+    const playerSides = battle.sides.filter(
+      side => side.team === 0 && !side.fake && !side.minion,
+    )
+    const characterNames = [...new Set(playerSides.map(side => side.character.name))]
+    const towerNotes: string[] = []
+    for (const characterName of characterNames) {
+      const characterSides = playerSides.filter(side => side.character.name === characterName)
+      const abilityUses = characterSides.reduce((sum, side) => sum + side.abilityUses, 0)
+      const bonusXp = abilityXp(
+        abilityUses,
+        specialCooldown(characterSides[0]!.character.special),
+      )
+      const progress = recordCharacterResult(user, characterName, won, false, bonusXp)
+      user = progress.user
+      towerNotes.push(...masteryProgressNotes(progress, characterName, user.language))
+    }
+    store.users[ownerId] = user
+    persist()
+    towerRuns.set(messageId, { ownerId, run: nextRun })
+    rememberPveOwner(messageId, ownerId)
+    note = [
+      notePrefix,
+      `Башня · этаж ${run.floor}/${TOWER_FLOORS}: ` +
+        `${won ? 'пройден' : battle.winner === null ? 'ничья' : 'поражение'}.`,
+      reward > 0 ? `Награда: **+${reward}** ${emojiText('points', '🪙')}.` : '',
+      `Пройдено этажей: **${summary.floorsCleared}/${summary.totalFloors}**.`,
+      nextRun.status === 'active' ? `Следующий этаж: **${nextRun.floor}**.` : '',
+      nextRun.status === 'completed' ? 'Башня пройдена!' : '',
+      nextRun.status === 'failed' ? 'Забег окончен.' : '',
+      ...towerNotes,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    components =
+      nextRun.status === 'active' ? towerNextComponents() : towerAgainComponents()
+  } else if (trialState) {
+    const ownerId = trialState.ownerId
+    const trialDef = TRIALS.find(candidate => candidate.id === trialState.trialId)
+    const playerSide = battle.sides.find(
+      side => side.userId === ownerId && side.team === 0 && !side.fake && !side.minion,
+    )
+    const trialResult = {
+      won: battle.winner === 0,
+      turns: playerSide?.turns ?? 0,
+      abilityUses: playerSide?.abilityUses ?? 0,
+      rests: playerSide?.rests ?? 0,
+    }
+    const cleared = trialDef ? checkTrialResult(trialDef, trialResult) : false
+    let user = userOf(ownerId)
+    const claim = trialDef ? claimTrialResult(user, trialDef, cleared) : undefined
+    if (claim?.claimed) {
+      user = claim.user
+      store.users[ownerId] = user
+      persist()
+    }
+    const label = trialDef?.characterName ?? playerSide?.character.name ?? '—'
+    const lastSkin = claim?.skinsUnlocked.at(-1)
+    note = [
+      notePrefix,
+      `Испытание · **${label}**: ${cleared ? 'цель выполнена' : 'цель не выполнена'}.`,
+      trialDef
+        ? `${trialGoalLine(trialDef).replace(/\.$/, '')} (${trialResult.turns} ходов).`
+        : '',
+      claim?.claimed
+        ? `Награда: **+${claim.xpGained} XP**` +
+          (claim.milestoneReward > 0
+            ? ` и **+${claim.milestoneReward}** ${emojiText('points', '🪙')}`
+            : '') +
+          '.'
+        : cleared
+          ? 'Награда за это испытание уже получена.'
+          : '',
+      claim?.leveledUp ? `Мастерство: ур. **${claim.level}**.` : '',
+      ...(claim?.milestones.map(
+        milestone =>
+          `Мастерство: **${milestone.badge}** (+${milestone.reward} ${emojiText('points', '🪙')}).`,
+      ) ?? []),
+      lastSkin ? `Открыт скин: **${skinName(lastSkin, user.language)}**.` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+    components = trialDef ? trialStartComponents(trialDef) : towerPanelComponents()
   } else if (battle.winner === null) {
     note = [notePrefix, 'Бой окончен вничью.'].filter(Boolean).join('\n')
   } else if (training) {
@@ -5531,10 +5835,14 @@ function releasePveBattles(userId: string): number {
       trainingBattles.has(messageId) ||
       (bossState !== undefined && !bossState.coop) ||
       survivalRuns.has(messageId) ||
-      bossRushRuns.has(messageId)
+      bossRushRuns.has(messageId) ||
+      towerRuns.has(messageId) ||
+      trialRuns.has(messageId)
     if (!isPve) continue
     survivalRuns.delete(messageId)
     bossRushRuns.delete(messageId)
+    towerRuns.delete(messageId)
+    trialRuns.delete(messageId)
     cleanupBattle(messageId)
     released += 1
   }
@@ -6837,6 +7145,38 @@ function applyBossRushHp(battle: Battle, run: BossRushRun): void {
   }
 }
 
+export function towerBattle(
+  user: UserData,
+  ownerId: string,
+  displayName: string,
+  run: TowerRun,
+): Battle {
+  const floor = towerFloor(run.floor, run.seed)
+  return createTowerBattle(floor, teamEntries(user, ownerId, displayName))
+}
+
+export function trialBattle(
+  ownerId: string,
+  displayName: string,
+  trial: Trial,
+  character: Character,
+  seed: number,
+): Battle {
+  const battle = createTrialBattle(trial, character, seed)
+  for (const side of battle.sides) {
+    if (side.userId === 'trial:player') {
+      side.userId = ownerId
+      side.name = displayName
+    } else if (side.userId === 'trial:ally') {
+      side.userId = `bot:trial:ally:${trial.id}:${seed}`
+      side.name = 'Напарник'
+    } else if (side.userId.startsWith('bot:trial:')) {
+      side.name = side.character.name
+    }
+  }
+  return battle
+}
+
 async function launchBossRushBattle(
   interaction: ButtonInteraction,
   ownerId: string,
@@ -6881,6 +7221,120 @@ async function handleBossRushButton(interaction: ButtonInteraction): Promise<voi
     const run = createBossRush(mode, seed)
     await launchBossRushBattle(interaction, ownerId, run, messageId)
   }
+}
+
+async function launchTowerBattle(
+  interaction: ButtonInteraction,
+  ownerId: string,
+  run: TowerRun,
+  messageId: string,
+): Promise<void> {
+  await interaction.deferUpdate()
+  const user = userOf(ownerId)
+  const battle = towerBattle(user, ownerId, interaction.user.displayName, run)
+  towerRuns.set(messageId, { ownerId, run })
+  rememberPveOwner(messageId, ownerId)
+  battles.set(messageId, battle)
+  battleChannels.set(messageId, interaction.channelId)
+  const deadline = armBattleTimer(interaction.client, messageId, battle)
+  await interaction.editReply({
+    embeds: [battleEmbed(battle, [], undefined, deadline)],
+    components: battleComponents(battle),
+  })
+  notifyBattleStart(interaction.client, battle, interaction.channelId, messageId)
+}
+
+async function handleTowerButton(interaction: ButtonInteraction): Promise<void> {
+  const messageId = interaction.message.id
+  const state = towerRuns.get(messageId)
+  const ownerId = state?.ownerId ?? pveOwners.get(messageId)
+  if (!ownerId || interaction.user.id !== ownerId) {
+    await replyError(interaction, 'Это чужой забег.')
+    return
+  }
+  if (interaction.customId === 'tower:next') {
+    if (!state || state.run.status !== 'active') {
+      await replyError(interaction, 'Забег уже окончен.')
+      return
+    }
+    await launchTowerBattle(interaction, ownerId, state.run, messageId)
+    return
+  }
+  if (interaction.customId === 'tower:start') {
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0
+    await launchTowerBattle(interaction, ownerId, createTowerRun(seed), messageId)
+  }
+}
+
+function trialById(id: string): Trial | undefined {
+  return TRIALS.find(trial => trial.id === id)
+}
+
+async function launchTrialBattle(
+  interaction: ButtonInteraction,
+  ownerId: string,
+  trial: Trial,
+  messageId: string,
+): Promise<void> {
+  const user = userOf(ownerId)
+  const base = characterByName(trial.characterName)
+  if (!base) {
+    await replyError(interaction, 'Испытание недоступно.')
+    return
+  }
+  if (!user.owned.includes(base.name)) {
+    await replyError(interaction, `Сначала открой персонажа **${base.name}**.`)
+    return
+  }
+  await interaction.deferUpdate()
+  const character = characterWithSpecial(base, user.loadouts[base.name])
+  const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0
+  const battle = trialBattle(ownerId, interaction.user.displayName, trial, character, seed)
+  trialRuns.set(messageId, { ownerId, trialId: trial.id })
+  rememberPveOwner(messageId, ownerId)
+  battles.set(messageId, battle)
+  battleChannels.set(messageId, interaction.channelId)
+  const deadline = armBattleTimer(interaction.client, messageId, battle)
+  await interaction.editReply({
+    embeds: [battleEmbed(battle, [], undefined, deadline)],
+    components: battleComponents(battle),
+  })
+  notifyBattleStart(interaction.client, battle, interaction.channelId, messageId)
+}
+
+async function handleTrialButton(interaction: ButtonInteraction): Promise<void> {
+  const messageId = interaction.message.id
+  const ownerId = pveOwners.get(messageId) ?? trialRuns.get(messageId)?.ownerId
+  if (!ownerId || interaction.user.id !== ownerId) {
+    await replyError(interaction, 'Это чужое испытание.')
+    return
+  }
+  const trialId = interaction.customId.replace(/^trials:start:/, '')
+  const trial = trialById(trialId)
+  if (!trial) {
+    await replyError(interaction, 'Испытание не найдено.')
+    return
+  }
+  await launchTrialBattle(interaction, ownerId, trial, messageId)
+}
+
+async function handleTrialsSelect(
+  interaction: StringSelectMenuInteraction,
+): Promise<void> {
+  const ownerId = pveOwners.get(interaction.message.id)
+  if (!ownerId || interaction.user.id !== ownerId) {
+    await replyError(interaction, 'Это чужое меню.')
+    return
+  }
+  const trial = trialById(interaction.values[0])
+  if (!trial) {
+    await replyError(interaction, 'Испытание не найдено.')
+    return
+  }
+  await interaction.update({
+    embeds: [trialsPanelEmbed(trial)],
+    components: trialStartComponents(trial),
+  })
 }
 
 async function startTrainingBattle(
@@ -6943,8 +7397,28 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
     return
   }
   const user = userOf(ownerId)
+  if (interaction.customId === 'pve:tower') {
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
+    await interaction.update({
+      embeds: [towerPanelEmbed()],
+      components: towerPanelComponents(),
+    })
+    return
+  }
+  if (interaction.customId === 'pve:trials') {
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
+    await interaction.update({
+      embeds: [trialsPanelEmbed()],
+      components: trialsPanelComponents(),
+    })
+    return
+  }
   if (interaction.customId === 'pve:boss') {
     bossRushRuns.delete(interaction.message.id)
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
     await interaction.update({
       embeds: [bossPanelEmbed(user)],
       components: pveBossComponents(),
@@ -6953,6 +7427,8 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
   }
   if (interaction.customId === 'pve:bossrush') {
     bossRushRuns.delete(interaction.message.id)
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
     await interaction.update({
       embeds: [bossRushPanelEmbed()],
       components: bossRushPanelComponents(),
@@ -6961,6 +7437,8 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
   }
   if (interaction.customId === 'pve:training') {
     bossRushRuns.delete(interaction.message.id)
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
     const bot = randomCharacter(Math.random)
     const partnerPool = CHARACTERS.filter(character => character.name !== bot.name)
     const botPartner =
@@ -6984,6 +7462,8 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
   if (interaction.customId === 'pve:survival') {
     trainingSetups.delete(interaction.message.id)
     bossRushRuns.delete(interaction.message.id)
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
     await interaction.update({
       embeds: [survivalPanelEmbed(user, store.users)],
       components: survivalPanelComponents(),
@@ -7034,6 +7514,8 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
   if (interaction.customId === 'pve:menu') {
     trainingSetups.delete(interaction.message.id)
     bossRushRuns.delete(interaction.message.id)
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
     await interaction.update({
       embeds: [pvePanelEmbed()],
       components: pvePanelComponents(),
@@ -7239,6 +7721,14 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     await handleBossRushButton(interaction)
     return
   }
+  if (interaction.customId.startsWith('tower:')) {
+    await handleTowerButton(interaction)
+    return
+  }
+  if (interaction.customId.startsWith('trials:')) {
+    await handleTrialButton(interaction)
+    return
+  }
   if (interaction.customId.startsWith('top:')) {
     await handleTopPageButton(interaction)
     return
@@ -7364,6 +7854,10 @@ async function main(): Promise<void> {
           }
           if (interaction.customId.startsWith('pve:training:')) {
             await handlePveTrainingSelect(interaction)
+            return
+          }
+          if (interaction.customId === 'trials:select') {
+            await handleTrialsSelect(interaction)
             return
           }
           if (interaction.customId.startsWith('debug:test:')) {

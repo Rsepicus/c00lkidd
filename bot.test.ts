@@ -77,6 +77,12 @@ import {
   trainingBotCharacter,
   trainingBotPartnerCharacter,
   trainingEntries,
+  towerBattle,
+  towerPanelComponents,
+  towerPanelEmbed,
+  trialBattle,
+  trialsPanelComponents,
+  trialsPanelEmbed,
   userCharacterEmojiData,
   userCharacterLabel,
 } from './bot'
@@ -89,6 +95,8 @@ import {
   characterWithSpecial,
 } from './forsaken'
 import { addRottenMinion, createBattle, createTeamBattle, takeTurn } from './pvp'
+import { createTowerRun } from './tower'
+import { TRIALS } from './trials'
 import { defaultUser } from './store'
 
 describe('parseToken', () => {
@@ -953,6 +961,86 @@ describe('embeds', () => {
       'boss:coop',
     ])
     expect(rows[1].components[0].custom_id).toBe('pve:boss:invite')
+  })
+
+  test('PvE menu opens the tower and trials on a second row', () => {
+    const rows = pvePanelComponents().map(row => row.toJSON())
+    expect(rows).toHaveLength(2)
+    expect(rows[1].components.map(component => component.custom_id)).toEqual([
+      'pve:tower',
+      'pve:trials',
+    ])
+  })
+
+  test('Tower panel shows ten floors and offers a start button', () => {
+    const embed = towerPanelEmbed().toJSON()
+    expect(String(embed.title)).toContain('Башня')
+    expect(String(embed.description)).toContain('10')
+    const ids = towerPanelComponents()[0]
+      .toJSON()
+      .components.map(component => component.custom_id)
+    expect(ids).toEqual(['tower:start', 'pve:menu'])
+  })
+
+  test('tower battles field two players against two scaled enemies', () => {
+    const battle = towerBattle(
+      defaultUser(),
+      '123456789012345678',
+      'Player',
+      createTowerRun(7),
+    )
+    const playerSides = battle.sides.filter(side => side.team === 0)
+    const enemySides = battle.sides.filter(side => side.team === 1)
+    expect(playerSides).toHaveLength(2)
+    expect(enemySides).toHaveLength(2)
+    expect(playerSides.every(side => side.userId === '123456789012345678')).toBe(true)
+    expect(enemySides.every(side => side.userId.startsWith('bot:tower:'))).toBe(true)
+  })
+
+  test('Trials panel lists every trial in a select menu', () => {
+    const embed = trialsPanelEmbed().toJSON()
+    expect(String(embed.title)).toContain('Испытания')
+    const rows = trialsPanelComponents().map(row => row.toJSON())
+    const select = rows[0].components[0] as {
+      custom_id: string
+      options: Array<{ value: string }>
+    }
+    expect(select.custom_id).toBe('trials:select')
+    expect(select.options).toHaveLength(TRIALS.length)
+    expect(new Set(select.options.map(option => option.value)).size).toBe(TRIALS.length)
+    expect(rows[1].components.map(component => component.custom_id)).toEqual(['pve:menu'])
+  })
+
+  test('a 2x2 trial pairs the player with a bot ally', () => {
+    const trial = TRIALS.find(candidate => candidate.id === 'noob')!
+    const battle = trialBattle(
+      '123456789012345678',
+      'Player',
+      trial,
+      characterByName('Noob')!,
+      5,
+    )
+    const playerSides = battle.sides.filter(side => side.team === 0)
+    const enemySides = battle.sides.filter(side => side.team === 1)
+    expect(playerSides).toHaveLength(2)
+    expect(playerSides[0].userId).toBe('123456789012345678')
+    expect(playerSides[0].character.name).toBe('Noob')
+    expect(playerSides[1].userId.startsWith('bot:trial:')).toBe(true)
+    expect(enemySides).toHaveLength(2)
+    expect(enemySides.every(side => side.userId.startsWith('bot:trial:'))).toBe(true)
+  })
+
+  test('a 1x1 trial fields only the trial character and one bot', () => {
+    const trial = TRIALS.find(candidate => candidate.id === 'jason')!
+    const battle = trialBattle(
+      '123456789012345678',
+      'Player',
+      trial,
+      characterByName('Jason')!,
+      3,
+    )
+    expect(battle.sides.filter(side => side.team === 0)).toHaveLength(1)
+    expect(battle.sides.filter(side => side.team === 1)).toHaveLength(1)
   })
 
   test('debug panel exposes coins and balance test', () => {

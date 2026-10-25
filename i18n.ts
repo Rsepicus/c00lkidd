@@ -205,6 +205,25 @@ const EXACT: Record<string, string> = {
     'Mastery is awarded; PvP stats and quests are not.',
   'Следующий босс': 'Next boss',
   'Ещё забег': 'Another run',
+  '**Башня** — 10 этажей по два усиленных противника. Играешь своей парой, награда за каждый пройденный этаж.':
+    '**Tower** — 10 floors with two buffed opponents each. Fight with your own pair and earn a reward per floor.',
+  '**Испытания** — особые цели для каждого персонажа за опыт мастерства.':
+    '**Trials** — special goals for every character, rewarding mastery XP.',
+  '10 этажей, на каждом — двое противников с растущими HP и атакой.':
+    '10 floors, each with two opponents whose HP and attack grow.',
+  'Играешь своей парой: герой и напарник. Поражение заканчивает забег.':
+    'You fight with your own pair: hero and partner. A loss ends the run.',
+  'Следующий этаж': 'Next floor',
+  '← К списку': '← Back to list',
+  'Выбрать испытание': 'Choose a trial',
+  'Начать испытание': 'Start trial',
+  'Испытания персонажей: сыграй за героя и выполни его цель.':
+    'Character trials: play the hero and complete their goal.',
+  'Выбери персонажа в меню ниже.': 'Choose a character in the menu below.',
+  'В 2 на 2 напарник — бот. Мастерство начисляется один раз за испытание.':
+    'In 2v2 your partner is a bot. Mastery is awarded once per trial.',
+  'Башня': 'Tower',
+  'Испытания': 'Trials',
   'Бой с тенями окончен.': 'Shadow battle over.',
   'Бой с тенями 2 на 2 окончен.': '2v2 shadow battle over.',
   'Победа — мастерство начислено.': 'Victory — mastery awarded.',
@@ -631,6 +650,15 @@ const PATTERNS: Array<[RegExp, string]> = [
     '$1. <@$2> — **$3** waves · $4 · $5',
   ],
   [/Забег окончен: пройдено волн \*\*(\d+)\*\*\./, 'Run ended: **$1** waves cleared.'],
+  [
+    /^За победу на этаже: (\d+) → (\d+) (.+) по этажам\.$/,
+    'Floor reward: $1 → $2 $3 across floors.',
+  ],
+  [
+    /^Всего испытаний: \*\*(\d+)\*\*\. Награда — опыт мастерства этого персонажа\.$/,
+    'Total trials: **$1**. Reward: mastery XP for that character.',
+  ],
+  [/^Награда: \*\*\+(\d+) XP\*\*\.$/, 'Reward: **+$1 XP**.'],
   [
     /Пройдено волн: \*\*(\d+)\*\*\. Награда: \*\*\+(\d+)\*\* (.+)/,
     'Waves cleared: **$1**. Reward: **+$2** $3',

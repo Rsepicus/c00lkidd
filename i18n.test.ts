@@ -48,7 +48,12 @@ import {
   targetComponents,
   topComponents,
   topEmbed,
+  towerPanelComponents,
+  towerPanelEmbed,
+  trialsPanelComponents,
+  trialsPanelEmbed,
 } from './bot'
+import { TRIALS } from './trials'
 import {
   availableSpecials,
   CHARACTERS,
@@ -247,6 +252,9 @@ describe('i18n', () => {
         cosmeticsEmbed(user),
         bossPanelEmbed(user),
         bossRushPanelEmbed(),
+        towerPanelEmbed(),
+        trialsPanelEmbed(),
+        trialsPanelEmbed(TRIALS[0]),
         bossCoopEmbed('Rsepicus', '2026-W01'),
         bossCoopEmbed('Rsepicus', '2026-W01', '42'),
         settingsEmbed(user),
@@ -267,6 +275,8 @@ describe('i18n', () => {
         ...characterBrowserComponents(false, character, user, true),
         ...questsComponents(user),
         ...pvePanelComponents(),
+        ...towerPanelComponents(),
+        ...trialsPanelComponents(),
         ...trainingSetupComponents(user, {
           ownerId: '42',
           mode: '2x2',

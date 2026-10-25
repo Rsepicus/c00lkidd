@@ -1158,6 +1158,19 @@ describe('takeTurn', () => {
     expect(result.battle.sides[0].hp).toBe(90)
   })
 
+  test('counts turns and rests for every side', () => {
+    let battle = battleWith(heavy, healer)
+    battle = takeTurn(battle, 'rest', () => 0).battle
+    expect(battle.sides[0].turns).toBe(1)
+    expect(battle.sides[0].rests).toBe(1)
+    expect(battle.sides[1].turns ?? 0).toBe(0)
+    expect(battle.sides[1].rests ?? 0).toBe(0)
+
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.sides[1].turns).toBe(1)
+    expect(battle.sides[1].rests ?? 0).toBe(0)
+  })
+
   test('heal special restores HP without exceeding the maximum', () => {
     const damaged = battleWith(healer, heavy)
     damaged.sides[0].hp = 50
