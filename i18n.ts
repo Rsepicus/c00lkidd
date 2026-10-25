@@ -795,7 +795,7 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^Blood Hunt: (.+) восстанавливает (\d+) HP \(осталось атак: (\d+)\)\.$/, 'Blood Hunt: $1 restores $2 HP ($3 attacks left).'],
   [/^(.+) восстанавливает (\d+) HP \((.+)\)\.$/, '$1 restores $2 HP ($3).'],
   [/^(.+) восстанавливает (\d+) HP\.$/, '$1 restores $2 HP.'],
-  [/^(.+) теряет (\d+) временных HP \(Plasma Beam\)\.$/, '$1 loses $2 temporary HP (Plasma Beam).'],
+  [/^(.+) теряет (\d+) временных HP\.$/, '$1 loses $2 temporary HP.'],
   [/^(.+): временные HP \+(\d+)\.$/, '$1: temporary HP +$2.'],
   [/^(.+) теряет (\d+) HP от кровотечения\.$/, '$1 loses $2 HP from bleeding.'],
   [/^(.+) теряет (\d+) HP от яда\.$/, '$1 loses $2 HP from poison.'],

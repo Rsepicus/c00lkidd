@@ -512,6 +512,21 @@ describe('Guest 1337 block', () => {
     expect(result.events.join(' ')).toContain('−30%')
   })
 
+  test('temporary HP expiry does not blame Plasma Beam', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'Guest', character: characterByName('Guest 1337')! },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle.sides[0].tempHp = 5
+    battle.sides[0].hp += 5
+    battle.sides[0].tempHpTurns = 1
+
+    const result = takeTurn(battle, 'rest', () => 0)
+    const events = result.events.join(' ')
+    expect(events).toContain('теряет 5 временных HP.')
+    expect(events).not.toContain('Plasma Beam')
+  })
+
   test('in 2v2 Block can protect a teammate and triggers on a hit', () => {
     const guest = characterByName('Guest 1337')!
     const ally = characterByName('Noob')!

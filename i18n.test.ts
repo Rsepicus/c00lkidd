@@ -214,6 +214,9 @@ describe('i18n', () => {
     expect(translateText('⭐ Престиж **3**! +500 <:points:123>.', 'en')).toBe(
       '⭐ Prestige **3**! +500 <:points:123>.',
     )
+    expect(translateText('Guest теряет 5 временных HP.', 'en')).toBe(
+      'Guest loses 5 temporary HP.',
+    )
   })
 
   test('translates PvE survival text', () => {

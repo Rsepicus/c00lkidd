@@ -364,7 +364,7 @@ function expireTemporaryHp(side: Side, events: string[]): void {
   const lost = Math.min(side.tempHp, side.hp)
   side.hp -= lost
   side.tempHp = 0
-  if (lost > 0) events.push(`${side.name} теряет ${lost} временных HP (Plasma Beam).`)
+  if (lost > 0) events.push(`${side.name} теряет ${lost} временных HP.`)
 }
 
 function makeBattle(teams: [FighterEntry[], FighterEntry[]]): Battle {
