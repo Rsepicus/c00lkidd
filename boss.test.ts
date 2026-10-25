@@ -4,10 +4,13 @@ import {
   BOSS_ROSTER,
   BOSS_WIN_REWARD,
   bossCharacter,
+  bossCharacterForDay,
+  bossForDay,
   bossForWeek,
   bossModeOf,
   bossRecordForWeek,
   bossTuning,
+  isoDayKey,
   isoWeekKey,
   recordBossResult,
 } from './boss'
@@ -18,6 +21,18 @@ describe('boss week', () => {
     expect(isoWeekKey(Date.UTC(2026, 0, 1))).toBe('2026-W01')
     expect(isoWeekKey(Date.UTC(2026, 0, 5))).toBe('2026-W02')
     expect(isoWeekKey(Date.UTC(2026, 9, 24))).toMatch(/^2026-W\d{2}$/)
+  })
+
+  test('rotates the boss daily and is stable within the day', () => {
+    expect(isoDayKey(Date.UTC(2026, 0, 1))).toBe('2026-01-01')
+    const day = '2026-01-01'
+    const first = bossForDay(day)
+    expect(bossForDay(day).name).toBe(first.name)
+    expect(BOSS_ROSTER).toContain(first.name)
+    const solo = bossCharacterForDay('1x1', day)
+    const tuning = bossTuning(solo.name)
+    expect(solo.hp).toBe(tuning.hp1)
+    expect(solo.attack).toBe(tuning.attack1)
   })
 
   test('picks a deterministic boss from the roster', () => {

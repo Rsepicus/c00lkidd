@@ -47,8 +47,10 @@ import { appendErrorLog } from './errors'
 import {
   BOSS_FIRST_CLEAR_BONUS,
   BOSS_WIN_REWARD,
-  bossCharacter,
+  bossCharacterForDay,
+  bossForDay,
   bossForWeek,
+  isoDayKey,
   isoWeekKey,
   recordBossResult,
   type BossMode,
@@ -368,7 +370,10 @@ const battleLogs = new Map<string, string[]>()
 const wagers = new Map<string, number>()
 const trainingBattles = new Set<string>()
 const battleGameModes = new Map<string, PvpMode>()
-const bossBattles = new Map<string, { mode: BossMode; week: string; coop?: boolean }>()
+const bossBattles = new Map<
+  string,
+  { mode: BossMode; week: string; day?: string; coop?: boolean }
+>()
 const battleChannels = new Map<string, string>()
 const battleDeadlines = new Map<string, number>()
 const battleTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -386,7 +391,7 @@ type PersistedBattleState = {
   training: string[]
   ghostTraining?: Array<[string, { ownerId: string; mode: BattleMode }]>
   gameModes: Array<[string, PvpMode]>
-  boss: Array<[string, { mode: BossMode; week: string; coop?: boolean }]>
+  boss: Array<[string, { mode: BossMode; week: string; day?: string; coop?: boolean }]>
   channels: Array<[string, string]>
   deadlines: Array<[string, number]>
   strikes: Array<[string, Array<[string, number]>]>
@@ -468,9 +473,12 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
     }
   }
   for (const [id, mode] of snapshotEntries<PvpMode>(state.gameModes)) battleGameModes.set(id, mode)
-  for (const [id, boss] of snapshotEntries<{ mode: BossMode; week: string; coop?: boolean }>(
-    state.boss,
-  )) {
+  for (const [id, boss] of snapshotEntries<{
+    mode: BossMode
+    week: string
+    day?: string
+    coop?: boolean
+  }>(state.boss)) {
     bossBattles.set(id, boss)
   }
   for (const [id, channel] of snapshotEntries<string>(state.channels)) battleChannels.set(id, channel)
@@ -869,8 +877,9 @@ export function coopBossBattle(
   first: FighterEntry,
   second: FighterEntry,
   week = isoWeekKey(),
+  day = isoDayKey(),
 ): Battle {
-  const boss = bossCharacter('2x2', week)
+  const boss = bossCharacterForDay('2x2', day)
   return createTeamBattle([first, second], [
     {
       userId: `boss:${week}:coop`,
@@ -1567,9 +1576,10 @@ export function questsComponents(
 
 export function bossPanelEmbed(user: UserData, now = Date.now()): EmbedBuilder {
   const week = isoWeekKey(now)
-  const boss = bossForWeek(week)
-  const solo = bossCharacter('1x1', week)
-  const duo = bossCharacter('2x2', week)
+  const day = isoDayKey(now)
+  const boss = bossForDay(day)
+  const solo = bossCharacterForDay('1x1', day)
+  const duo = bossCharacterForDay('2x2', day)
   const specials = [boss.special, ...(boss.alternates ?? [])]
   const specialIcons = specials.map(special => abilityEmojiText(boss.name, special.name))
   const leaders = Object.entries(store.users)
@@ -1589,9 +1599,9 @@ export function bossPanelEmbed(user: UserData, now = Date.now()): EmbedBuilder {
 
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.battle)
-    .setTitle(`${emojiText('boss', '👑')} Босс недели: ${characterLabel(boss.name)}`)
+    .setTitle(`${emojiText('boss', '👑')} Босс дня: ${characterLabel(boss.name)}`)
     .setDescription(
-      `Неделя **${week}**. Босс использует **обе** свои способности, у каждой свой кулдаун.\n` +
+      `День **${day}** · неделя **${week}**. Босс использует **обе** свои способности, у каждой свой кулдаун.\n` +
         `${emojiText('hp', '❤️')} 1 на 1: **${solo.hp} HP** · атака **${solo.attack}**\n` +
         `${emojiText('hp', '❤️')} 2 на 2: **${duo.hp} HP** · атака **${duo.attack}**`,
     )
@@ -2002,8 +2012,9 @@ export function bossCoopEmbed(
   creatorName: string,
   week = isoWeekKey(),
   targetId?: string,
+  day = isoDayKey(),
 ): EmbedBuilder {
-  const boss = bossForWeek(week)
+  const boss = bossForDay(day)
   const invitation = targetId
     ? `**${creatorName}** приглашает <@${targetId}> на босса **${boss.name}**.`
     : `**${creatorName}** ищет второго игрока на босса **${boss.name}**.`
@@ -3790,7 +3801,9 @@ function finishBattleState(
     }
     persist()
 
-    const bossName = bossForWeek(boss.week).name
+    const bossName = boss.day
+      ? bossForDay(boss.day).name
+      : bossForWeek(boss.week).name
     const damageReport = [...damageByUser]
       .map(([userId, value]) => `${nameByUser.get(userId) ?? '—'}: **${value}**`)
       .join(' · ')
@@ -5378,8 +5391,9 @@ async function handleBossStart(interaction: ButtonInteraction): Promise<void> {
 
   const mode: BossMode = interaction.customId.endsWith(':2x2') ? '2x2' : '1x1'
   const week = isoWeekKey()
+  const day = isoDayKey()
   const user = userOf(interaction.user.id)
-  const boss = bossCharacter(mode, week)
+  const boss = bossCharacterForDay(mode, day)
   const bossEntry: FighterEntry = {
     userId: `boss:${week}:${interaction.id}`,
     name: `БОСС · ${boss.name}`,
@@ -5406,7 +5420,7 @@ async function handleBossStart(interaction: ButtonInteraction): Promise<void> {
   })
   const message = await interaction.fetchReply()
   battles.set(message.id, battle)
-  bossBattles.set(message.id, { mode, week })
+  bossBattles.set(message.id, { mode, week, day })
   battleChannels.set(message.id, interaction.channelId)
   const deadline = armBattleTimer(interaction.client, message.id, battle)
   await interaction.editReply({
@@ -5550,6 +5564,7 @@ async function handleBossCoopButton(interaction: ButtonInteraction): Promise<voi
   const creator = userOf(invite.creatorId)
   const partner = userOf(interaction.user.id)
   const week = isoWeekKey()
+  const day = isoDayKey()
   const battle = coopBossBattle(
     {
       userId: invite.creatorId,
@@ -5562,11 +5577,12 @@ async function handleBossCoopButton(interaction: ButtonInteraction): Promise<voi
       character: activeCharacter(partner),
     },
     week,
+    day,
   )
 
   coopBossInvites.delete(messageId)
   battles.set(messageId, battle)
-  bossBattles.set(messageId, { mode: '2x2', week, coop: true })
+  bossBattles.set(messageId, { mode: '2x2', week, day, coop: true })
   battleChannels.set(messageId, interaction.channelId)
   const deadline = armBattleTimer(interaction.client, messageId, battle)
   await withBattleTurnLanguage(battle, async () => {

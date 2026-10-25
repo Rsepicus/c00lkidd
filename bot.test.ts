@@ -662,7 +662,7 @@ describe('embeds', () => {
 
   test('boss panel shows both abilities, weekly damage and three fight buttons', () => {
     const embed = bossPanelEmbed(defaultUser(), Date.UTC(2026, 0, 1)).toJSON()
-    expect(embed.title).toContain('Босс недели')
+    expect(embed.title).toContain('Босс дня')
     const fields = embed.fields?.map(field => field.name).join(' ') ?? ''
     expect(fields).toContain('Способность 1')
     expect(fields).toContain('Способность 2')

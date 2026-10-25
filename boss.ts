@@ -53,6 +53,14 @@ function hash(value: string): number {
   return result
 }
 
+export function isoDayKey(now = Date.now()): string {
+  const date = new Date(now)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function isoWeekKey(now = Date.now()): string {
   const date = new Date(now)
   const target = new Date(
@@ -72,14 +80,26 @@ export function bossForWeek(week = isoWeekKey()): Character {
   return characterByName(name) ?? characterByName('Jason')!
 }
 
-export function bossCharacter(mode: BossMode, week = isoWeekKey()): Character {
-  const base = bossForWeek(week)
+export function bossForDay(day = isoDayKey()): Character {
+  const name = BOSS_ROSTER[hash(day) % BOSS_ROSTER.length]
+  return characterByName(name) ?? characterByName('Jason')!
+}
+
+function tunedBoss(base: Character, mode: BossMode): Character {
   const tuning = bossTuning(base.name)
   return {
     ...base,
     hp: mode === '2x2' ? tuning.hp2 : tuning.hp1,
     attack: mode === '2x2' ? tuning.attack2 : tuning.attack1,
   }
+}
+
+export function bossCharacter(mode: BossMode, week = isoWeekKey()): Character {
+  return tunedBoss(bossForWeek(week), mode)
+}
+
+export function bossCharacterForDay(mode: BossMode, day = isoDayKey()): Character {
+  return tunedBoss(bossForDay(day), mode)
 }
 
 export function bossModeOf(sides: number): BossMode {
