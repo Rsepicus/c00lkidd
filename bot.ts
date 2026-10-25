@@ -1769,10 +1769,10 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
   if (boss) rushButton.setEmoji(boss)
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      bossButton,
-      trainingButton,
       survivalButton,
+      bossButton,
       rushButton,
+      trainingButton,
     ),
   ]
 }

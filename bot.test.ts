@@ -944,7 +944,7 @@ describe('embeds', () => {
     const buttons = pvePanelComponents()[0]
       .toJSON()
       .components.map(component => component.custom_id)
-    expect(buttons).toEqual(['pve:boss', 'pve:training', 'pve:survival', 'pve:bossrush'])
+    expect(buttons).toEqual(['pve:survival', 'pve:boss', 'pve:bossrush', 'pve:training'])
 
     const rows = pveBossComponents().map(row => row.toJSON())
     expect(rows[0].components.map(component => component.custom_id)).toEqual([
