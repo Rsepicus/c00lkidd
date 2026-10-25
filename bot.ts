@@ -1229,17 +1229,16 @@ export function profileEmbed(
   const favoriteTrial = favorite
     ? trialTitleForWins(user.characterStats[favorite.name]?.wins ?? 0)
     : null
-  const skinCharacter = favorite?.name ?? active?.name
-  const profileSkin = skinCharacter ? equippedSkin(user, skinCharacter) : undefined
   const favoriteValue = favorite
     ? `${userCharacterLabel(user, favorite.name)} — ${favorite.battles} ${plural(favorite.battles, 'бой', 'боя', 'боёв')} · ${favorite.winrate}% побед` +
-      (favoriteTrial ? ` · ${favoriteTrial}` : '') +
-      (profileSkin ? ` · ${skinName(profileSkin, user.language)}` : '')
+      (favoriteTrial ? ` · ${favoriteTrial}` : '')
     : '—'
   const topBadge = topMastery ? masteryBadge(topMastery.level) : null
+  const masterySkin = topMastery ? equippedSkin(user, topMastery.name) : undefined
   const masteryValue = topMastery
     ? `${userCharacterLabel(user, topMastery.name)} — ур. ${topMastery.level} «${topMastery.title}»` +
-      (topBadge ? ` · ${topBadge}` : '')
+      (topBadge ? ` · ${topBadge}` : '') +
+      (masterySkin ? `\nСкин: **${skinName(masterySkin, user.language)}**` : '')
     : '—'
 
   return new EmbedBuilder()
