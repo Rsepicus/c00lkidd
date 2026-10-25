@@ -158,8 +158,10 @@ import {
   formatDuration,
   getUser,
   grantCoins,
+  isRealUserId,
   loadStore,
   ownedCharacters,
+  pruneSyntheticUsers,
   purchasableCharacters,
   saveStore,
   setActive,
@@ -1306,6 +1308,7 @@ export function balanceEmbed(simulation: BalanceSimulation): EmbedBuilder {
 
 export function topEmbed(): EmbedBuilder {
   const entries = Object.entries(store.users)
+    .filter(([userId]) => isRealUserId(userId))
     .sort((left, right) => right[1].wins - left[1].wins || right[1].coins - left[1].coins)
     .slice(0, 10)
   const description =
@@ -2530,6 +2533,7 @@ export function userCharacterEmojiData(
 }
 
 function sideCharacterLabel(side: Side): string {
+  if (isAutomatedSide(side)) return skinnedCharacterLabel(side.character.name)
   return userCharacterLabel(userOf(side.userId), side.character.name)
 }
 
@@ -2889,7 +2893,9 @@ export function targetComponents(
   const row = new ActionRowBuilder<ButtonBuilder>()
   for (const index of targets) {
     const side = battle.sides[index]
-    const emoji = userCharacterEmojiData(userOf(side.userId), side.character.name)
+    const emoji = isAutomatedSide(side)
+      ? characterEmojiData(side.character.name)
+      : userCharacterEmojiData(userOf(side.userId), side.character.name)
     const button = new ButtonBuilder()
       .setCustomId(`pvp:target:${index}`)
       .setLabel(emoji ? `${side.character.name} — ${side.name}` : `🎯 ${side.character.name} — ${side.name}`)
@@ -6426,6 +6432,7 @@ async function main(): Promise<void> {
     process.exit(1)
   })
   store = loadStore(DATA_PATH)
+  if (pruneSyntheticUsers(store)) persist()
   backupDataFiles(dirname(DATA_PATH))
   setInterval(() => backupDataFiles(dirname(DATA_PATH)), 24 * 60 * 60 * 1000).unref?.()
   const envPath = join(dirname(fileURLToPath(import.meta.url)), '.env')

@@ -11,11 +11,13 @@ import {
   defaultUser,
   getUser,
   grantCoins,
+  isRealUserId,
   ownedCharacters,
   purchasableCharacters,
   loadStore,
   MAX_PVP_WAGER,
   normalizeUser,
+  pruneSyntheticUsers,
   saveStore,
   setActive,
   setEquippedSkin,
@@ -445,6 +447,28 @@ describe('getUser', () => {
     const store = { users: {} }
     expect(getUser(store, '42').coins).toBe(STARTING_COINS)
     expect(store.users['42']).toBeUndefined()
+  })
+})
+
+describe('synthetic users', () => {
+  test('recognizes only Discord snowflake IDs as real', () => {
+    expect(isRealUserId('123456789012345678')).toBe(true)
+    expect(isRealUserId('bot:survival:1')).toBe(false)
+    expect(isRealUserId('boss:2026-W43:1')).toBe(false)
+    expect(isRealUserId('42')).toBe(false)
+  })
+
+  test('prunes bot and boss entries from the store', () => {
+    const store = {
+      users: {
+        '123456789012345678': defaultUser(),
+        'bot:survival:1': defaultUser(),
+        'boss:2026-W43:1': defaultUser(),
+      },
+    }
+    expect(pruneSyntheticUsers(store)).toBe(true)
+    expect(Object.keys(store.users)).toEqual(['123456789012345678'])
+    expect(pruneSyntheticUsers(store)).toBe(false)
   })
 })
 

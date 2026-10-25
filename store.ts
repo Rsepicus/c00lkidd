@@ -128,6 +128,23 @@ export const DAILY_BONUS = 250
 export const BONUS_COOLDOWN_MS = 24 * 60 * 60 * 1000
 export const MAX_PVP_WAGER = 100_000
 
+const DISCORD_USER_ID = /^\d{17,20}$/
+
+export function isRealUserId(userId: string): boolean {
+  return DISCORD_USER_ID.test(userId)
+}
+
+export function pruneSyntheticUsers(store: Store): boolean {
+  let changed = false
+  for (const userId of Object.keys(store.users)) {
+    if (!isRealUserId(userId)) {
+      delete store.users[userId]
+      changed = true
+    }
+  }
+  return changed
+}
+
 const FREE_CHARACTERS = ['Noob', 'Jason', 'Shedletsky', 'Elliot']
 
 export function defaultUser(now = Date.now()): UserData {
