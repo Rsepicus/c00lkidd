@@ -4433,6 +4433,7 @@ async function createChallengeFromSetup(
   interaction: ButtonInteraction,
   setup: PvpSetup,
 ): Promise<void> {
+  releasePveBattles(setup.ownerId)
   if (isUserInActiveBattle(setup.ownerId)) {
     await replyError(interaction, 'Сначала закончи текущий бой.')
     return
@@ -5063,6 +5064,8 @@ async function handleChallengeButton(interaction: ButtonInteraction): Promise<vo
     })
     return
   }
+  releasePveBattles(interaction.user.id)
+  releasePveBattles(challenge.challengerId)
   if (isUserInActiveBattle(interaction.user.id)) {
     await replyError(interaction, 'Ты уже участвуешь в другом бою.')
     return
@@ -5512,6 +5515,32 @@ async function handleSurvivalButton(interaction: ButtonInteraction): Promise<voi
   }
 }
 
+function releasePveBattles(userId: string): number {
+  let released = 0
+  for (const [messageId, battle] of battles) {
+    if (battle.finished) continue
+    if (
+      !battle.sides.some(
+        side => side.userId === userId && !side.fake && !side.minion,
+      )
+    ) {
+      continue
+    }
+    const bossState = bossBattles.get(messageId)
+    const isPve =
+      trainingBattles.has(messageId) ||
+      (bossState !== undefined && !bossState.coop) ||
+      survivalRuns.has(messageId) ||
+      bossRushRuns.has(messageId)
+    if (!isPve) continue
+    survivalRuns.delete(messageId)
+    bossRushRuns.delete(messageId)
+    cleanupBattle(messageId)
+    released += 1
+  }
+  return released
+}
+
 function isUserInActiveBattle(userId: string): boolean {
   for (const run of survivalRuns.values()) {
     if (run.userId === userId) return true
@@ -5577,6 +5606,8 @@ async function handleOpenChallengeButton(interaction: ButtonInteraction): Promis
     })
     return
   }
+  releasePveBattles(interaction.user.id)
+  releasePveBattles(offer.creatorId)
   if (isUserInActiveBattle(interaction.user.id)) {
     await replyError(interaction, 'Ты уже участвуешь в другом бою.')
     return
