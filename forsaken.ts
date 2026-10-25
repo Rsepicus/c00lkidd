@@ -398,7 +398,7 @@ export const SURVIVORS: readonly Character[] = [
     attack: 11,
     special: { name: 'Oblation', kind: 'revive', power: 0, description: 'Копится на 25% за каждый удар; при 100% даёт вторую жизнь с 50 HP и приоритет хода (один раз).' },
     alternates: [
-      { name: 'Pray', kind: 'pray', power: 50, description: 'Тратит заряд Oblation на лечение только самого Two Time: 1 HP за 2% (до 50). Вторую жизнь не даёт.' },
+      { name: 'Pray', kind: 'pray', power: 35, description: 'Тратит заряд Oblation на лечение только самого Two Time: 1 HP за 2% (до 35). Вторую жизнь не даёт.' },
     ],
   },
   {
@@ -410,7 +410,7 @@ export const SURVIVORS: readonly Character[] = [
     price: 500,
     hp: 100,
     attack: 10,
-    special: { name: 'Sentry', kind: 'turret', power: 6, description: 'Турель: 25 HP, 6 урона в свой ход; её можно убить. Builderman получает −10% уворота на 2 хода.' },
+    special: { name: 'Sentry', kind: 'turret', power: 6, cooldown: 3, description: 'Турель: 25 HP, 6 урона в свой ход; её можно убить. Builderman получает −10% уворота на 2 хода.' },
     alternates: [
       { name: 'Dispenser', kind: 'dispenser', power: 0, description: 'Диспенсер: 25 HP, лечит союзников на 10 HP в свой ход; его можно убить. Builderman получает −10% уворота.', cooldown: 3 },
     ],

@@ -52,7 +52,6 @@ jobs:
             names.ts
             progress.ts
             pvp.ts
-            shop-rotation.ts
             skins.ts
             store.ts
             survival.ts

@@ -33,7 +33,7 @@ const EN: Record<string, string> = {
   Block: 'Protects the chosen ally or yourself from the next hit; after blocking, gain +5 temporary HP and +50% on the next attack. On a miss: −30% dodge for 2 turns.',
   Charge: 'Charge: 3 damage and the opponent skips a turn.',
   Oblation: 'Charges by 25% per landed hit; at 100% grants one 50 HP second life and turn priority.',
-  Pray: 'Spends Oblation charge to heal only Two Time: 1 HP per 2% (up to 50). No second life.',
+  Pray: 'Spends Oblation charge to heal only Two Time: 1 HP per 2% (up to 35). No second life.',
   Sentry: 'Places a 25 HP turret that deals 6 damage on its own turn; the turret can be destroyed. Builderman gets −10% dodge for 2 turns.',
   Dispenser: 'Places a 25 HP dispenser that heals allies for 10 HP on its own turn; it can be destroyed. Builderman gets −10% dodge.',
   'Spawn Protection': 'Shields the teammate: next damage −60%, a lethal hit leaves 1 HP, +5 temporary HP and stun immunity for 2 turns. In solo it shields Dusekkar. CD: 3 turns.',

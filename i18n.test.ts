@@ -32,6 +32,8 @@ import {
   profileEmbed,
   presetsComponents,
   presetsEmbed,
+  pveBossModesComponents,
+  pveBossModesEmbed,
   pveModesComponents,
   pveModesEmbed,
   pvePanelComponents,
@@ -186,6 +188,34 @@ describe('i18n', () => {
     )
   })
 
+  test('translates global PvP replies and preset errors', () => {
+    expect(translateText('Ищу соперника на всех серверах…', 'en')).toBe(
+      'Searching for an opponent across all servers…',
+    )
+    expect(translateText('Снова ищу соперника…', 'en')).toBe(
+      'Searching for an opponent again…',
+    )
+    expect(translateText('Ты уже в глобальном бою.', 'en')).toBe(
+      'You are already in a global battle.',
+    )
+    expect(translateText('Ты уже в бою.', 'en')).toBe('You are already in a battle.')
+    expect(translateText('Этот бой уже недоступен.', 'en')).toBe(
+      'This battle is no longer available.',
+    )
+    expect(translateText('Это чужой бой.', 'en')).toBe("This is someone else's battle.")
+    expect(translateText('Найти ещё', 'en')).toBe('Find another')
+    expect(translateText('Пресет не найден.', 'en')).toBe('Preset not found.')
+    expect(translateText('Достигнут лимит пресетов (5). Удали один из них.', 'en')).toBe(
+      'Preset limit reached (5). Delete one of them.',
+    )
+    expect(translateText('В избранном не может быть больше 12 персонажей.', 'en')).toBe(
+      'Favorites cannot contain more than 12 characters.',
+    )
+    expect(translateText('⭐ Престиж **3**! +500 <:points:123>.', 'en')).toBe(
+      '⭐ Prestige **3**! +500 <:points:123>.',
+    )
+  })
+
   test('translates PvE survival text', () => {
     expect(translateText('Выживание · волна 2 · награда за забег: 30', 'en')).toBe(
       'Survival · wave 2 · run reward: 30',
@@ -277,6 +307,7 @@ describe('i18n', () => {
         cosmeticsEmbed(user),
         bossPanelEmbed(user),
         bossRushPanelEmbed(),
+        pveBossModesEmbed(),
         towerPanelEmbed(),
         trialsPanelEmbed(),
         trialsPanelEmbed(undefined, {
@@ -303,7 +334,7 @@ describe('i18n', () => {
         ...shopComponents(user),
         ...chooseComponents(user),
         ...characterBrowserComponents(false, character, user, true),
-        ...characterBrowserComponents(true, undefined, user, false, 'killer'),
+        ...characterBrowserComponents(true, undefined, user, false, 'owned'),
         ...questsComponents(user),
         ...pvePanelComponents(),
         ...pveModesComponents(),
@@ -336,6 +367,7 @@ describe('i18n', () => {
         ...cosmeticsComponents(user),
         ...bossPanelComponents(),
         ...bossRushPanelComponents(),
+        ...pveBossModesComponents(),
         ...bossCoopComponents(),
         ...topComponents(0),
         ...openChallengeComponents(),

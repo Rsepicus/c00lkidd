@@ -479,7 +479,8 @@ describe('Guest 1337 block', () => {
     const blockResult = takeTurn(battle, 'special', () => 0)
     expect(blockResult.battle.sides[0].blocking).toBe(true)
     expect(blockResult.events.join(' ')).not.toContain('блок')
-    expect(blockResult.events.join(' ')).toContain('обычную атаку')
+    expect(blockResult.events.join(' ')).toContain('наносит 12 урона')
+    expect(blockResult.battle.sides[1].hp).toBe(88)
 
     battle = takeTurn(blockResult.battle, 'attack', () => 0).battle
     expect(battle.sides[0].hp).toBe(115)
@@ -488,7 +489,7 @@ describe('Guest 1337 block', () => {
     expect(battle.sides[0].blocks).toBe(1)
 
     const result = takeTurn(battle, 'attack', () => 0)
-    expect(result.battle.sides[1].hp).toBe(82)
+    expect(result.battle.sides[1].hp).toBe(70)
     expect(result.events.join(' ')).toContain('контрудар')
     expect(result.events.join(' ')).not.toContain('блок')
   })
@@ -579,7 +580,7 @@ describe('Guest 1337 block', () => {
 describe('Two Time prayer', () => {
   const prayer = () => characterWithSpecial(characterByName('Two Time')!, 'Pray')
 
-  test('turns a full Oblation bar into 50 HP without arming the second life', () => {
+  test('turns a full Oblation bar into 35 HP without arming the second life', () => {
     let battle = createBattle(
       { userId: 'a', name: 'Two Time', character: prayer() },
       { userId: 'b', name: 'B', character: heavy },
@@ -588,7 +589,7 @@ describe('Two Time prayer', () => {
     battle.sides[0].charge = 100
 
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].hp).toBe(90)
+    expect(battle.sides[0].hp).toBe(75)
     expect(battle.sides[0].charge).toBe(0)
     expect(battle.sides[0].oblationArmed).toBe(false)
     expect(battle.sides[0].oblationSpent).toBe(false)
@@ -609,10 +610,10 @@ describe('Two Time prayer', () => {
     battle.sides[0].charge = 100
     battle.sides[2].hp = 50
     const result = takeTurn(battle, 'special', () => 0)
-    expect(result.battle.sides[0].hp).toBe(90)
+    expect(result.battle.sides[0].hp).toBe(75)
     expect(result.battle.sides[2].hp).toBe(50)
-    expect(result.events.join(' ')).toContain('Two Time: +50')
-    expect(result.events.join(' ')).not.toContain('Ally: +50')
+    expect(result.events.join(' ')).toContain('Two Time: +35')
+    expect(result.events.join(' ')).not.toContain('Ally: +35')
   })
 
   test('heals proportionally at partial charge', () => {

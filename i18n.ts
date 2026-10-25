@@ -508,6 +508,26 @@ const EXACT: Record<string, string> = {
   'Пока нет боёв.': 'No battles yet.',
   '**Босс** — босс дня: solo, со своим напарником или в кооперативе с другим игроком.':
     '**Boss** — boss of the day: solo, with your partner or co-op with another player.',
+  '**Босс/Boss Rush** — босс дня (solo, с напарником или в кооперативе) или пять боссов подряд.':
+    '**Boss/Boss Rush** — boss of the day (solo, with a partner or in co-op) or five bosses in a row.',
+  '**Босс дня** — один босс с обеими способностями. Можно драться solo, со своим напарником или в кооперативе с другим игроком.':
+    '**Boss of the day** — one boss with both abilities. Fight solo, with your own partner or in co-op with another player.',
+  'Босс и Boss Rush': 'Boss and Boss Rush',
+  'Ищу соперника на всех серверах…': 'Searching for an opponent across all servers…',
+  'Снова ищу соперника…': 'Searching for an opponent again…',
+  'Ты уже в глобальном бою.': 'You are already in a global battle.',
+  'Ты уже в бою.': 'You are already in a battle.',
+  'Этот бой уже недоступен.': 'This battle is no longer available.',
+  'Это чужой бой.': "This is someone else's battle.",
+  'Неизвестное действие.': 'Unknown action.',
+  'Не получилось выполнить действие.': 'Could not perform the action.',
+  'Найти ещё': 'Find another',
+  'Пресет не найден.': 'Preset not found.',
+  'Название пресета не может быть пустым.': 'Preset name cannot be empty.',
+  'Сначала выбери активного персонажа.': 'Choose an active character first.',
+  'Не получилось изменить избранное.': "Couldn't update favorites.",
+  'Не получилось повысить престиж.': "Couldn't raise prestige.",
+  'Не получилось сохранить пресет.': "Couldn't save the preset.",
   '**Тренировка** — бой с ботами без наград и статистики; можно выбрать героев и способности обеих сторон.':
     '**Training** — a battle against bots with no rewards or stats; choose heroes and abilities for both sides.',
   '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.':
@@ -903,6 +923,14 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^(.+) создаёт фейкового Ноли\.$/, '$1 creates a fake Noli.'],
   [/^Фейковый Ноли исчезает\.$/, 'The fake Noli disappears.'],
   [/^(.+) \(фейковый Ноли\) наносит 1 урона: (.+)\.$/, '$1 (fake Noli) deals 1 damage to $2.'],
+  [/^Название пресета не должно превышать (\d+) символов\.$/, 'Preset name cannot be longer than $1 characters.'],
+  [/^Неизвестный персонаж: (.+)\.$/, 'Unknown character: $1.'],
+  [/^Достигнут лимит пресетов \((\d+)\)\. Удали один из них\.$/, 'Preset limit reached ($1). Delete one of them.'],
+  [/^Персонаж (.+) больше не доступен\.$/, 'Character $1 is no longer available.'],
+  [/^В избранном не может быть больше (\d+) персонажей\.$/, 'Favorites cannot contain more than $1 characters.'],
+  [/^Персонаж «(.+)» не найден\.$/, 'Character "$1" not found.'],
+  [/^Мастерство персонажа «(.+)» ещё не достигло максимального уровня \(нужно (\d+) XP, сейчас (\d+)\)\.$/, 'Mastery for $1 has not reached the maximum level yet (needs $2 XP, currently $3).'],
+  [/^(.+) Престиж \*\*(\d+)\*\*! \+(\d+) (.+)$/, '$1 Prestige **$2**! +$3 $4'],
 ]
 
 const PHRASES: Array<[string, string]> = [

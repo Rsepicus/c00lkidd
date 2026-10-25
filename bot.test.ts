@@ -56,6 +56,7 @@ import {
   presetsComponents,
   presetsEmbed,
   pveBossComponents,
+  pveBossModesComponents,
   pveModesComponents,
   pveModesEmbed,
   pvePanelComponents,
@@ -104,7 +105,7 @@ import {
   characterByName,
   characterWithSpecial,
 } from './forsaken'
-import { addRottenMinion, createBattle, createTeamBattle, takeTurn } from './pvp'
+import { addRottenMinion, addStructure, createBattle, createTeamBattle, takeTurn } from './pvp'
 import { createTowerRun } from './tower'
 import { TRIALS, trialClaimKey } from './trials'
 import { defaultUser } from './store'
@@ -524,6 +525,31 @@ describe('embeds', () => {
     ).toBe('pizzadelivery')
   })
 
+  test('splits target buttons across rows when a battle has many targets', () => {
+    let battle = createTeamBattle(
+      [
+        { userId: 'a', name: 'Alice', character: characterByName('c00lkidd')! },
+        { userId: 'a2', name: 'Ally', character: characterByName('Builderman')! },
+      ],
+      [
+        { userId: 'b', name: 'Bob', character: characterByName('Builderman')! },
+        { userId: 'b2', name: 'Enemy', character: characterByName('Jason')! },
+      ],
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    addStructure(battle, battle.sides[2], 'sentry')
+    addStructure(battle, battle.sides[2], 'dispenser')
+    addRottenMinion(battle, battle.sides[2], { hp: 20, maxHp: 20, attack: 2 })
+
+    const targets = battle.sides.map(side => side.id)
+    const rows = targetComponents(battle, targets).map(row => row.toJSON())
+    expect(rows.length).toBeGreaterThan(1)
+    for (const row of rows) expect(row.components.length).toBeLessThanOrEqual(5)
+    const labels = rows.flatMap(row => row.components.map(component => component.label))
+    expect(labels).toContain('Отмена')
+    expect(labels.filter(label => label?.includes('Миньоны')).length).toBe(1)
+  })
+
   test('character card shows the mastery milestone badge', () => {
     const user = {
       ...defaultUser(),
@@ -929,7 +955,6 @@ describe('embeds', () => {
   test('shop is one character list with killers before survivors', () => {
     const embed = shopEmbed(defaultUser()).toJSON()
     expect(embed.title).toContain('Магазин')
-    expect(embed.fields?.some(field => String(field.name).includes('Ротация'))).toBe(true)
     const value = String(embed.description)
     expect(value).not.toContain('Киллеры')
     expect(value).not.toContain('Выжившие')
@@ -961,11 +986,6 @@ describe('embeds', () => {
     expect(description).toContain('Jason')
   })
 
-  test('shop shows the daily rotation', () => {
-    const embed = shopEmbed(defaultUser()).toJSON()
-    expect(embed.fields?.some(field => String(field.name).includes('Ротация'))).toBe(true)
-  })
-
   test('presets panel lists saved loadouts', () => {
     const user = {
       ...defaultUser(),
@@ -986,7 +1006,7 @@ describe('embeds', () => {
     expect(rows[1].components[0].custom_id).toBe('presets:delete')
     expect(rows[2].components.map(component => component.custom_id)).toEqual([
       'presets:save',
-      'hub:back',
+      'hub:choose',
     ])
   })
 
@@ -1004,28 +1024,21 @@ describe('embeds', () => {
     expect(battleStatsText(battle)).toContain('Gashing Wound')
   })
 
-  test('character browser filters by role and favorites', () => {
-    const user = { ...defaultUser(), favorites: ['Jason'] }
-    const rows = characterBrowserComponents(true, undefined, user, false, 'killer').map(row =>
+  test('character browser filters owned characters and keeps favorites first', () => {
+    const user = { ...defaultUser(), owned: [...defaultUser().owned, 'Jason'], favorites: ['Jason'] }
+    const rows = characterBrowserComponents(true, undefined, user, false, 'owned').map(row =>
       row.toJSON(),
     )
     const view = rows[0].components[0] as { options: Array<{ value: string }> }
-    expect(
-      view.options.every(
-        option => CHARACTERS.find(entry => entry.name === option.value)?.role === 'killer',
-      ),
-    ).toBe(true)
+    expect(view.options.every(option => user.owned.includes(option.value))).toBe(true)
+    expect(view.options[0].value).toBe('Jason')
     const filter = rows[1].components[0] as {
       custom_id: string
-      options: Array<{ value: string }>
+      options: Array<{ value: string; default?: boolean }>
     }
     expect(filter.custom_id).toBe('char:filter')
-    expect(filter.options.map(option => option.value)).toEqual([
-      'all',
-      'killer',
-      'survivor',
-      'owned',
-    ])
+    expect(filter.options.map(option => option.value)).toEqual(['all', 'owned'])
+    expect(filter.options[1].default).toBe(true)
   })
 
   test('character page offers favorites and prestige', () => {
@@ -1121,12 +1134,17 @@ describe('embeds', () => {
     expect(shouldPromptLanguage({ ...defaultUser(), onboarded: true }, 'pvp:accept')).toBe(false)
   })
 
-  test('PvE menu has modes, boss, training and trials buttons', () => {
+  test('PvE menu has modes, combined boss, training and trials buttons', () => {
     expect(pvePanelEmbed().toJSON().title).toContain('PvE')
     const buttons = pvePanelComponents()[0]
       .toJSON()
       .components.map(component => component.custom_id)
-    expect(buttons).toEqual(['pve:modes', 'pve:boss', 'pve:bossrush', 'pve:training'])
+    expect(buttons).toEqual(['pve:modes', 'pve:bossmodes', 'pve:training'])
+
+    const bossModes = pveBossModesComponents()[0]
+      .toJSON()
+      .components.map(component => component.custom_id)
+    expect(bossModes).toEqual(['pve:boss', 'pve:bossrush', 'pve:menu'])
 
     const rows = pveBossComponents().map(row => row.toJSON())
     expect(rows[0].components.map(component => component.custom_id)).toEqual([
@@ -1868,7 +1886,6 @@ describe('commandDefinitions', () => {
       'hub:history',
       'hub:top',
       'hub:cosmetics',
-      'hub:presets',
     ])
   })
 

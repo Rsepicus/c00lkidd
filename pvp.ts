@@ -1381,11 +1381,16 @@ function applySpecial(
       side.lifesteal = true
       events.push(`${side.name} применяет «${special.name}»: следующая атака вылечит.`)
       break
-    case 'block':
+    case 'block': {
       side.blocking = true
       side.blockTargetId = (blockTarget ?? side).id
-      events.push(`${side.name} проводит обычную атаку.`)
+      // A real basic attack keeps the action indistinguishable from an attack
+      // in the battle log; the block itself only reveals itself when it saves.
+      side.basicAttacks += 1
+      const raw = side.character.attack + Math.floor(rng() * 5)
+      dealDamage(side, other, raw, events, rng, battle)
       break
+    }
     case 'empower':
       side.empoweredAttack = true
       events.push(`${side.name} меняет меч SFOTH: следующая атака усилена.`)

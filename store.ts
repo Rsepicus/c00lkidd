@@ -545,31 +545,22 @@ export function getUser(store: Store, userId: string, now = Date.now()): UserDat
   return store.users[userId] ?? defaultUser(now)
 }
 
-export function buyCharacterAtPrice(
-  user: UserData,
-  character: Character,
-  price: number,
-): UserData {
+export function buyCharacter(user: UserData, character: Character): UserData {
   if (user.owned.includes(character.name)) {
     throw new Error('Этот персонаж уже куплен.')
   }
   if (FREE_CHARACTERS.includes(character.name)) {
     throw new Error('Этот персонаж доступен изначально.')
   }
-  const cost = Math.max(0, Math.floor(price))
-  if (user.coins < cost) {
-    throw new Error(`Не хватает монет: нужно ${cost}, у тебя ${user.coins}.`)
+  if (user.coins < character.price) {
+    throw new Error(`Не хватает монет: нужно ${character.price}, у тебя ${user.coins}.`)
   }
   return {
     ...user,
-    coins: user.coins - cost,
+    coins: user.coins - character.price,
     owned: [...user.owned, character.name],
     active: user.active ?? character.name,
   }
-}
-
-export function buyCharacter(user: UserData, character: Character): UserData {
-  return buyCharacterAtPrice(user, character, character.price)
 }
 
 export function ownedCharacters(user: UserData): Character[] {

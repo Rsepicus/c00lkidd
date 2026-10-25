@@ -177,7 +177,6 @@ import {
 } from './i18n'
 import { atropaDescription, passiveDescription, specialDescription } from './names'
 import { createDmBattle, dmMatchTurnUserId, takeDmPair } from './matchmaking'
-import { dailyShopPrice, isDailyFeatured, shopRotation } from './shop-rotation'
 import {
   applyLoadoutPreset,
   deleteLoadoutPreset,
@@ -214,7 +213,7 @@ import {
 } from './pvp'
 import {
   BONUS_COOLDOWN_MS,
-  buyCharacterAtPrice,
+  buyCharacter,
   claimDailyBonus,
   DAILY_BONUS,
   defaultUser,
@@ -638,7 +637,7 @@ type PendingTarget = {
 }
 const pendingTargets = new Map<string, PendingTarget>()
 const hubOwners = new Map<string, string>()
-type CharacterFilter = 'all' | 'killer' | 'survivor' | 'owned'
+type CharacterFilter = 'all' | 'owned'
 const characterFilters = new Map<string, CharacterFilter>()
 const finishedBattles = new Map<
   string,
@@ -1201,13 +1200,6 @@ export function hubComponents(user: UserData): ActionRowBuilder<ButtonBuilder>[]
     .setStyle(ButtonStyle.Secondary)
   if (cosmeticsEmoji) cosmeticsButton.setEmoji(cosmeticsEmoji)
 
-  const presetsEmoji = emojiData('abilities')
-  const presetsButton = new ButtonBuilder()
-    .setCustomId('hub:presets')
-    .setLabel(presetsEmoji ? 'Пресеты' : '📦 Пресеты')
-    .setStyle(ButtonStyle.Secondary)
-  if (presetsEmoji) presetsButton.setEmoji(presetsEmoji)
-
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(shopButton, chooseButton, charsButton),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -1219,7 +1211,6 @@ export function hubComponents(user: UserData): ActionRowBuilder<ButtonBuilder>[]
       historyButton,
       topButton,
       cosmeticsButton,
-      presetsButton,
     ),
   ]
 }
@@ -1244,13 +1235,9 @@ export function shopComponents(
           .addOptions(
             purchasable.map(character => {
               const emoji = characterEmojiData(character.name)
-              const day = isoDayKey()
-              const price = dailyShopPrice(character, day)
-              const note =
-                price < character.price ? `${price} монет · −20%` : `${character.price} монет`
               return {
                 label: character.name,
-                description: characterOptionDescription(character, note),
+                description: characterOptionDescription(character, `${character.price} монет`),
                 value: character.name,
                 ...(emoji ? { emoji } : {}),
               }
@@ -1327,7 +1314,7 @@ export function presetsComponents(
         .setStyle(ButtonStyle.Success)
         .setDisabled(user.presets.length >= MAX_PRESETS),
       new ButtonBuilder()
-        .setCustomId('hub:back')
+        .setCustomId('hub:choose')
         .setLabel('← Назад')
         .setStyle(ButtonStyle.Secondary),
     ),
@@ -1447,39 +1434,39 @@ export function chooseComponents(
     }
   }
 
-  rows.push(backRow())
+  const presetsEmoji = emojiData('abilities')
+  const presetsButton = new ButtonBuilder()
+    .setCustomId('hub:presets')
+    .setLabel(presetsEmoji ? 'Пресеты' : '📦 Пресеты')
+    .setStyle(ButtonStyle.Primary)
+  if (presetsEmoji) presetsButton.setEmoji(presetsEmoji)
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      presetsButton,
+      new ButtonBuilder()
+        .setCustomId('hub:back')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  )
   return rows
 }
 
 export function shopEmbed(user: UserData, note?: string): EmbedBuilder {
   const coin = emojiText('points', '🪙')
-  const day = isoDayKey()
-  const featured = shopRotation(day)
   const list = (characters: readonly Character[]) =>
     characters
       .map(character => {
-        const base = character.price === 0 ? 'бесплатно' : `${character.price} ${coin}`
-        const price = character.price > 0 ? `${dailyShopPrice(character, day)} ${coin}` : base
-        const mark = isDailyFeatured(character, day) ? ` · ${price} (−20%)` : ''
-        return `**${userCharacterLabel(user, character.name)}** — ${base}${mark}`
+        const price = character.price === 0 ? 'бесплатно' : `${character.price} ${coin}`
+        return `**${userCharacterLabel(user, character.name)}** — ${price}`
       })
       .join('\n')
   const characters = list(CHARACTERS)
-  const rotation = featured
-    .map(
-      character =>
-        `**${userCharacterLabel(user, character.name)}** — ${dailyShopPrice(character, day)} ${coin}`,
-    )
-    .join('\n')
 
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.shop)
     .setTitle(`${emojiText('inventory', '🛒')} Магазин Forsaken`)
     .setDescription(note ? `${note}\n\n${characters}` : characters)
-    .addFields({
-      name: 'Ротация дня · −20%',
-      value: rotation || '—',
-    })
     .setFooter({ text: `Баланс: ${user.coins}` })
 }
 
@@ -1947,9 +1934,8 @@ export function pvePanelEmbed(): EmbedBuilder {
     .setTitle(`${emojiText('swordwhite', '⚔️')} PvE`)
     .setDescription(
       [
-        '**Босс** — босс дня: solo, со своим напарником или в кооперативе с другим игроком.',
+        '**Босс/Boss Rush** — босс дня (solo, с напарником или в кооперативе) или пять боссов подряд.',
         '**Тренировка** — бой с ботами без наград и статистики; можно выбрать героев и способности обеих сторон.',
-        '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.',
         '**Выживание/Башня** — волны с растущими врагами или 10 этажей башни. В башне после каждого этажа выбирается одно из трёх усилений, в выживании награда копится за волны.',
         '**Испытания** — особые цели для каждого персонажа за опыт мастерства.',
       ].join('\n\n'),
@@ -1960,11 +1946,11 @@ export function pvePanelEmbed(): EmbedBuilder {
 export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
   const boss = emojiData('boss')
   const sword = emojiData('swordwhite')
-  const bossButton = new ButtonBuilder()
-    .setCustomId('pve:boss')
-    .setLabel(boss ? 'Босс' : '👑 Босс')
+  const bossModesButton = new ButtonBuilder()
+    .setCustomId('pve:bossmodes')
+    .setLabel(boss ? 'Босс/Boss Rush' : '👑 Босс/Boss Rush')
     .setStyle(ButtonStyle.Danger)
-  if (boss) bossButton.setEmoji(boss)
+  if (boss) bossModesButton.setEmoji(boss)
   const trainingButton = new ButtonBuilder()
     .setCustomId('pve:training')
     .setLabel(sword ? 'Тренировка' : '⚔️ Тренировка')
@@ -1976,11 +1962,6 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setLabel(towerEmoji ? 'Выживание/Башня' : '🗼 Выживание/Башня')
     .setStyle(ButtonStyle.Secondary)
   if (towerEmoji) modesButton.setEmoji(towerEmoji)
-  const rushButton = new ButtonBuilder()
-    .setCustomId('pve:bossrush')
-    .setLabel('Boss Rush')
-    .setStyle(ButtonStyle.Danger)
-  if (boss) rushButton.setEmoji(boss)
   const trialsEmoji = emojiData('trials')
   const trialsButton = new ButtonBuilder()
     .setCustomId('pve:trials')
@@ -1990,11 +1971,47 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       modesButton,
-      bossButton,
-      rushButton,
+      bossModesButton,
       trainingButton,
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(trialsButton),
+  ]
+}
+
+export function pveBossModesEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.battle)
+    .setTitle(`${emojiText('boss', '👑')} Босс и Boss Rush`)
+    .setDescription(
+      [
+        '**Босс дня** — один босс с обеими способностями. Можно драться solo, со своим напарником или в кооперативе с другим игроком.',
+        '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.',
+      ].join('\n\n'),
+    )
+    .setFooter({ text: 'Forsaken Simulator' })
+}
+
+export function pveBossModesComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  const boss = emojiData('boss')
+  const bossButton = new ButtonBuilder()
+    .setCustomId('pve:boss')
+    .setLabel(boss ? 'Босс дня' : '👑 Босс дня')
+    .setStyle(ButtonStyle.Danger)
+  if (boss) bossButton.setEmoji(boss)
+  const rushButton = new ButtonBuilder()
+    .setCustomId('pve:bossrush')
+    .setLabel('Boss Rush')
+    .setStyle(ButtonStyle.Danger)
+  if (boss) rushButton.setEmoji(boss)
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      bossButton,
+      rushButton,
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
   ]
 }
 
@@ -3205,8 +3222,6 @@ function filterCharacters(
   user: UserData,
   filter: CharacterFilter,
 ): Character[] {
-  if (filter === 'killer') return characters.filter(entry => entry.role === 'killer')
-  if (filter === 'survivor') return characters.filter(entry => entry.role === 'survivor')
   if (filter === 'owned') return characters.filter(entry => user.owned.includes(entry.name))
   return [...characters]
 }
@@ -3257,8 +3272,6 @@ export function characterBrowserComponents(
           .setPlaceholder('Фильтр')
           .addOptions([
             { label: 'Все', value: 'all', default: filter === 'all' },
-            { label: 'Киллеры', value: 'killer', default: filter === 'killer' },
-            { label: 'Выжившие', value: 'survivor', default: filter === 'survivor' },
             { label: 'Купленные', value: 'owned', default: filter === 'owned' },
           ]),
       ),
@@ -3931,7 +3944,7 @@ export function targetComponents(
   targets: number[],
   tone: 'enemy' | 'ally' = 'enemy',
 ): ActionRowBuilder<ButtonBuilder>[] {
-  const row = new ActionRowBuilder<ButtonBuilder>()
+  const buttons: ButtonBuilder[] = []
   const minionTargets = targets.filter(index => battle.sides[index]?.minion)
   const normalTargets = targets.filter(index => !battle.sides[index]?.minion)
   for (const index of normalTargets) {
@@ -3944,7 +3957,7 @@ export function targetComponents(
       .setLabel(emoji ? `${side.character.name} — ${side.name}` : `🎯 ${side.character.name} — ${side.name}`)
       .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
     if (emoji) button.setEmoji(emoji)
-    row.addComponents(button)
+    buttons.push(button)
   }
   const minionGroups = [
     {
@@ -3987,15 +4000,23 @@ export function targetComponents(
       .setLabel(minionEmoji ? label : `${group.fallback} ${label}`)
       .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
     if (minionEmoji) button.setEmoji(minionEmoji)
-    row.addComponents(button)
+    buttons.push(button)
   }
-  row.addComponents(
+  buttons.push(
     new ButtonBuilder()
       .setCustomId('pvp:target:cancel')
       .setLabel('Отмена')
       .setStyle(ButtonStyle.Secondary),
   )
-  return [row]
+  // Discord allows at most 5 buttons per row. A 2v2 fight against minions and
+  // structures can produce more targets than that, so split them into rows.
+  const rows: ActionRowBuilder<ButtonBuilder>[] = []
+  for (let index = 0; index < buttons.length; index += 5) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(index, index + 5)),
+    )
+  }
+  return rows
 }
 
 export function rematchComponents(): ActionRowBuilder<ButtonBuilder>[] {
@@ -7130,18 +7151,22 @@ async function tryMatchDmQueue(client: Client): Promise<void> {
     }
 
     const id = (++dmMatchCounter).toString(36)
-    const firstMessage = await firstDm
-      .send({
-        embeds: [battleEmbed(battle)],
-        components: dmComponentsFor(battle, firstId, id),
-      })
-      .catch(() => null)
-    const secondMessage = await secondDm
-      .send({
-        embeds: [battleEmbed(battle)],
-        components: dmComponentsFor(battle, secondId, id),
-      })
-      .catch(() => null)
+    const firstMessage = await withLanguage(userOf(firstId).language, async () =>
+      firstDm
+        .send({
+          embeds: [battleEmbed(battle)],
+          components: dmComponentsFor(battle, firstId, id),
+        })
+        .catch(() => null),
+    )
+    const secondMessage = await withLanguage(userOf(secondId).language, async () =>
+      secondDm
+        .send({
+          embeds: [battleEmbed(battle)],
+          components: dmComponentsFor(battle, secondId, id),
+        })
+        .catch(() => null),
+    )
     if (!firstMessage || !secondMessage) {
       if (firstMessage) await firstMessage.delete().catch(() => {})
       if (secondMessage) await secondMessage.delete().catch(() => {})
@@ -7373,21 +7398,15 @@ async function handleHub(interaction: ButtonInteraction | StringSelectMenuIntera
         return
       }
       try {
-        const day = isoDayKey()
-        const price = dailyShopPrice(character, day)
-        const updated = buyCharacterAtPrice(user, character, price)
+        const updated = buyCharacter(user, character)
         store.users[ownerId] = updated
         persist()
-        const discount =
-          price < character.price
-            ? ` (ротация дня: −${character.price - price} ${emojiText('points', '🪙')})`
-            : ''
         await interaction.update({
           embeds: [
             shopEmbed(
               updated,
               `${emojiText('check', '✅')} **${characterLabel(character.name)}** куплен за ` +
-                `${price} ${emojiText('points', '🪙')}${discount}. Баланс: ${updated.coins} ${emojiText('points', '🪙')}`,
+                `${character.price} ${emojiText('points', '🪙')}. Баланс: ${updated.coins} ${emojiText('points', '🪙')}`,
             ),
           ],
           components: shopComponents(updated),
@@ -8355,6 +8374,17 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
     })
     return
   }
+  if (interaction.customId === 'pve:bossmodes') {
+    trainingSetups.delete(interaction.message.id)
+    bossRushRuns.delete(interaction.message.id)
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
+    await interaction.update({
+      embeds: [pveBossModesEmbed()],
+      components: pveBossModesComponents(),
+    })
+    return
+  }
   if (interaction.customId === 'pve:tower') {
     towerRuns.delete(interaction.message.id)
     trialRuns.delete(interaction.message.id)
@@ -8889,8 +8919,17 @@ async function main(): Promise<void> {
         // 10062 = the interaction token expired (for example, a click that
         // arrived while the bot was restarting). There is nothing to respond to.
         if (code === 10062) return
-        appendErrorLog(ERROR_LOG_PATH, error, `interaction:${interaction.id}`)
-        console.error('[bot] ошибка обработки взаимодействия:', error)
+        const interactionLabel =
+          interaction.isChatInputCommand()
+            ? `command:${interaction.commandName}`
+            : interaction.isButton() || interaction.isAnySelectMenu()
+              ? interaction.customId
+              : interaction.id
+        appendErrorLog(ERROR_LOG_PATH, error, `interaction:${interactionLabel}`)
+        console.error(
+          `[bot] ошибка обработки взаимодействия (${interactionLabel}):`,
+          error,
+        )
         if (interaction.isRepliable() && !interaction.replied) {
           await interaction
             .reply({ content: 'Что-то пошло не так.', flags: MessageFlags.Ephemeral })
