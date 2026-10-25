@@ -45,6 +45,7 @@ export type SpecialKind =
   | 'copy'
   | 'oneshot'
   | 'decoy'
+  | 'rejuvenate'
 
 export type Special = {
   name: string
@@ -239,7 +240,16 @@ export const KILLERS: readonly Character[] = [
     price: 1250,
     hp: 100,
     attack: 17,
-    special: { name: 'Entanglement', kind: 'glitch', power: 0, description: 'Глитч: блокирует способность соперника на 2 хода.' },
+    special: {
+      name: 'Rejuvenate the Rotten',
+      kind: 'rejuvenate',
+      power: 0,
+      cooldown: 0,
+      description:
+        'Некромантия: поднимает всех убитых врагов как гнилых миньонов. ' +
+        'Стартовый миньон: 25 HP и 3 атаки; миньон из трупа: 50 HP и половина атаки убитого. ' +
+        'Удары миньонов вешают глитч на 1 ход.',
+    },
     alternates: [
       { name: 'Mass Infection', kind: 'poison', power: 6, description: 'Яд: 6 урона в начале хода соперника 2 хода и −15% уворота.' },
     ],

@@ -50,6 +50,8 @@ export type FighterEntry = {
   boss?: boolean
 }
 
+export type RottenCorpse = { attack: number; source: string }
+
 export type Side = {
   id: number
   userId: string
@@ -109,6 +111,10 @@ export type Side = {
   sword: string | null
   swordTurns: number
   basicAttacks: number
+  rottenCorpses?: RottenCorpse[]
+  minion?: boolean
+  minionOwnerId?: string | null
+  minionOwnerSideId?: number | null
 }
 
 export type Battle = {
@@ -190,6 +196,16 @@ function makeSide(entry: FighterEntry, team: 0 | 1): Side {
     sword: null,
     swordTurns: 0,
     basicAttacks: 0,
+    rottenCorpses:
+      entry.character.name === '1x1x1x1' &&
+      !entry.boss &&
+      !entry.userId.startsWith('bot:') &&
+      !entry.userId.startsWith('boss:')
+        ? [{ attack: 3, source: 'fresh' }]
+        : [],
+    minion: false,
+    minionOwnerId: null,
+    minionOwnerSideId: null,
   }
 }
 
@@ -410,6 +426,7 @@ export function specialReady(side: Side, index = 0): boolean {
   }
   if (base.kind === 'pray') return side.charge > 0
   if (base.kind === 'battery') return side.charge >= 10
+  if (base.kind === 'rejuvenate') return (side.rottenCorpses?.length ?? 0) > 0
   return true
 }
 
@@ -458,6 +475,9 @@ export function specialLabel(side: Side, index = 0): string {
   }
   if (base.kind === 'pray') return `${base.name} (${Math.round(side.charge)}%)`
   if (base.kind === 'battery') return `${base.name} (${Math.round(side.charge)}%)`
+  if (base.kind === 'rejuvenate') {
+    return `${base.name} (${side.rottenCorpses?.length ?? 0})`
+  }
   return base.name
 }
 
@@ -616,6 +636,10 @@ function dealDamage(
     events.push(`${attacker.name}: −10% уворота (Natural Malevolence).`)
   }
   maybeRevive(defender, events)
+  if (defender.hp === 0) {
+    creditRottenKill(battle, attacker, defender, events)
+    clearMinionsOfDeadOwners(battle, events)
+  }
   return lost
 }
 
@@ -654,6 +678,130 @@ function spawnDecoy(
   events.push(`${side.name} создаёт фейкового Ноли.`)
 }
 
+function rottenMinionCharacter(hp: number, attack: number): Character {
+  return {
+    name: 'Rotten Minion',
+    role: 'killer',
+    class: 'Minion',
+    ability: 'Поднятый труп, управляемый 1x1x1x1.',
+    power: 0,
+    price: 0,
+    hp,
+    attack,
+    special: {
+      name: 'Rotten Claw',
+      kind: 'heavy',
+      power: attack,
+      cooldown: 0,
+      description: 'Обычная атака; накладывает глитч на 1 ход.',
+    },
+  }
+}
+
+export function addRottenMinion(
+  battle: Battle,
+  owner: Side,
+  stats: { hp: number; maxHp: number; attack: number; name?: string },
+): Side {
+  const character = rottenMinionCharacter(stats.maxHp, stats.attack)
+  const minion = makeSide(
+    {
+      userId: `minion:${owner.userId}:${battle.clock}:${battle.sides.length}`,
+      name: stats.name ?? 'Rotten Minion',
+      character,
+    },
+    owner.team,
+  )
+  minion.id = battle.sides.length
+  minion.hp = Math.max(1, Math.min(stats.maxHp, stats.hp))
+  minion.maxHp = stats.maxHp
+  minion.lastActed = battle.clock
+  minion.minion = true
+  minion.minionOwnerId = owner.userId
+  minion.minionOwnerSideId = owner.id
+  minion.rottenCorpses = []
+  battle.sides.push(minion)
+  return minion
+}
+
+function isRottenOwnerSide(side: Side): boolean {
+  return (
+    side.character.name === '1x1x1x1' &&
+    !side.boss &&
+    !side.userId.startsWith('bot:') &&
+    !side.userId.startsWith('boss:')
+  )
+}
+
+function creditRottenKill(
+  battle: Battle,
+  source: Side | null,
+  target: Side,
+  events: string[],
+): void {
+  if (
+    !source ||
+    source.fake ||
+    source.boss ||
+    target.hp > 0 ||
+    target.fake ||
+    target.minion ||
+    target.boss
+  ) {
+    return
+  }
+  let owner: Side | undefined
+  if (source.minion) {
+    owner =
+      battle.sides.find(
+        candidate =>
+          candidate.id === source.minionOwnerSideId &&
+          candidate.team === source.team &&
+          isRottenOwnerSide(candidate),
+      ) ??
+      battle.sides.find(
+        candidate =>
+          candidate.userId === source.minionOwnerId &&
+          candidate.team === source.team &&
+          isRottenOwnerSide(candidate),
+      )
+  } else if (isRottenOwnerSide(source)) {
+    owner = source
+  }
+  if (!owner) return
+  const corpses = owner.rottenCorpses ?? []
+  corpses.push({
+    attack: Math.max(1, Math.ceil(target.character.attack * 0.5)),
+    source: target.character.name,
+  })
+  owner.rottenCorpses = corpses
+  events.push(
+    `Rejuvenate the Rotten: ${owner.name} получает заряд (${corpses.length}).`,
+  )
+}
+
+function clearMinionsOfDeadOwners(battle: Battle, events: string[]): void {
+  for (const owner of battle.sides) {
+    if (owner.hp > 0 || owner.minion) continue
+    const minions = battle.sides.filter(
+      side =>
+        side.minion &&
+        side.hp > 0 &&
+        (side.minionOwnerSideId === owner.id ||
+          (side.minionOwnerSideId == null &&
+            side.minionOwnerId === owner.userId &&
+            owner.character.name === '1x1x1x1')),
+    )
+    if (minions.length === 0) continue
+    for (const minion of minions) {
+      minion.hp = 0
+      minion.tempHp = 0
+      minion.tempHpTurns = 0
+    }
+    events.push(`${owner.name}: миньоны рассыпаются.`)
+  }
+}
+
 function applySpecial(
   battle: Battle,
   side: Side,
@@ -677,6 +825,27 @@ function applySpecial(
       spawnDecoy(battle, side, events, specialCooldown(special))
       events.push(`${side.name} применяет «${special.name}».`)
       break
+    case 'rejuvenate': {
+      const corpses = side.rottenCorpses ?? []
+      if (corpses.length === 0) {
+        events.push(`${side.name} не может призвать миньонов: нет зарядов.`)
+        break
+      }
+      side.rottenCorpses = []
+      for (const corpse of corpses) {
+        const fresh = corpse.source === 'fresh'
+        addRottenMinion(battle, side, {
+          hp: fresh ? 25 : 50,
+          maxHp: fresh ? 25 : 50,
+          attack: fresh ? 3 : Math.max(1, corpse.attack),
+        })
+      }
+      events.push(
+        `${side.name} применяет «${special.name}»: поднимает миньонов — ${corpses.length}.`,
+      )
+      applyJuke = false
+      break
+    }
     case 'copy': {
       const copied = other.character.special
       side.character = { ...side.character, special: copied }
@@ -1188,6 +1357,7 @@ export function takeTurn(
     side.shieldSavesLethal = false
   }
   expireTemporaryHp(side, events)
+  if (side.hp === 0) clearMinionsOfDeadOwners(battle, events)
 
   if (side.stunned) {
     side.stunned = false
@@ -1218,6 +1388,7 @@ export function takeTurn(
     }
     events.push(`${side.name} (фейковый Ноли) наносит 1 урона: ${target.name}.`)
     maybeRevive(target, events)
+    if (target.hp === 0) clearMinionsOfDeadOwners(battle, events)
   }
   if (fakes.length > 0) {
     clearLinkedEffectsForDead(battle)
@@ -1315,6 +1486,10 @@ export function takeTurn(
     side.dotTurns -= 1
     events.push(`${side.name} теряет ${side.dotDamage} HP от ${DOT_SOURCE[side.dotKind]}.`)
     maybeRevive(side, events)
+    if (side.hp === 0) {
+      creditRottenKill(battle, source, side, events)
+      clearMinionsOfDeadOwners(battle, events)
+    }
     if (side.hp === 0) {
       clearLinkedEffectsForDead(battle)
       if (!finishIfTeamWiped(battle)) advanceTurn(battle, events)
@@ -1422,6 +1597,12 @@ export function takeTurn(
         events.push(`Mute: первая атака ${side.name} не уворотована.`)
       }
       const dealt = dealDamage(side, target, raw, events, rng, battle)
+      if (dealt > 0 && target.hp > 0 && side.minion) {
+        // Two ticks: the status is decremented at the start of the target's turn,
+        // leaving one active tick to block their next ability.
+        addStatus(target, 'glitch', 2, side)
+        events.push(`${target.name} получает Glitch на 1 ход.`)
+      }
       if (dealt > 0 && side.synergy?.id === 'you-and-i') {
         const ally = synergyAlly(side, battle)
         if (ally) {

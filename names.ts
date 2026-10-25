@@ -13,6 +13,8 @@ const EN: Record<string, string> = {
   Nova: 'Hallucinations: 8 damage and −25% enemy dodge for 2 turns.',
   Observant: 'Fake Noli with the same HP and effects; disappears when hit. CD: 3 turns.',
   Entanglement: "Glitch: blocks the opponent's ability for 2 turns.",
+  'Rejuvenate the Rotten':
+    "Necromancy: raises every killed enemy as a rotten minion. Starting minion: 25 HP and 3 attack; corpse minion: 50 HP and half the killed enemy's attack. Minion hits apply Glitch for 1 turn.",
   'Mass Infection': "Poison: 6 damage at the start of the enemy's turn for 2 turns and −15% dodge.",
   'Infernal Cry': 'Cry: 6 damage, −10% enemy dodge, +1 Blood. At 2 Blood the ability becomes Blood Hunt.',
   'Blood Hunt': 'Roar: 8 damage, +15% dodge for 2 turns, and 3 empowered attacks (+3 damage, heals on hit).',

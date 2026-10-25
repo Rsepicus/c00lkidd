@@ -415,6 +415,7 @@ const EXACT: Record<string, string> = {
   '**Выживание** — забег по волнам. Каждая волна сильнее: у врага +25 HP и +2 атаки. Между волнами восстанавливается 25% HP, награда копится за каждую пройденную волну. После поражения или кнопки «Забрать награду» забег заканчивается.':
     '**Survival** — a wave run. Each wave is stronger: the enemy gets +25 HP and +2 attack. Between waves you restore 25% HP, and the reward grows for every cleared wave. The run ends after a loss or when you press “Claim reward”.',
   'Выживание': 'Survival',
+  'Миньоны': 'Minions',
   'Забрать награду': 'Claim reward',
   'Следующая волна': 'Next wave',
   'Следующий раунд': 'Next round',
@@ -432,6 +433,20 @@ const EXACT: Record<string, string> = {
 }
 
 const PATTERNS: Array<[RegExp, string]> = [
+  [
+    /^(.+) применяет «Rejuvenate the Rotten»: поднимает миньонов — (\d+)\.$/,
+    '$1 uses “Rejuvenate the Rotten”: raises minions — $2.',
+  ],
+  [
+    /^Rejuvenate the Rotten: (.+) получает заряд \((\d+)\)\.$/,
+    'Rejuvenate the Rotten: $1 gains a charge ($2).',
+  ],
+  [/^(.+) получает Glitch на 1 ход\.$/, '$1 gains Glitch for 1 turn.'],
+  [/^(.+): миньоны рассыпаются\.$/, '$1: the minions crumble.'],
+  [
+    /^(.+) не может призвать миньонов: нет зарядов\.$/,
+    '$1 cannot raise minions: no charges.',
+  ],
   [/^Выживание · волна (\d+) · награда за забег: (\d+)$/, 'Survival · wave $1 · run reward: $2'],
   [/^Волна (\d+) · (.+)$/, 'Wave $1 · $2'],
   [/^Волна \*\*(\d+)\*\* пройдена\. HP: \*\*(\d+)\/(\d+)\*\*\.$/, 'Wave **$1** cleared. HP: **$2/$3**.'],

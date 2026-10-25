@@ -1436,12 +1436,116 @@ describe('character passives and new survivors', () => {
     expect(result.sides[1].hp).toBe(86)
   })
 
-  test('1x1x1x1 Entanglement is Glitch and Mass Infection is Poison', () => {
-    const entangle = characterWithSpecial(characterByName('1x1x1x1')!, 'Entanglement')
-    const entangled = takeTurn(duel(entangle, heavy), 'special', () => 0).battle
-    expect(entangled.sides[1].effects.glitch).toBe(2)
-    expect(jukeBonusOf(entangled.sides[1])).toBe(0)
+  test('1x1x1x1 Rejuvenate the Rotten raises a starting minion', () => {
+    const battle = duel(characterByName('1x1x1x1')!, heavy)
+    expect(battle.sides[0].rottenCorpses).toHaveLength(1)
+    expect(specialLabel(battle.sides[0])).toContain('(1)')
 
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minion = summoned.sides.find(side => side.minion)
+    expect(minion).toBeDefined()
+    expect(minion?.maxHp).toBe(25)
+    expect(minion?.character.attack).toBe(3)
+    expect(summoned.sides[0].rottenCorpses).toHaveLength(0)
+    expect(specialReady(summoned.sides[0])).toBe(false)
+  })
+
+  test('a bot 1x1x1x1 does not get a starting minion charge', () => {
+    const battle = createBattle(
+      { userId: 'bot:x', name: 'Bot', character: characterByName('1x1x1x1')! },
+      { userId: 'a', name: 'A', character: heavy },
+    )
+    expect(battle.sides[0].rottenCorpses).toHaveLength(0)
+    expect(specialReady(battle.sides[0])).toBe(false)
+  })
+
+  test('1x1x1x1 raises a 50 HP minion with half the killed enemy attack', () => {
+    const battle = duel(characterByName('1x1x1x1')!, heavy)
+    battle.sides[0].rottenCorpses = [{ attack: 7, source: 'Jason' }]
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minion = summoned.sides.find(side => side.minion)
+    expect(minion?.maxHp).toBe(50)
+    expect(minion?.hp).toBe(50)
+    expect(minion?.character.attack).toBe(7)
+  })
+
+  test('1x1x1x1 gains a charge for every killed enemy', () => {
+    const battle = duel(characterByName('1x1x1x1')!, heavy)
+    battle.sides[1].hp = 1
+    const result = takeTurn(battle, 'attack', () => 0.5).battle
+    expect(result.sides[0].rottenCorpses).toHaveLength(2)
+    expect(result.finished).toBe(true)
+  })
+
+  test('rotten minions apply Glitch on a basic hit', () => {
+    let battle = duel(characterByName('1x1x1x1')!, heavy)
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const minionIndex = battle.sides.findIndex(side => side.minion)
+    expect(minionIndex).toBeGreaterThan(0)
+    battle.turn = minionIndex
+    const result = takeTurn(battle, 'attack', () => 0.5).battle
+    expect(result.sides[1].effects.glitch).toBeGreaterThan(0)
+  })
+
+  test('Rejuvenate spends every charge and raises every corpse at once', () => {
+    const battle = duel(characterByName('1x1x1x1')!, heavy)
+    expect(specialCooldown(specialOf(battle.sides[0]))).toBe(0)
+    battle.sides[0].rottenCorpses = [
+      { attack: 3, source: 'fresh' },
+      { attack: 6, source: 'Jason' },
+      { attack: 5, source: 'Noob' },
+    ]
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minions = summoned.sides.filter(side => side.minion)
+    expect(minions).toHaveLength(3)
+    expect(minions.map(minion => minion.maxHp)).toEqual([25, 50, 50])
+    expect(minions.map(minion => minion.character.attack)).toEqual([3, 6, 5])
+    expect(summoned.sides[0].rottenCorpses).toHaveLength(0)
+  })
+
+  test('a minion kill also grants a charge to 1x1x1x1', () => {
+    let battle = duel(characterByName('1x1x1x1')!, heavy)
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const minionIndex = battle.sides.findIndex(side => side.minion)
+    battle.turn = minionIndex
+    battle.sides[1].hp = 1
+    const result = takeTurn(battle, 'attack', () => 0.5).battle
+    expect(result.sides[0].rottenCorpses).toHaveLength(1)
+  })
+
+  test('minions crumble when their 1x1x1x1 owner dies', () => {
+    let battle = duel(characterByName('1x1x1x1')!, heavy)
+    battle = takeTurn(battle, 'special', () => 0).battle
+    battle.sides[0].hp = 1
+    battle.turn = 1
+    const result = takeTurn(battle, 'attack', () => 0.5).battle
+    expect(result.sides.filter(side => side.minion).every(side => side.hp === 0)).toBe(true)
+  })
+
+  test('a dead 2v2 partner does not kill 1x1x1x1 minions', () => {
+    let battle = createTeamBattle(
+      [
+        { userId: 'a', name: 'A', character: characterByName('1x1x1x1')! },
+        { userId: 'a', name: 'A2', character: characterByName('Noob')! },
+      ],
+      [
+        { userId: 'b', name: 'B', character: heavy },
+        { userId: 'b', name: 'B2', character: heavy },
+      ],
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const minion = battle.sides.find(side => side.minion)!
+    const partnerIndex = battle.sides.findIndex(
+      side => side.userId === 'a' && side.character.name === 'Noob' && !side.minion,
+    )
+    battle.sides[partnerIndex].hp = 1
+    battle.turn = battle.sides.findIndex(side => side.team === 1)
+    const result = takeTurn(battle, 'attack', () => 0.5, partnerIndex).battle
+    const survivor = result.sides.find(side => side.id === minion.id)
+    expect(survivor?.hp).toBeGreaterThan(0)
+  })
+
+  test('Mass Infection is still Poison', () => {
     const infection = characterWithSpecial(characterByName('1x1x1x1')!, 'Mass Infection')
     const infected = takeTurn(duel(infection, heavy), 'special', () => 0).battle
     expect(infected.sides[1].dotKind).toBe('poison')

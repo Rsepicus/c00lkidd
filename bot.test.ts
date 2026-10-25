@@ -78,7 +78,7 @@ import {
   characterByName,
   characterWithSpecial,
 } from './forsaken'
-import { createBattle, createTeamBattle, takeTurn } from './pvp'
+import { addRottenMinion, createBattle, createTeamBattle, takeTurn } from './pvp'
 import { defaultUser } from './store'
 
 describe('parseToken', () => {
@@ -354,6 +354,23 @@ describe('embeds', () => {
     expect(embed.description).toContain('Синергия')
     expect(embed.description).toContain('Plead')
     expect(forecastEmbed(battle, battle.sides[0]).toJSON().description).toContain('Plead')
+  })
+
+  test('groups rotten minions in the battle and target panels', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'Alice', character: characterByName('1x1x1x1')! },
+      { userId: 'b', name: 'Bob', character: characterByName('Noob')! },
+    )
+    const minion = addRottenMinion(battle, battle.sides[0], {
+      hp: 25,
+      maxHp: 25,
+      attack: 3,
+    })
+    const embed = battleEmbed(battle).toJSON()
+    expect(String(embed.description)).toContain('Миньоны')
+    expect(battleStatsText(battle)).toContain('Миньоны')
+    const target = targetComponents(battle, [minion.id])[0].toJSON().components[0]
+    expect(target.custom_id).toBe('pvp:target:minions')
   })
 
   test('character card shows the mastery milestone badge', () => {

@@ -24,6 +24,7 @@ const SLUGS: Record<string, string> = {
   Helperbot: 'helperbot',
   Veeronica: 'veeronica',
   'Jane Doe': 'janedoe',
+  'Rotten Minion': 'rottenminion',
 }
 
 const ABILITY_SLUGS: Record<string, string> = {
@@ -33,6 +34,7 @@ const ABILITY_SLUGS: Record<string, string> = {
   'Noli|Void Rush': 'voidrush',
   'Noli|Observant': 'observant',
   '1x1x1x1|Entanglement': 'entanglement',
+  '1x1x1x1|Rejuvenate the Rotten': 'rejuvenatetherotten',
   'Guest 666|Infernal Cry': 'infernalcry',
   'Guest 666|Blood Hunt': 'bloodhunt',
   'Nosferatu|Ascension': 'ascension',

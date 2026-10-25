@@ -115,7 +115,9 @@ export async function simulateBalance(
     let current = battle
     let turns = 0
     while (!current.finished && turns++ < maxTurns) {
-      current = takeTurn(current, chooseBotAction(current, rng), rng).battle
+      const side = current.sides[current.turn]
+      const action = side.minion ? 'attack' : chooseBotAction(current, rng)
+      current = takeTurn(current, action, rng).battle
     }
     battles += 1
     const firstTeam = participants.slice(0, firstTeamSize)

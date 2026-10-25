@@ -126,6 +126,7 @@ import {
 } from './i18n'
 import { atropaDescription, passiveDescription, specialDescription } from './names'
 import {
+  addRottenMinion,
   batteryDodgeBonusOf,
   cooldownAfterTick,
   createBattle,
@@ -146,6 +147,7 @@ import {
   type Battle,
   type BattleMode,
   type FighterEntry,
+  type RottenCorpse,
   type Side,
   type StatusName,
 } from './pvp'
@@ -289,6 +291,8 @@ type SurvivalRun = {
   hp: number
   maxHp: number
   reward: number
+  rottenCorpses?: RottenCorpse[]
+  minions?: Array<{ name: string; hp: number; maxHp: number; attack: number }>
 }
 
 type DraftPlayer = {
@@ -2511,8 +2515,16 @@ function sideStatus(side: Side): string {
 }
 
 export function teamLabel(battle: Battle, team: 0 | 1): string {
-  const members = battle.sides.filter(side => side.team === team && !side.fake)
+  const members = battle.sides.filter(
+    side => side.team === team && !side.fake && !side.minion,
+  )
   if (members.length === 1 && members[0].boss) return members[0].name
+  if (members.length === 0) {
+    const minions = battle.sides.filter(
+      side => side.team === team && side.minion && side.hp > 0,
+    ).length
+    return minions > 0 ? 'Миньоны' : '—'
+  }
   const owners = [...new Set(members.map(side => side.name))]
   const characters = members.map(side => side.character.name).join(' + ')
   return `${owners.join(' и ')} (${characters})`
@@ -2538,15 +2550,27 @@ function sideCharacterLabel(side: Side): string {
 }
 
 export function battleStatsText(battle: Battle): string {
-  const lines = battle.sides.filter(side => !side.fake).map(side => {
-    const who = side.boss
-      ? `${emojiText('boss', '👑')} ${side.name} (${side.character.name})`
-      : `${sideCharacterLabel(side)} **${side.name}**`
-    return `${who} — ${side.damageDealt} урона · ${side.healingDone} лечения · ${side.abilityUses} способностей`
-  })
+  const lines = battle.sides
+    .filter(side => !side.fake && !side.minion)
+    .map(side => {
+      const who = side.boss
+        ? `${emojiText('boss', '👑')} ${side.name} (${side.character.name})`
+        : `${sideCharacterLabel(side)} **${side.name}**`
+      return `${who} — ${side.damageDealt} урона · ${side.healingDone} лечения · ${side.abilityUses} способностей`
+    })
+
+  const minions = battle.sides.filter(side => side.minion && side.hp > 0)
+  if (minions.length > 0) {
+    lines.push(`${emojiText('rottenminion', '🧟')} Миньоны: **${minions.length}**`)
+  }
 
   const mvp = [...battle.sides]
-    .filter(side => !side.fake && (side.damageDealt > 0 || side.healingDone > 0))
+    .filter(
+      side =>
+        !side.fake &&
+        !side.minion &&
+        (side.damageDealt > 0 || side.healingDone > 0),
+    )
     .sort(
       (left, right) =>
         right.damageDealt + right.healingDone - (left.damageDealt + left.healingDone) ||
@@ -2582,9 +2606,11 @@ export function forecastEmbed(
   const baseCooldown = specialCooldown(special)
   const cooldown =
     baseCooldown > 0 ? `${cooldownAfterTick(side)}/${baseCooldown}` : 'готово'
-  const enemies = battle.sides.filter(
+  const enemySides = battle.sides.filter(
     candidate => candidate.team !== side.team && candidate.hp > 0,
   )
+  const minionEnemies = enemySides.filter(candidate => candidate.minion)
+  const enemies = enemySides.filter(candidate => !candidate.minion)
   const lines = [
     `**${sideCharacterLabel(side)} ${side.name}**`,
     `HP ${side.hp}/${side.maxHp} · уворот ${ownDodge}%${dodgePenalty(side)} · атака ${attackMin}–${attackMax}`,
@@ -2598,6 +2624,14 @@ export function forecastEmbed(
       enemy =>
         `${sideCharacterLabel(enemy)} ${enemy.name} — HP ${enemy.hp}/${enemy.maxHp} · уворот ${Math.round(jukeChanceOf(enemy) * 100)}%${dodgePenalty(enemy)}`,
     ),
+    ...(minionEnemies.length > 0
+      ? [
+          `${emojiText('rottenminion', '🧟')} Миньоны: **${minionEnemies.length}** · HP **${minionEnemies.reduce(
+            (sum, enemy) => sum + enemy.hp,
+            0,
+          )}/${minionEnemies.reduce((sum, enemy) => sum + enemy.maxHp, 0)}**`,
+        ]
+      : []),
     '',
     '**Статусы:**',
     ...statusLines(battle),
@@ -2618,7 +2652,7 @@ export function forecastEmbed(
 
 function statusLines(battle: Battle): string[] {
   return battle.sides
-    .filter(side => !side.fake)
+    .filter(side => !side.fake && !side.minion)
     .map(side => {
       const mods = side.jukeMods.map(
         mod =>
@@ -2644,6 +2678,15 @@ function statusLines(battle: Battle): string[] {
 export function statusEmbed(battle: Battle): EmbedBuilder {
   const help = statusHelpLines(battle)
   const body = [...statusLines(battle)]
+  const minions = battle.sides.filter(side => side.minion && side.hp > 0)
+  if (minions.length > 0) {
+    body.push(
+      `${emojiText('rottenminion', '🧟')} Миньоны: **${minions.length}** · HP **${minions.reduce(
+        (sum, side) => sum + side.hp,
+        0,
+      )}/${minions.reduce((sum, side) => sum + side.maxHp, 0)}**`,
+    )
+  }
   if (help.length > 0) body.push(['**Расшифровка эффектов:**', ...help].join('\n'))
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.choose)
@@ -2732,15 +2775,36 @@ export function battleEmbed(
     ].join('\n')
   }
   const teamBlock = (team: 0 | 1) => {
-    const synergy = battle.sides.find(side => side.team === team && !side.fake)?.synergy
+    const synergy = battle.sides.find(
+      side => side.team === team && !side.fake && !side.minion,
+    )?.synergy
+    const minions = battle.sides.filter(
+      side => side.team === team && side.minion && side.hp > 0,
+    )
+    const minionLine =
+      minions.length > 0
+        ? `${emojiText('rottenminion', '🧟')} Миньоны: **${minions.length}** · HP **${minions.reduce(
+            (sum, side) => sum + side.hp,
+            0,
+          )}/${minions.reduce((sum, side) => sum + side.maxHp, 0)}** · атака **${minions.reduce(
+            (sum, side) => sum + side.character.attack,
+            0,
+          )}**`
+        : ''
     return [
       `**${teamLabel(battle, team)}**`,
       synergy
         ? `${emojiText('passive', '🔹')} Синергия: **${synergy.name}** — ${synergy.description}`
         : '',
       ...battle.sides
-        .filter(side => side.team === team && (!side.fake || (side.hp > 0 && !battle.finished)))
+        .filter(
+          side =>
+            side.team === team &&
+            !side.minion &&
+            (!side.fake || (side.hp > 0 && !battle.finished)),
+        )
         .map(line),
+      minionLine,
     ]
       .filter(Boolean)
       .join('\n')
@@ -2768,7 +2832,7 @@ export function battleEmbed(
       }${timer}`
   const playerDamage = new Map<string, { name: string; damage: number }>()
   for (const side of battle.sides) {
-    if (side.team !== 0 || side.fake) continue
+    if (side.team !== 0 || side.fake || side.minion) continue
     const entry = playerDamage.get(side.userId) ?? { name: side.name, damage: 0 }
     entry.damage += side.damageDealt
     playerDamage.set(side.userId, entry)
@@ -2891,7 +2955,9 @@ export function targetComponents(
   tone: 'enemy' | 'ally' = 'enemy',
 ): ActionRowBuilder<ButtonBuilder>[] {
   const row = new ActionRowBuilder<ButtonBuilder>()
-  for (const index of targets) {
+  const minionTargets = targets.filter(index => battle.sides[index]?.minion)
+  const normalTargets = targets.filter(index => !battle.sides[index]?.minion)
+  for (const index of normalTargets) {
     const side = battle.sides[index]
     const emoji = isAutomatedSide(side)
       ? characterEmojiData(side.character.name)
@@ -2901,6 +2967,15 @@ export function targetComponents(
       .setLabel(emoji ? `${side.character.name} — ${side.name}` : `🎯 ${side.character.name} — ${side.name}`)
       .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
     if (emoji) button.setEmoji(emoji)
+    row.addComponents(button)
+  }
+  if (minionTargets.length > 0) {
+    const minionEmoji = emojiData('rottenminion')
+    const button = new ButtonBuilder()
+      .setCustomId('pvp:target:minions')
+      .setLabel(minionEmoji ? `Миньоны (${minionTargets.length})` : `🧟 Миньоны (${minionTargets.length})`)
+      .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
+    if (minionEmoji) button.setEmoji(minionEmoji)
     row.addComponents(button)
   }
   row.addComponents(
@@ -2993,7 +3068,7 @@ function notifyNextTurn(
   clearTurnPing(client, messageId)
   if (battle.finished || !channelId) return
   const next = battle.sides[battle.turn]
-  if (!next || next.fake || next.userId.startsWith('bot:') || next.userId.startsWith('boss:')) return
+  if (!next || isAutomatedSide(next)) return
 
   const channels = userInteractionTokens.get(next.userId)
   let saved = channels?.get(channelId)
@@ -3045,7 +3120,14 @@ function notifyBattleStart(
 }
 
 function isAutomatedSide(side: Side): boolean {
-  return side.fake || side.boss || side.userId.startsWith('bot:') || side.userId.startsWith('boss:')
+  return (
+    side.minion === true ||
+    side.fake ||
+    side.boss ||
+    side.userId.startsWith('minion:') ||
+    side.userId.startsWith('bot:') ||
+    side.userId.startsWith('boss:')
+  )
 }
 
 export function battleTurnLanguage(
@@ -3109,14 +3191,16 @@ function runAutomatedTurns(input: Battle, events: string[]): Battle {
   while (
     !current.finished &&
     isAutomatedSide(current.sides[current.turn]) &&
-    guard++ < 12
+    guard++ < Math.max(12, current.sides.length + 12)
   ) {
     const side = current.sides[current.turn]
     const decision = side.fake
       ? { action: 'attack' as const, specialIndex: 0 }
       : side.boss
         ? chooseBossAction(current, Math.random)
-        : { action: chooseBotAction(current, Math.random), specialIndex: 0 }
+        : side.minion
+          ? { action: 'attack' as const, specialIndex: 0 }
+          : { action: chooseBotAction(current, Math.random), specialIndex: 0 }
     const result = takeTurn(
       current,
       decision.action,
@@ -3315,7 +3399,9 @@ function recordBattle(
   const skinUnlocks: SkinUnlock[] = []
 
   const applyTeam = (team: 0 | 1, won: boolean): void => {
-    const teamSides = battle.sides.filter(side => side.team === team && !side.fake)
+    const teamSides = battle.sides.filter(
+      side => side.team === team && !side.fake && !side.minion,
+    )
     const userIds = [...new Set(teamSides.map(side => side.userId))]
 
     for (const userId of userIds) {
@@ -3496,6 +3582,15 @@ function finishBattleState(
         survival.maxHp,
         player.hp + survivalHeal(survival.maxHp),
       )
+      survival.rottenCorpses = [...(player.rottenCorpses ?? [])]
+      survival.minions = battle.sides
+        .filter(side => side.minion && side.team === player.team && side.hp > 0)
+        .map(side => ({
+          name: side.name,
+          hp: side.hp,
+          maxHp: side.maxHp,
+          attack: side.character.attack,
+        }))
       survivalRuns.set(messageId, survival)
       const progress = recordSurvivalWave(
         userOf(survival.userId),
@@ -3535,7 +3630,9 @@ function finishBattleState(
       components = survivalAgainComponents()
     }
   } else if (boss) {
-    const playerSides = battle.sides.filter(side => side.team === 0 && !side.fake)
+    const playerSides = battle.sides.filter(
+      side => side.team === 0 && !side.fake && !side.minion,
+    )
     const damageByUser = new Map<string, number>()
     const nameByUser = new Map<string, string>()
     for (const side of playerSides) {
@@ -4786,6 +4883,12 @@ async function startSurvivalRound(
   )
   battle.sides[0].hp = run.hp
   battle.sides[0].maxHp = run.maxHp
+  if (run.rottenCorpses !== undefined) {
+    battle.sides[0].rottenCorpses = run.rottenCorpses
+  }
+  for (const minion of run.minions ?? []) {
+    addRottenMinion(battle, battle.sides[0], minion)
+  }
   battle.sides[1].healingMultiplier = 0.4
   battles.set(run.messageId, battle)
   battleGameModes.set(run.messageId, 'classic')
@@ -5466,6 +5569,18 @@ async function handleTargetButton(interaction: ButtonInteraction): Promise<void>
   if (raw === 'cancel') {
     pendingTargets.delete(messageId)
     await interaction.update({ components: battleComponents(battle) })
+    return
+  }
+  if (raw === 'minions') {
+    const minionIndex = pending.targets.find(
+      index => battle.sides[index]?.minion && (battle.sides[index]?.hp ?? 0) > 0,
+    )
+    if (minionIndex === undefined) {
+      await replyError(interaction, 'Живых миньонов не осталось.')
+      return
+    }
+    pendingTargets.delete(messageId)
+    await executeBattleAction(interaction, battle, pending.action, minionIndex)
     return
   }
 
