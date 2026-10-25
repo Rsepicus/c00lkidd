@@ -218,6 +218,10 @@ describe('i18n', () => {
   test('renders every main panel without Cyrillic in English', () => {
     withLanguage('en', () => {
       const user = englishUser()
+      const doneUser = {
+        ...user,
+        trialClaimed: Object.fromEntries(TRIALS.map(trial => [`pve:${trial.id}`, 1])),
+      }
       const character = characterByName('Guest 1337')!
       const panels = [
         profileEmbed('42', user, 'Rsepicus'),
@@ -254,6 +258,8 @@ describe('i18n', () => {
         bossRushPanelEmbed(),
         towerPanelEmbed(),
         trialsPanelEmbed(),
+        trialsPanelEmbed(undefined, { ...user, trialClaimed: { 'pve:jason': 1 } }),
+        trialsPanelEmbed(undefined, doneUser),
         trialsPanelEmbed(TRIALS[0]),
         bossCoopEmbed('Rsepicus', '2026-W01'),
         bossCoopEmbed('Rsepicus', '2026-W01', '42'),
@@ -277,6 +283,7 @@ describe('i18n', () => {
         ...pvePanelComponents(),
         ...towerPanelComponents(),
         ...trialsPanelComponents(),
+        ...trialsPanelComponents(doneUser),
         ...trainingSetupComponents(user, {
           ownerId: '42',
           mode: '2x2',
