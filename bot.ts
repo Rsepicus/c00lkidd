@@ -2908,16 +2908,6 @@ function replyError(
   return interaction.reply({ content: message, flags: MessageFlags.Ephemeral }).catch(() => {})
 }
 
-async function sendPrivateNotices(
-  interaction: ButtonInteraction,
-  notices: string[],
-): Promise<void> {
-  if (notices.length === 0) return
-  await interaction
-    .followUp({ content: notices.join('\n'), flags: MessageFlags.Ephemeral })
-    .catch(() => {})
-}
-
 export function localizeInteraction(interaction: Interaction): void {
   const target = interaction as unknown as Record<string, unknown>
   for (const method of ['reply', 'update', 'followUp', 'editReply', 'showModal']) {
@@ -5458,17 +5448,6 @@ async function executeBattleAction(
     throw error
   }
   clearTurnPing(interaction.client, interaction.message.id)
-  const notices = [...result.notices]
-  if (action === 'special' && side.character.special.kind === 'block') {
-    const protectedSide =
-      targetIndex !== undefined ? battle.sides[targetIndex] : side
-    const targetSuffix =
-      protectedSide && protectedSide.id !== side.id ? ` для ${protectedSide.name}` : ''
-    notices.push(
-      `${emojiText('block', '🛡️')} Ты готовишь блок${targetSuffix} ` +
-        '(маскировка: обычная атака). Соперник не видит этого.',
-    )
-  }
   const messageId = interaction.message.id
   let current = result.battle
   const events = [...result.events]
@@ -5485,7 +5464,6 @@ async function executeBattleAction(
       finished.note,
       finished.components,
     )
-    await sendPrivateNotices(interaction, notices)
     return
   }
 
@@ -5502,7 +5480,6 @@ async function executeBattleAction(
     deadline,
   )
   notifyNextTurn(interaction.client, current, interaction.channelId, interaction.message.id)
-  await sendPrivateNotices(interaction, notices)
 }
 
 async function handleHub(interaction: ButtonInteraction | StringSelectMenuInteraction): Promise<void> {
