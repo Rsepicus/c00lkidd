@@ -3,7 +3,7 @@ import type { Special } from './forsaken'
 export type Language = 'ru' | 'en'
 
 const EN: Record<string, string> = {
-  'Gashing Wound': 'A series of machete strikes: 8 damage and 3 bleeding damage for 2 turns.',
+  'Gashing Wound': 'A series of machete strikes: 12 damage and 4 bleeding damage for 2 turns.',
   'Raging Pace': 'Rage: +20% damage for 2 turns.',
   'Pizza Delivery':
     'Summons two 5 HP pizza minions. On a hit, a minion burns the enemy for 7 damage at the start of their turn for 2 turns, lowers their dodge by 10%, and disappears. CD: 3 turns.',

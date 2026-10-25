@@ -178,8 +178,8 @@ export const KILLERS: readonly Character[] = [
     power: 3,
     price: 0,
     hp: 100,
-    attack: 14,
-    special: { name: 'Gashing Wound', kind: 'heavy', power: 8, description: 'Серия ударов мачете: 8 урона и кровотечение 3 урона два хода.', cooldown: 3 },
+    attack: 11,
+    special: { name: 'Gashing Wound', kind: 'heavy', power: 12, description: 'Серия ударов мачете: 12 урона и кровотечение 4 урона два хода.', cooldown: 3 },
     alternates: [
       { name: 'Raging Pace', kind: 'strength', power: 0, description: 'Ярость: +20% урона на 2 хода.' },
     ],

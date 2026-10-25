@@ -875,7 +875,7 @@ describe('c00lgui copy', () => {
     battle = result.battle
     battle = takeTurn(battle, 'rest', () => 0).battle
     const copiedTurn = takeTurn(battle, 'special', () => 0).battle
-    expect(copiedTurn.sides[1].hp).toBe(92)
+    expect(copiedTurn.sides[1].hp).toBe(88)
     expect(copiedTurn.sides[1].dotKind).toBe('bleeding')
     expect(copiedTurn.sides[0].cooldown).toBe(3)
   })
@@ -977,7 +977,7 @@ describe('balance cooldowns', () => {
     ).toBe(3)
   })
 
-  test('Gashing Wound hits for 8 and applies bleeding', () => {
+  test('Gashing Wound hits for 12 and applies bleeding', () => {
     const jason = characterWithSpecial(characterByName('Jason')!, 'Gashing Wound')
     let battle = createBattle(
       { userId: 'a', name: 'Jason', character: jason },
@@ -986,13 +986,13 @@ describe('balance cooldowns', () => {
 
     battle = takeTurn(battle, 'special', () => 0).battle
     expect(battle.sides[0].cooldown).toBe(3)
-    expect(battle.sides[1].hp).toBe(92)
+    expect(battle.sides[1].hp).toBe(88)
     expect(battle.sides[1].dotKind).toBe('bleeding')
     expect(battle.sides[1].dotTurns).toBe(2)
-    expect(battle.sides[1].dotDamage).toBe(3)
+    expect(battle.sides[1].dotDamage).toBe(4)
 
     const tick = takeTurn(battle, 'attack', () => 0).battle
-    expect(tick.sides[1].hp).toBe(89)
+    expect(tick.sides[1].hp).toBe(84)
     expect(tick.sides[1].dotTurns).toBe(1)
   })
 })
@@ -1451,7 +1451,7 @@ describe('character passives and new survivors', () => {
     battle.sides[1].dodging = true
     battle.sides[1].evasionChance = 0.75
     const result = takeTurn(battle, 'attack', () => 0).battle
-    expect(result.sides[1].hp).toBe(86)
+    expect(result.sides[1].hp).toBe(89)
   })
 
   test('1x1x1x1 Rejuvenate the Rotten raises a starting minion', () => {

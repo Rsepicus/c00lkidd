@@ -1017,7 +1017,7 @@ function applySpecial(
       events.push(`${side.name} применяет «${special.name}».`)
       const dealt = dealDamage(side, other, special.power, events, rng, battle)
       if (special.name === 'Gashing Wound' && dealt > 0 && other.hp > 0) {
-        other.dotDamage = 3
+        other.dotDamage = 4
         other.dotTurns = 2
         other.dotKind = 'bleeding'
         other.dotSourceId = side.id
