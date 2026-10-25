@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { characterByName, characterWithSpecial, type Character } from './forsaken'
 import {
+  addRottenMinion,
   cooldownAfterTick,
   createBattle,
   createTeamBattle,
@@ -119,6 +120,26 @@ describe('createBattle', () => {
   })
 })
 
+describe('target validation', () => {
+  test('falls back to another enemy if the selected target dies at turn start', () => {
+    const noli = characterWithSpecial(characterByName('Noli')!, 'Observant')
+    let battle = createBattle(
+      { userId: 'a', name: 'Noli', character: noli },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    battle.turn = 0
+    const minion = addRottenMinion(battle, battle.sides[1], {
+      hp: 1,
+      maxHp: 1,
+      attack: 1,
+    })
+
+    const result = takeTurn(battle, 'attack', () => 0, minion.id)
+    expect(result.battle.sides[1].hp).toBeLessThan(100)
+  })
+})
+
 describe('2 на 2', () => {
   const team = (first: Character = heavy, second: Character = heavy): FighterEntry[] => [
     { userId: 'a', name: 'A', character: first },
@@ -167,8 +188,8 @@ describe('2 на 2', () => {
       'special',
       () => 0,
     ).battle
-    expect(haste.sides[0].effects.haste).toBe(2)
-    expect(haste.sides[2].effects.haste).toBe(2)
+    expect(haste.sides[0].effects.haste).toBe(3)
+    expect(haste.sides[2].effects.haste).toBe(3)
   })
 
   test('Dispenser heals the ally and slows Builderman', () => {
@@ -246,7 +267,7 @@ describe('2 на 2', () => {
 
     const result = takeTurn(battle, 'special', () => 0).battle
     expect(result.sides[0].hp).toBe(50)
-    expect(result.sides[2].hp).toBe(70)
+    expect(result.sides[2].hp).toBe(64)
     expect(result.sides[1].hp).toBe(100)
   })
 
@@ -255,7 +276,7 @@ describe('2 на 2', () => {
     battle.sides[0].hp = 50
 
     const result = takeTurn(battle, 'special', () => 0).battle
-    expect(result.sides[0].hp).toBe(70)
+    expect(result.sides[0].hp).toBe(64)
   })
 
   test('Rush Hour gives speed to both allies and does not heal', () => {
@@ -330,8 +351,8 @@ describe('2 на 2', () => {
       'special',
       () => 0,
     ).battle
-    expect(shieldBattle.sides[0].shield).toBe(60)
-    expect(shieldBattle.sides[2].shield).toBe(60)
+    expect(shieldBattle.sides[0].shield).toBe(65)
+    expect(shieldBattle.sides[2].shield).toBe(65)
     expect(jukeBonusOf(shieldBattle.sides[0])).toBeCloseTo(0.1)
     expect(jukeBonusOf(shieldBattle.sides[2])).toBeCloseTo(0.1)
 
@@ -682,7 +703,7 @@ describe('wiki status effects', () => {
     battle = takeTurn(battle, 'special', () => 0).battle
     battle = takeTurn(battle, 'rest', () => 0).battle
     battle = takeTurn(battle, 'attack', () => 0).battle
-    expect(battle.sides[1].hp).toBe(88)
+    expect(battle.sides[1].hp).toBe(83)
   })
 
   test('Weakness reduces damage dealt by 20%', () => {
@@ -732,7 +753,7 @@ describe('wiki status effects', () => {
     battle.sides[1].hp = 50
     battle = takeTurn(battle, 'special', () => 0).battle
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[1].hp).toBe(50)
+    expect(battle.sides[1].hp).toBe(45)
   })
 
   test('Rest clears Hemorrhage without restoring HP', () => {
@@ -841,7 +862,7 @@ describe('Azure and Helperbot kits', () => {
     const helperbot = characterWithSpecial(characterByName('Helperbot')!, 'Inspiration')
     let battle = battleWith(helperbot, heavy)
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].effects.haste).toBe(2)
+    expect(battle.sides[0].effects.haste).toBe(3)
   })
 })
 
@@ -1041,7 +1062,7 @@ describe('special states', () => {
 
     battle = takeTurn(battle, 'rest', () => 0).battle
     const blood = takeTurn(battle, 'special', () => 0).battle
-    expect(blood.sides[1].hp).toBe(92)
+    expect(blood.sides[1].hp).toBe(82)
     expect(blood.sides[0].bloodHuntCharges).toBe(3)
     expect(blood.sides[0].charge).toBe(0)
     expect(specialLabel(blood.sides[0])).toBe('Eviscerate (0/2)')
@@ -1287,12 +1308,9 @@ describe('takeTurn', () => {
   })
 
   test('the Bloxy Cola bonus raises the effective juke chance', () => {
-    let battle = battleWith(cola, heavy)
-    battle = takeTurn(battle, 'special', () => 0).battle
-    battle = takeTurn(battle, 'attack', () => 0).battle
-    battle = takeTurn(battle, 'juke', () => 0).battle
-    const result = takeTurn(battle, 'attack', sequence(0, 0.95))
-    expect(result.battle.sides[0].hp).toBe(80)
+    const result = takeTurn(battleWith(cola, heavy), 'special', () => 0).battle
+    expect(result.sides[0].juking).toBe(true)
+    expect(jukeChanceOf(result.sides[0])).toBeCloseTo(0.8)
   })
 
   test('Void Rush hits and lowers the opponent evasion chance', () => {
@@ -1753,8 +1771,8 @@ describe('character passives and new survivors', () => {
   test('John Doe Digital Footprint deals damage and applies Weakness', () => {
     const john = characterWithSpecial(characterByName('John Doe')!, 'Digital Footprint')
     const result = takeTurn(duel(john, heavy), 'special', () => 0)
-    expect(result.battle.sides[1].hp).toBe(94)
-    expect(result.battle.sides[1].effects.weakness).toBe(2)
+    expect(result.battle.sides[1].hp).toBe(90)
+    expect(result.battle.sides[1].effects.weakness).toBe(3)
   })
 
   test('John Doe punishes the attacker with a dodge penalty', () => {
@@ -1863,7 +1881,7 @@ describe('character passives and new survivors', () => {
     battle.sides[0].hp = 50
     const result = takeTurn(battle, 'special', () => 0).battle
     expect(result.sides[0].charge).toBe(50)
-    expect(result.sides[0].hp).toBe(75)
+    expect(result.sides[0].hp).toBe(68)
   })
 
   test('Veeronica battery thresholds change dodge chance', () => {
@@ -1893,7 +1911,7 @@ describe('character passives and new survivors', () => {
     const batteryBattle = duel(veeronica, heavy)
     batteryBattle.sides[0].hp = 50
     const batteryResult = takeTurn(batteryBattle, 'special', () => 0).battle
-    expect(batteryResult.sides[0].hp).toBe(70)
+    expect(batteryResult.sides[0].hp).toBe(63)
     expect(batteryResult.sides[0].charge).toBe(5)
 
     const healerBattle = createTeamBattle(allies(healer, characterByName('Veeronica')!), enemies())

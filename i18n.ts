@@ -435,6 +435,18 @@ const EXACT: Record<string, string> = {
 
 const PATTERNS: Array<[RegExp, string]> = [
   [
+    /^(.+) применяет «Bloxy Cola»: (\d+) урона?, \+20% уворота, стойка уворота, \+20% урона и 50% щита на 2 хода\.$/,
+    '$1 uses “Bloxy Cola”: $2 damage, +20% dodge, a dodge stance, +20% damage and a 50% shield for 2 turns.',
+  ],
+  [
+    /^(.+) применяет «Rush Hour»: (\d+) урон(?:а)?, \+20% уворота, стойка уворота, \+20% урона и 50% щита обоим союзникам на 2 хода\.$/,
+    '$1 uses “Rush Hour”: $2 damage, +20% dodge, a dodge stance, +20% damage and a 50% shield for both allies for 2 turns.',
+  ],
+  [
+    /^(.+) применяет «Rush Hour»: (\d+) урон(?:а)?, \+20% уворота, стойка уворота, \+20% урона и 50% щита себе на 2 хода\.$/,
+    '$1 uses “Rush Hour”: $2 damage, +20% dodge, a dodge stance, +20% damage and a 50% shield for themselves for 2 turns.',
+  ],
+  [
     /^(.+) применяет «Rejuvenate the Rotten»: поднимает миньонов — (\d+)\.$/,
     '$1 uses “Rejuvenate the Rotten”: raises minions — $2.',
   ],
@@ -507,6 +519,7 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^(.+) восстанавливает (\d+) HP \((.+)\)\.$/, '$1 restores $2 HP ($3).'],
   [/^(.+) восстанавливает (\d+) HP\.$/, '$1 restores $2 HP.'],
   [/^(.+) теряет (\d+) временных HP \(Plasma Beam\)\.$/, '$1 loses $2 temporary HP (Plasma Beam).'],
+  [/^(.+): временные HP \+(\d+)\.$/, '$1: temporary HP +$2.'],
   [/^(.+) теряет (\d+) HP от кровотечения\.$/, '$1 loses $2 HP from bleeding.'],
   [/^(.+) теряет (\d+) HP от яда\.$/, '$1 loses $2 HP from poison.'],
   [/^(.+) теряет (\d+) HP от огня\.$/, '$1 loses $2 HP from fire.'],
@@ -539,6 +552,10 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^(.+) применяет «(.+)»: способность (.+) заблокирована\.$/, '$1 uses "$2": $3\'s ability is blocked.'],
   [/^(.+) активирует Blood Hunt: (\d+) атаки усилены и лечат\.$/, '$1 activates Blood Hunt: $2 attacks are empowered and heal.'],
   [/^(.+) копирует «(.+)» у (.+): способность готова к использованию\.$/, '$1 copies "$2" from $3: ability ready to use.'],
+  [
+    /^(.+) копирует «(.+)» у (.+): способность готова к использованию\. Временные HP: \+(\d+)\.$/,
+    '$1 copies "$2" from $3: ability ready to use. Temporary HP: +$4.',
+  ],
   [/^(.+) издаёт «(.+)»\.$/, '$1 uses "$2".'],
   [/^(.+) стреляет из «(.+)»\.$/, '$1 fires "$2".'],
   [/^(.+) играет в «(.+)» и выигрывает!$/, '$1 plays "$2" and wins!'],
@@ -676,6 +693,7 @@ const PHRASES: Array<[string, string]> = [
   ' и ': ' and ',
   'перезарядка ускорена': 'cooldowns are faster',
   'перезарядка': 'cooldown',
+  'Лечение —': 'Healing —',
   'надето': 'equipped',
   'куплено': 'owned',
   'контрудар': 'counterattack',

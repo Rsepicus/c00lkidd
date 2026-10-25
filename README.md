@@ -163,23 +163,26 @@ Pizza Delivery призывает двух пицца-миньонов по 5 HP
 поглощается. Соперник не видит активацию, в логе блок маскируется под обычную атаку
 без урона. Если блок не сработал, Гость получает −30% к увороту, а после успешного
 блока его следующая атака наносит +50% урона.
-Spawn Protection Dusekkar действует один ход: обычный удар снижается на 60%,
-а смертельный разбивает щит и оставляет 1 HP; в 2 на 2 щит и +10% уворота получает
-только напарник, в соло — сам Dusekkar.
+Spawn Protection Dusekkar действует один ход: обычный удар снижается на 65%,
+а смертельный разбивает щит и оставляет 1 HP; также даёт +3 временных HP и +10%
+уворота. В 2 на 2 щит получает только напарник, в соло — сам Dusekkar.
 
 У каждого персонажа две способности на выбор; названия всегда английские с вики,
 персонажи сохраняют свои имена. Gashing Wound Jason — 12 урона и Bleeding
 (4 урона в начале хода цели два хода). Вторые способности используют статусы с вики:
-Raging Pace — Strength (+20% урона), Corrupt Nature — −60% уворота, Digital Footprint —
-6 урона и Weakness (−20% урона, −15% уворота), Rejuvenate the Rotten — поднимает убитых врагов как AI-миньонов (стартовый 20 HP/2 атаки, из трупа 40 HP и половина атаки убитого, удары глитчат), Eviscerate — Hemorrhage (блокирует лечение;
+Raging Pace — 15 урона и Strength (+20% урона на 2 хода), Corrupt Nature — −60%
+уворота, Digital Footprint — 10 урона и Weakness на 3 хода (−20% урона, −15% уворота),
+Rejuvenate the Rotten — поднимает убитых врагов как AI-миньонов (стартовый 20 HP/2 атаки,
+из трупа 40 HP и половина атаки убитого, удары глитчат), Eviscerate — 5 урона и Hemorrhage (блокирует лечение;
 передышка снимает эффект, но не лечит HP),
-Hunter's Feast — Creatures (+25% получаемого урона), Slateskin Potion — +18 HP сверх
+Hunter's Feast — 6 урона и Creatures (+25% получаемого урона), Slateskin Potion — +18 HP сверх
 максимума, иммунитет к DoT и −10% уворота, Sword Switch — случайный меч SFOTH:
 SFOTH (Strength), Firebrand (Burning), Venomshank (Poison), Ice Dagger (Stun),
 Darkheart (Lifesteal), Illumina (Regeneration), Ghostwalker (невидимость/уворот),
-Windforce (Weakness). Rush Hour — Speed (+20% уворота обоим союзникам, без лечения),
-c00lgui — копирование способности
-выбранного врага (заменяет c00lgui до конца боя и сразу доступна), Charge — Stun,
+Windforce (Weakness). Rush Hour — 1 урон, Speed (+20% уворота, стойка уворота,
++20% урона и 50% щита обоим союзникам, без лечения), c00lgui — копирование способности
+выбранного врага и +12 временных HP (заменяет c00lgui до конца боя и сразу доступна),
+Charge — Stun,
 Tripwire — Bleeding, One Shot — 50% выстрел на 24 урона и Vulnerable на 2 хода,
 иначе Chance получает Weakness на 2 хода. Pray тратит Oblation на лечение только
 самого Two Time. Plasma Beam замедляет соперника, ускоряет напарника и даёт ему
@@ -208,16 +211,17 @@ Spawn Protection Dusekkar и Plasma Beam действуют на него сам
 Azure использует Atropa: Seeker Bulb наносит 8 урона и накладывает 3 стака, Stigmatize — 3 и стан;
 атака Azure тратит стаки, наносит +1 урона за каждый и лечит Azure на 1 HP за
 каждые 2 стака (пассивка Atropic). Helperbot: Pulse даёт
-Regeneration и Resistance на 1 ход обоим союзникам, Inspiration — Haste обоим. Все способности
+Regeneration и Resistance на 1 ход обоим союзникам, Inspiration — Haste на 3 хода,
++10% уворота и 10 HP лечения обоим. Все способности
 и персонажи имеют иконки.
 
 **Veeronica** — выжившая за 750 монет. Пассивка **Metal Frame** запрещает лечить её
 чужими способностями; вместо этого она носит **Battery** (старт 30%, +15% в начале
 хода и ещё +15% за передышку). При **≥50%** батареи у неё +5% уворота, при **<20%**
-— −5%. **Sk8** даёт +25% уворота на 2 хода и тратит до 15% батареи,
-**Activate Battery** тратит до 40% и лечит 1 HP за каждые 2% (до 20 HP).
-При **100%** срабатывает **Overcharge**: Sk8 даёт +35% уворота, Activate Battery
-лечит 25 HP, после чего батарея разряжается до 50%. Обе способности расходуют
+— −5%. **Sk8** наносит 1 урон, даёт +25% уворота и стойку уворота на 2 хода,
+тратит до 15% батареи. **Activate Battery** тратит до 40% и лечит 1 HP за каждые 3%
+(до 13 HP). При **100%** срабатывает **Overcharge**: Sk8 даёт +35% уворота,
+Activate Battery лечит 18 HP, после чего батарея разряжается до 50%. Обе способности расходуют
 батарею, но по-разному: Sk8 — уворот, Activate Battery — лечение.
 
 **Jane Doe** — выжившая за 600 монет. Пассивка **Shatterpoint** даёт 25 отдельного
@@ -239,9 +243,9 @@ Support Protocol (Helperbot). Новые пассивки: **Pizza Fury** у c00
 в меню «Сменить»: сначала выбираешь активного и второго персонажа, затем их способности.
 В карточке и меню выбора показывается класс персонажа с вики — Sentinel, Support,
 Survivalist, Trapper и т.д. — и КД способности: у большинства 2 хода, у Stigmatize,
-Gashing Wound, Corrupt Nature, Pulse, Dispenser, Subspace Tripmine и Pizza Throw — 3,
-у Crystal Pitch и Slateskin Potion — 4, у Rejuvenate the Rotten — 3,
-у Blood Hunt КД нет. В выпадающих меню выбора к классу добавлена пассивка; в панели
+Gashing Wound, Corrupt Nature, Pulse, Dispenser, Subspace Tripmine, Pizza Throw,
+Activate Battery, Spawn Protection и Fried Chicken — 3, у Crystal Pitch и Slateskin Potion — 4,
+у Rejuvenate the Rotten — 3, у Blood Hunt КД нет. В выпадающих меню выбора к классу добавлена пассивка; в панели
 «Сменить» показываются название и полное описание пассивок активного и второго
 персонажа. В карточках расшифрованы и уникальные ресурсы: Resonance и Shatterpoint
 у Jane Doe, Battery у Veeronica, Oblation у Two Time, Blood у Guest 666, мечи

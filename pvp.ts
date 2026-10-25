@@ -1008,8 +1008,10 @@ function applySpecial(
       side.character = { ...side.character, special: copied }
       side.copiedFrom = other.copiedFrom ?? other.character.name
       side.charge = 0
+      const gained = grantTemporaryHp(side, 12, 2)
       events.push(
-        `${side.name} копирует «${copied.name}» у ${other.name}: способность готова к использованию.`,
+        `${side.name} копирует «${copied.name}» у ${other.name}: способность готова к использованию.` +
+          (gained > 0 ? ` Временные HP: +${gained}.` : ''),
       )
       break
     }
@@ -1034,13 +1036,14 @@ function applySpecial(
       events.push(`${side.name} применяет «${special.name}» — ${heals.join(', ')} HP.`)
       break
     }
-    case 'shield':
+    case 'shield': {
       for (const ally of allies) {
         ally.shield = special.power
         ally.shieldSavesLethal = special.lethalSave === true
         if (special.name === 'Spawn Protection') {
           ally.jukeMods = ally.jukeMods.filter(mod => mod.source !== special.name)
           ally.jukeMods.push({ source: special.name, amount: 0.1, turns: 2 })
+          grantTemporaryHp(ally, 3, 2)
         }
       }
       events.push(
@@ -1049,6 +1052,7 @@ function applySpecial(
           .join(', ')}.`,
       )
       break
+    }
     case 'stun':
       other.stunned = true
       events.push(`${side.name} применяет «${special.name}»: ${other.name} пропустит ход.`)
@@ -1064,7 +1068,15 @@ function applySpecial(
       events.push(`${side.name} применяет «${special.name}»: ${other.name} ${DOT_VERB[special.kind]}.`)
       break
     case 'speed':
-      events.push(`${side.name} применяет «${special.name}» и ускоряется.`)
+      side.juking = true
+      side.jukingTurns = 2
+      addStatus(side, 'strength')
+      side.shield = Math.max(side.shield, 50)
+      dealDamage(side, other, 2, events, rng, battle)
+      events.push(
+        `${side.name} применяет «${special.name}»: 2 урона, +20% уворота, стойка уворота, ` +
+          '+20% урона и 50% щита на 2 хода.',
+      )
       if (side.synergy?.id === 'dead-ringer') {
         const ally = synergyAlly(side, battle)
         if (ally) {
@@ -1077,21 +1089,29 @@ function applySpecial(
       for (const ally of allies) {
         ally.jukeMods = ally.jukeMods.filter(mod => mod.source !== special.name)
         ally.jukeMods.push({ source: special.name, amount: 0.2, turns: 2 })
+        ally.juking = true
+        ally.jukingTurns = 2
+        addStatus(ally, 'strength')
+        ally.shield = Math.max(ally.shield, 50)
       }
+      dealDamage(side, other, 1, events, rng, battle)
       events.push(
-        `${side.name} применяет «${special.name}»: +20% уворота ` +
-          `${allies.length > 1 ? 'обоим союзникам' : 'себе'} на 2 хода.`,
+        `${side.name} применяет «${special.name}»: 1 урон, +20% уворота, стойка уворота, ` +
+          `+20% урона и 50% щита ${allies.length > 1 ? 'обоим союзникам' : 'себе'} на 2 хода.`,
       )
       applyJuke = false
       break
     case 'sk8': {
+      side.juking = true
+      side.jukingTurns = 2
+      dealDamage(side, other, 1, events, rng, battle)
       if (side.charge >= 100) {
         side.charge = 50
         side.jukeMods = side.jukeMods.filter(mod => mod.source !== special.name)
         side.jukeMods.push({ source: special.name, amount: 0.35, turns: 2 })
         events.push(
           `${side.name} применяет «${special.name}»: Overcharge! ` +
-            `+35% уворота на 2 хода, батарея разряжена до 50%.`,
+            `+35% уворота и стойка уворота на 2 хода, батарея разряжена до 50%.`,
         )
       } else {
         const spent = Math.min(15, side.charge)
@@ -1099,7 +1119,7 @@ function applySpecial(
         side.jukeMods = side.jukeMods.filter(mod => mod.source !== special.name)
         side.jukeMods.push({ source: special.name, amount: 0.25, turns: 2 })
         events.push(
-          `${side.name} применяет «${special.name}»: +25% уворота на 2 хода, ` +
+          `${side.name} применяет «${special.name}»: +25% уворота и стойка уворота на 2 хода, ` +
             `−${spent}% батареи (${side.charge}%).`,
         )
       }
@@ -1109,7 +1129,7 @@ function applySpecial(
     case 'battery': {
       const overcharge = side.charge >= 100
       const spent = overcharge ? 50 : Math.min(40, side.charge)
-      const healed = healSide(side, side, overcharge ? 25 : Math.floor(spent / 2))
+      const healed = healSide(side, side, overcharge ? 18 : Math.floor(spent / 3))
       side.charge -= spent
       events.push(
         `${side.name} применяет «${special.name}»${overcharge ? ': Overcharge!' : ''}: ` +
@@ -1212,6 +1232,10 @@ function applySpecial(
       events.push(`${side.name} меняет меч SFOTH: следующая атака усилена.`)
       break
     case 'strength':
+      if (special.name === 'Raging Pace') {
+        events.push(`${side.name} применяет «${special.name}».`)
+        dealDamage(side, other, 15, events, rng, battle)
+      }
       addStatus(side, 'strength')
       events.push(`${side.name} применяет «${special.name}»: урон повышен на 20% на 2 хода.`)
       break
@@ -1220,7 +1244,7 @@ function applySpecial(
         events.push(`${side.name} применяет «${special.name}».`)
         dealDamage(side, other, special.power, events, rng, battle)
       }
-      addStatus(other, 'weakness')
+      addStatus(other, 'weakness', special.name === 'Digital Footprint' ? 3 : 2)
       events.push(`${side.name} применяет «${special.name}»: урон ${other.name} снижен на 20%.`)
       break
     case 'vulnerable':
@@ -1242,6 +1266,10 @@ function applySpecial(
       )
       break
     case 'creatures':
+      if (special.name === "Hunter's Feast") {
+        events.push(`${side.name} применяет «${special.name}».`)
+        dealDamage(side, other, 6, events, rng, battle)
+      }
       addStatus(other, 'creatures')
       events.push(`${side.name} применяет «${special.name}»: ${other.name} получает +25% урона.`)
       break
@@ -1254,6 +1282,10 @@ function applySpecial(
       )
       break
     case 'hemorrhage':
+      if (special.name === 'Eviscerate') {
+        events.push(`${side.name} применяет «${special.name}».`)
+        dealDamage(side, other, 5, events, rng, battle)
+      }
       addStatus(other, 'hemorrhage')
       events.push(`${side.name} применяет «${special.name}»: ${other.name} не может лечиться.`)
       break
@@ -1270,14 +1302,23 @@ function applySpecial(
       )
       break
     }
-    case 'haste':
-      for (const ally of allies) addSupportStatus(side, ally, 'haste')
+    case 'haste': {
+      const turns = special.name === 'Inspiration' ? 3 : 2
+      const heals = allies.map(ally => `${ally.name}: +${healSide(side, ally, 10)}`)
+      for (const ally of allies) {
+        addSupportStatus(side, ally, 'haste', turns)
+        if (special.name === 'Inspiration') {
+          ally.jukeMods = ally.jukeMods.filter(mod => mod.source !== special.name)
+          ally.jukeMods.push({ source: special.name, amount: 0.1, turns: 2 })
+        }
+      }
       events.push(
         `${side.name} применяет «${special.name}»: ${
           allies.length > 1 ? 'обоим союзникам' : ''
-        } перезарядка ускорена на 2 хода.`,
+        } перезарядка ускорена на ${turns} хода, +10% уворота на 2 хода. Лечение — ${heals.join(', ')} HP.`,
       )
       break
+    }
     case 'dispenser':
       for (const ally of allies) addSupportStatus(side, ally, 'regeneration')
       events.push(
@@ -1486,6 +1527,7 @@ export function takeTurn(
   const index = battle.turn
   const side = battle.sides[index]
   if (!side || side.hp <= 0) throw new Error('Сейчас некому ходить.')
+  const initialHp = battle.sides.map(candidate => candidate.hp)
 
   const events: string[] = []
   const notices: string[] = []
@@ -1691,16 +1733,25 @@ export function takeTurn(
       : pickTarget(enemies)
   if (targetIndex !== undefined) {
     const candidate = Number.isInteger(targetIndex) ? battle.sides[targetIndex] : undefined
+    const wasAlive = (initialHp[targetIndex] ?? 0) > 0
     if (blockAction) {
-      if (!candidate || candidate.team !== side.team || candidate.hp <= 0) {
+      if (!candidate || candidate.team !== side.team) {
         throw new Error('Эту цель нельзя защитить.')
       }
-      blockTarget = candidate
+      if (candidate.hp <= 0 && !wasAlive) {
+        throw new Error('Эту цель нельзя защитить.')
+      }
+      // Start-of-turn effects can kill the chosen ally; fall back to self.
+      if (candidate.hp > 0) blockTarget = candidate
     } else {
-      if (!candidate || candidate.team === side.team || candidate.hp <= 0) {
+      if (!candidate || candidate.team === side.team) {
         throw new Error('Эту цель нельзя атаковать.')
       }
-      target = candidate
+      if (candidate.hp <= 0 && !wasAlive) {
+        throw new Error('Эту цель нельзя атаковать.')
+      }
+      // Fake Noli and other start-of-turn effects can remove the chosen target.
+      if (candidate.hp > 0) target = candidate
     }
   }
   const allies = alliesOf(battle, side)
