@@ -3846,11 +3846,14 @@ export function battleEmbed(
   return embed
 }
 
-export function battleComponents(battle: Battle): ActionRowBuilder<ButtonBuilder>[] {
+export function battleComponents(
+  battle: Battle,
+  prefix = 'pvp',
+): ActionRowBuilder<ButtonBuilder>[] {
   const side = battle.sides[battle.turn]
   const attackEmoji = attackEmojiData(side.character.name)
   const attackButton = new ButtonBuilder()
-    .setCustomId('pvp:attack')
+    .setCustomId(`${prefix}:attack`)
     .setLabel(attackEmoji ? 'Атака' : '⚔️ Атака')
     .setStyle(ButtonStyle.Danger)
   if (attackEmoji) attackButton.setEmoji(attackEmoji)
@@ -3867,7 +3870,7 @@ export function battleComponents(battle: Battle): ActionRowBuilder<ButtonBuilder
       : ''
   const specialText = `${specialLabel(side)}${cooldownSuffix}`
   const specialButton = new ButtonBuilder()
-    .setCustomId('pvp:special')
+    .setCustomId(`${prefix}:special`)
     .setLabel(specialEmoji ? specialText : `✨ ${specialText}`)
     .setStyle(ButtonStyle.Success)
     .setDisabled(!canUseSpecialNow(side))
@@ -3875,7 +3878,7 @@ export function battleComponents(battle: Battle): ActionRowBuilder<ButtonBuilder
 
   const staminaEmoji = emojiData('dodge')
   const jukeButton = new ButtonBuilder()
-    .setCustomId('pvp:juke')
+    .setCustomId(`${prefix}:juke`)
     .setLabel(
       `${staminaEmoji ? '' : '🌀 '}Уворот +${Math.round(JUKE_STANCE_BONUS * 100)}%`,
     )
@@ -3884,14 +3887,14 @@ export function battleComponents(battle: Battle): ActionRowBuilder<ButtonBuilder
 
   const medkitEmoji = emojiData('medkit')
   const restButton = new ButtonBuilder()
-    .setCustomId('pvp:rest')
+    .setCustomId(`${prefix}:rest`)
     .setLabel(medkitEmoji ? 'Передышка' : '🛡️ Передышка')
     .setStyle(ButtonStyle.Secondary)
   if (medkitEmoji) restButton.setEmoji(medkitEmoji)
 
   const surrenderEmoji = emojiData('surrender')
   const surrenderButton = new ButtonBuilder()
-    .setCustomId('pvp:surrender')
+    .setCustomId(`${prefix}:surrender`)
     .setLabel('Сдаться')
     .setStyle(ButtonStyle.Secondary)
   if (surrenderEmoji) surrenderButton.setEmoji(surrenderEmoji)
@@ -3903,13 +3906,13 @@ export function battleComponents(battle: Battle): ActionRowBuilder<ButtonBuilder
   )
   const forecastEmoji = emojiData('question')
   const forecastButton = new ButtonBuilder()
-    .setCustomId('pvp:forecast')
+    .setCustomId(`${prefix}:forecast`)
     .setLabel('Прогноз')
     .setStyle(ButtonStyle.Secondary)
   if (forecastEmoji) forecastButton.setEmoji(forecastEmoji)
   const statsEmoji = emojiData('achievement')
   const statsButton = new ButtonBuilder()
-    .setCustomId('pvp:stats')
+    .setCustomId(`${prefix}:stats`)
     .setLabel('Статистика')
     .setStyle(ButtonStyle.Secondary)
   if (statsEmoji) statsButton.setEmoji(statsEmoji)
@@ -7008,9 +7011,15 @@ async function executeBattleAction(
   notifyNextTurn(interaction.client, current, interaction.channelId, interaction.message.id)
 }
 
-function dmComponentsFor(battle: Battle, userId: string): ActionRowBuilder<ButtonBuilder>[] {
+function dmComponentsFor(
+  battle: Battle,
+  userId: string,
+  matchId: string,
+): ActionRowBuilder<ButtonBuilder>[] {
   if (battle.finished) return []
-  return battle.sides[battle.turn]?.userId === userId ? battleComponents(battle) : []
+  return battle.sides[battle.turn]?.userId === userId
+    ? battleComponents(battle, `dmatch:${matchId}`)
+    : []
 }
 
 function dmAgainComponents(match: DmMatch): ActionRowBuilder<ButtonBuilder>[] {
@@ -7063,7 +7072,7 @@ async function syncDmMatch(
   for (const player of match.players) {
     const components = match.battle.finished
       ? dmAgainComponents(match)
-      : dmComponentsFor(match.battle, player.userId)
+      : dmComponentsFor(match.battle, player.userId, match.id)
     await withLanguage(userOf(player.userId).language, async () => {
       await client.rest
         .patch(Routes.channelMessage(player.channelId, player.messageId), {
@@ -7124,13 +7133,13 @@ async function tryMatchDmQueue(client: Client): Promise<void> {
     const firstMessage = await firstDm
       .send({
         embeds: [battleEmbed(battle)],
-        components: dmComponentsFor(battle, firstId),
+        components: dmComponentsFor(battle, firstId, id),
       })
       .catch(() => null)
     const secondMessage = await secondDm
       .send({
         embeds: [battleEmbed(battle)],
-        components: dmComponentsFor(battle, secondId),
+        components: dmComponentsFor(battle, secondId, id),
       })
       .catch(() => null)
     if (!firstMessage || !secondMessage) {
@@ -7184,6 +7193,20 @@ async function handleGlobalPvpButton(interaction: ButtonInteraction): Promise<vo
   await queueDmUser(interaction.client, userId)
 }
 
+function settleDmMatch(match: DmMatch): string | undefined {
+  let note: string | undefined
+  if (match.battle.winner !== null) {
+    const record = recordBattle(match.battle, match.battle.winner, 0, false, 'classic')
+    note = record.notes.length > 0 ? record.notes.join('\n') : undefined
+    persist()
+  } else {
+    note = 'Бой окончен вничью.'
+  }
+  dmMatchByUser.delete(match.players[0].userId)
+  dmMatchByUser.delete(match.players[1].userId)
+  return note
+}
+
 async function handleDmMatchButton(interaction: ButtonInteraction): Promise<void> {
   const [, id, action] = interaction.customId.split(':')
   const match = dmMatches.get(id)
@@ -7203,8 +7226,45 @@ async function handleDmMatchButton(interaction: ButtonInteraction): Promise<void
     })
     return
   }
+  const side = match.battle.sides.find(
+    candidate => candidate.userId === interaction.user.id,
+  )
+  if (!side) {
+    await replyError(interaction, 'Это чужой бой.')
+    return
+  }
+  if (action === 'forecast') {
+    await interaction.reply({
+      embeds: [forecastEmbed(match.battle, side, [])],
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+  if (action === 'status') {
+    await interaction.reply({
+      embeds: [statusEmbed(match.battle)],
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+  if (action === 'stats') {
+    await interaction.reply({
+      embeds: [battleStatsEmbed(match.battle)],
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
   if (match.battle.finished) {
     await replyError(interaction, 'Бой уже окончен.')
+    return
+  }
+  if (action === 'surrender') {
+    await interaction.deferUpdate()
+    match.battle.finished = true
+    match.battle.winner = (1 - side.team) as 0 | 1
+    await clearDmPing(interaction.client, match)
+    const note = settleDmMatch(match)
+    await syncDmMatch(interaction.client, match, [], note)
     return
   }
   if (dmMatchTurnUserId(match.battle) !== interaction.user.id) {
@@ -7233,19 +7293,7 @@ async function handleDmMatchButton(interaction: ButtonInteraction): Promise<void
   match.battle = result.battle
   await clearDmPing(interaction.client, match)
 
-  let note: string | undefined
-  if (match.battle.finished) {
-    if (match.battle.winner !== null) {
-      const record = recordBattle(match.battle, match.battle.winner, 0, false, 'classic')
-      note = record.notes.length > 0 ? record.notes.join('\n') : undefined
-      persist()
-    } else {
-      note = 'Бой окончен вничью.'
-    }
-    dmMatchByUser.delete(match.players[0].userId)
-    dmMatchByUser.delete(match.players[1].userId)
-  }
-
+  const note = match.battle.finished ? settleDmMatch(match) : undefined
   await syncDmMatch(interaction.client, match, result.events, note)
   if (!match.battle.finished) await notifyDmTurn(interaction.client, match)
 }
