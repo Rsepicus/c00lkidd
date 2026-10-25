@@ -780,6 +780,7 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^Нанеси (\d+) урона$/, 'Deal $1 damage'],
   [/^Сыграй (\d+) боя$/, 'Play $1 battles'],
   [/^Ход (\d+): (.+)$/, 'Turn $1: $2'],
+  [/^(.+): Hemorrhage спадает\.$/, '$1: Hemorrhage fades.'],
   [/^Победил (.+)\.$/, '$1 wins.'],
   [/^Победила команда (.+)\.$/, 'Team $1 wins.'],
   [/^(.+) сдаётся\.$/, '$1 surrenders.'],

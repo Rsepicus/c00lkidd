@@ -1782,6 +1782,7 @@ export function takeTurn(
     if (side.linkedEffects[status]) continue
     const turns = side.effects[status] ?? 0
     if (turns <= 1) {
+      if (status === 'hemorrhage') events.push(`${side.name}: Hemorrhage спадает.`)
       delete side.effects[status]
       delete side.effectSources[status]
       for (const ally of battle.sides) {

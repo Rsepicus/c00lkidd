@@ -838,6 +838,25 @@ describe('wiki status effects', () => {
     expect(result.battle.sides[1].hp).toBe(89)
     expect(result.events.join(' ')).toContain('кровотечения')
   })
+
+  test('reports when Hemorrhage expires', () => {
+    let battle = createBattle(
+      {
+        userId: 'a',
+        name: 'A',
+        character: characterWithSpecial(characterByName('Guest 666')!, 'Eviscerate'),
+      },
+      { userId: 'b', name: 'B', character: characterByName('Elliot')! },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    expect(battle.sides[1].effects.hemorrhage).toBe(2)
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.sides[1].effects.hemorrhage).toBe(1)
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    const expired = takeTurn(battle, 'attack', () => 0)
+    expect(expired.battle.sides[1].effects.hemorrhage).toBeUndefined()
+    expect(expired.events.join(' ')).toContain('Hemorrhage')
+  })
 })
 
 describe('Azure and Helperbot kits', () => {
