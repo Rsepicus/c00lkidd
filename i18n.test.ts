@@ -39,6 +39,8 @@ import {
   shopComponents,
   shopEmbed,
   statusEmbed,
+  survivalPanelComponents,
+  survivalPanelEmbed,
   targetComponents,
   topEmbed,
 } from './bot'
@@ -88,6 +90,7 @@ function englishUser(): UserData {
       { opponent: 'Alice (Noob)', result: 'loss', coins: -50, at: 2 },
     ],
     boss: { week: isoWeekKey(), bestDamage: 120, cleared: true, wins: 1 },
+    survivalBest: { wave: 8, character: 'Jason', at: Date.UTC(2026, 9, 25) },
   }
 }
 
@@ -178,6 +181,28 @@ describe('i18n', () => {
     expect(translateText('Забег окончен на волне **2**.', 'en')).toBe(
       'Run ended on wave **2**.',
     )
+    expect(translateText('Новый личный рекорд: **5** волн!', 'en')).toBe(
+      'New personal best: **5** waves!',
+    )
+    expect(translateText('Личный рекорд: **5** волн.', 'en')).toBe(
+      'Personal best: **5** waves.',
+    )
+    expect(
+      translateText('Личный рекорд: **8** волн · Jason · 2026-10-25', 'en'),
+    ).toBe('Personal best: **8** waves · Jason · 2026-10-25')
+    expect(translateText('Забег окончен: пройдено волн **2**.', 'en')).toBe(
+      'Run ended: **2** waves cleared.',
+    )
+    expect(translateText('Пройдено волн: **2**. Награда: **+90** 🪙', 'en')).toBe(
+      'Waves cleared: **2**. Reward: **+90** 🪙',
+    )
+    expect(translateText('Топ-10', 'en')).toBe('Top 10')
+    expect(translateText('Личного рекорда пока нет.', 'en')).toBe('No personal best yet.')
+    expect(translateText('Начать забег', 'en')).toBe('Start run')
+    expect(translateText('К рекордам', 'en')).toBe('Records')
+    expect(
+      translateText('1. <@123456789012345678> — **12** волн · Noob · 2026-10-20', 'en'),
+    ).toBe('1. <@123456789012345678> — **12** waves · Noob · 2026-10-20')
   })
 
   test('renders every main panel without Cyrillic in English', () => {
@@ -193,6 +218,13 @@ describe('i18n', () => {
         characterEmbed(characterByName('Jane Doe')!, user),
         questsEmbed(user),
         pvePanelEmbed(),
+        survivalPanelEmbed(user, {
+          '123456789012345678': user,
+          '123456789012345679': {
+            ...user,
+            survivalBest: { wave: 3, character: 'Noob', at: Date.UTC(2026, 8, 1) },
+          },
+        }),
         achievementsEmbed(user),
         historyEmbed(user),
         topEmbed(),
@@ -218,6 +250,7 @@ describe('i18n', () => {
         ...characterBrowserComponents(false, character, user, true),
         ...questsComponents(user),
         ...pvePanelComponents(),
+        ...survivalPanelComponents(),
         ...cosmeticsComponents(user),
         ...bossPanelComponents(),
         ...bossCoopComponents(),

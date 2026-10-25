@@ -46,6 +46,7 @@ describe('defaultUser', () => {
     expect(user.loadouts).toEqual({})
     expect(user.language).toBe('ru')
     expect(user.lastPvp).toBeUndefined()
+    expect(user.survivalBest).toBeNull()
     expect(user.weeklyQuest).toBeNull()
     expect(user.onboarded).toBe(false)
     expect(user.compactMode).toBe(false)
@@ -210,6 +211,64 @@ describe('normalizeUser', () => {
     expect(normalizeUser({ ...base, partner: 'Noob' }).partner).toBeNull()
     expect(normalizeUser({ ...base, partner: 'c00lkidd' }).partner).toBeNull()
     expect(normalizeUser({ ...base, partner: 42 as never }).partner).toBeNull()
+  })
+})
+
+describe('survival best', () => {
+  test('defaults to null for new and legacy saves', () => {
+    expect(defaultUser().survivalBest).toBeNull()
+    expect(normalizeUser({ coins: 700 }).survivalBest).toBeNull()
+    expect(normalizeUser({ ...defaultUser(), survivalBest: undefined }).survivalBest).toBeNull()
+    expect(normalizeUser({ ...defaultUser(), survivalBest: null }).survivalBest).toBeNull()
+  })
+
+  test('keeps a valid personal best and floors the wave count', () => {
+    const best = { wave: 6, character: 'Jason', at: 1_000_000 }
+    expect(normalizeUser({ ...defaultUser(), survivalBest: best }).survivalBest).toEqual(best)
+    expect(
+      normalizeUser({ ...defaultUser(), survivalBest: { ...best, wave: 6.8 } }).survivalBest,
+    ).toEqual({ ...best, wave: 6 })
+  })
+
+  test('drops invalid personal best records', () => {
+    const base = defaultUser()
+    const invalid = [
+      { wave: 0, character: 'Jason', at: 1 },
+      { wave: -2, character: 'Jason', at: 1 },
+      { wave: Number.NaN, character: 'Jason', at: 1 },
+      { wave: Number.POSITIVE_INFINITY, character: 'Jason', at: 1 },
+      { wave: 3, character: '', at: 1 },
+      { wave: 3, character: '   ', at: 1 },
+      { wave: 3, character: 42, at: 1 },
+      { wave: 3, character: 'Jason', at: -1 },
+      { wave: 3, character: 'Jason', at: Number.NaN },
+      { wave: 3, character: 'Jason', at: Number.POSITIVE_INFINITY },
+      { wave: 3, character: 'Jason', at: 'now' },
+      'wave 3',
+      null,
+    ]
+    for (const survivalBest of invalid) {
+      expect(
+        normalizeUser({ ...base, survivalBest: survivalBest as never }).survivalBest,
+      ).toBeNull()
+    }
+  })
+
+  test('round-trips the personal best through disk', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'forsaken-store-'))
+    const path = join(dir, 'data.json')
+    try {
+      const user = {
+        ...defaultUser(),
+        survivalBest: { wave: 9, character: 'Noob', at: Date.UTC(2026, 9, 25) },
+      }
+      saveStore(path, { users: { '123456789012345678': user } })
+      expect(loadStore(path).users['123456789012345678'].survivalBest).toEqual(
+        user.survivalBest,
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

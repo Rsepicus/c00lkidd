@@ -35,7 +35,14 @@ import {
   type BattleSnapshot,
 } from './battle-state'
 import { backupDataFiles } from './backups'
-import { survivalEnemyStats, survivalHeal, survivalReward } from './survival'
+import {
+  recordSurvivalBest,
+  survivalClearedWaves,
+  survivalEnemyStats,
+  survivalHeal,
+  survivalReward,
+  topSurvivalRecords,
+} from './survival'
 import { appendErrorLog } from './errors'
 import {
   BOSS_FIRST_CLEAR_BONUS,
@@ -767,6 +774,14 @@ function userOf(userId: string): UserData {
 
 function persist(): void {
   saveStore(DATA_PATH, store)
+}
+
+function rememberPveOwner(messageId: string, userId: string): void {
+  if (pveOwners.size >= 500) {
+    const oldest = pveOwners.keys().next().value
+    if (oldest) pveOwners.delete(oldest)
+  }
+  pveOwners.set(messageId, userId)
 }
 
 function activeCharacter(user: UserData): Character {
@@ -3629,7 +3644,8 @@ function finishBattleState(
         player.character.name,
         abilityXp(player.abilityUses, specialCooldown(player.character.special)),
       )
-      store.users[survival.userId] = progress.user
+      const best = recordSurvivalBest(progress.user, cleared, player.character.name)
+      store.users[survival.userId] = best.user
       persist()
       note = [
         notePrefix,
@@ -3638,6 +3654,9 @@ function finishBattleState(
           ? `${emojiText('xp', '⭐')} Опыт: **+${progress.xpGained} XP**.`
           : '',
         ...masteryProgressNotes(progress, player.character.name, progress.user.language),
+        best.improved
+          ? `${emojiText('achievement', '🏆')} Новый личный рекорд: **${cleared}** волн!`
+          : `Личный рекорд: **${best.best?.wave ?? cleared}** волн.`,
         `Награда за забег: **${survival.reward}** ${emojiText('points', '🪙')}.`,
       ]
         .filter(Boolean)
@@ -3645,17 +3664,24 @@ function finishBattleState(
       components = survivalNextComponents()
     } else {
       const payout = survival.reward
-      if (payout > 0) {
-        store.users[survival.userId] = grantCoins(userOf(survival.userId), payout)
-        persist()
-      }
+      const cleared = survivalClearedWaves(survival.wave)
+      const best = recordSurvivalBest(
+        userOf(survival.userId),
+        cleared,
+        survival.character.name,
+      )
+      store.users[survival.userId] =
+        payout > 0 ? grantCoins(best.user, payout) : best.user
+      persist()
+      rememberPveOwner(messageId, survival.userId)
       survivalRuns.delete(messageId)
       note = [
         notePrefix,
-        `${emojiText('skull', '💀')} Забег окончен на волне **${survival.wave}**.`,
+        `${emojiText('skull', '💀')} Забег окончен: пройдено волн **${cleared}**.`,
         payout > 0
           ? `Награда: **+${payout}** ${emojiText('points', '🪙')}.`
           : 'Награды за этот забег нет.',
+        best.improved ? `Новый личный рекорд: **${cleared}** волн!` : '',
       ]
         .filter(Boolean)
         .join('\n')
@@ -4872,6 +4898,52 @@ async function handleDuelButton(interaction: ButtonInteraction): Promise<void> {
   }
 }
 
+function isoUtcDate(at: number): string {
+  return new Date(at).toISOString().slice(0, 10)
+}
+
+export function survivalPanelEmbed(
+  user: UserData,
+  users: Record<string, UserData> = store.users,
+): EmbedBuilder {
+  const best = user.survivalBest
+  const personal = best
+    ? `Личный рекорд: **${best.wave}** волн · ${best.character} · ${isoUtcDate(best.at)}`
+    : 'Личного рекорда пока нет.'
+  const records = topSurvivalRecords(users)
+  const top =
+    records.length === 0
+      ? 'Пока никто не играл.'
+      : records
+          .map(
+            (entry, index) =>
+              `${index + 1}. <@${entry.userId}> — **${entry.wave}** волн · ` +
+              `${entry.character} · ${isoUtcDate(entry.at)}`,
+          )
+          .join('\n')
+
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.battle)
+    .setTitle('Выживание')
+    .setDescription(personal)
+    .addFields({ name: 'Топ-10', value: top })
+    .setFooter({ text: 'Forsaken Simulator' })
+}
+
+export function survivalPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  const skull = emojiData('skull')
+  const start = new ButtonBuilder()
+    .setCustomId('survival:start')
+    .setLabel('Начать забег')
+    .setStyle(ButtonStyle.Primary)
+  if (skull) start.setEmoji(skull)
+  const menu = new ButtonBuilder()
+    .setCustomId('pve:menu')
+    .setLabel('← Назад')
+    .setStyle(ButtonStyle.Secondary)
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(start, menu)]
+}
+
 function survivalNextComponents(): ActionRowBuilder<ButtonBuilder>[] {
   const sword = emojiData('swordwhite')
   const points = emojiData('points')
@@ -4890,12 +4962,16 @@ function survivalNextComponents(): ActionRowBuilder<ButtonBuilder>[] {
 
 function survivalAgainComponents(): ActionRowBuilder<ButtonBuilder>[] {
   const retry = emojiData('retry')
-  const button = new ButtonBuilder()
+  const again = new ButtonBuilder()
     .setCustomId('survival:again')
     .setLabel('Ещё раз')
     .setStyle(ButtonStyle.Primary)
-  if (retry) button.setEmoji(retry)
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(button)]
+  if (retry) again.setEmoji(retry)
+  const records = new ButtonBuilder()
+    .setCustomId('survival:menu')
+    .setLabel('К рекордам')
+    .setStyle(ButtonStyle.Secondary)
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(again, records)]
 }
 
 async function startSurvivalRound(
@@ -4941,6 +5017,45 @@ async function startSurvivalRound(
 }
 
 async function handleSurvivalButton(interaction: ButtonInteraction): Promise<void> {
+  if (interaction.user.bot) return
+
+  if (interaction.customId === 'survival:start' || interaction.customId === 'survival:menu') {
+    const ownerId = pveOwners.get(interaction.message.id)
+    if (!ownerId || interaction.user.id !== ownerId) {
+      await replyError(interaction, 'Это чужое меню.')
+      return
+    }
+    if (interaction.customId === 'survival:menu') {
+      await interaction.update({
+        embeds: [survivalPanelEmbed(userOf(ownerId), store.users)],
+        components: survivalPanelComponents(),
+        allowedMentions: { parse: [] },
+      })
+      return
+    }
+    if (isUserInActiveBattle(ownerId)) {
+      await replyError(interaction, 'Сначала закончи текущий бой.')
+      return
+    }
+    const user = userOf(ownerId)
+    const character = activeCharacter(user)
+    const run: SurvivalRun = {
+      messageId: interaction.message.id,
+      channelId: interaction.channelId,
+      userId: ownerId,
+      name: interaction.user.displayName,
+      character,
+      wave: 1,
+      hp: character.hp,
+      maxHp: character.hp,
+      reward: 0,
+    }
+    trainingSetups.delete(interaction.message.id)
+    survivalRuns.set(run.messageId, run)
+    await startSurvivalRound(interaction, run)
+    return
+  }
+
   if (interaction.customId === 'survival:again') {
     if (isUserInActiveBattle(interaction.user.id)) {
       await replyError(interaction, 'Сначала закончи текущий бой.')
@@ -4978,10 +5093,11 @@ async function handleSurvivalButton(interaction: ButtonInteraction): Promise<voi
   }
   if (interaction.customId === 'survival:end') {
     const payout = run.reward
-    if (payout > 0) {
-      store.users[run.userId] = grantCoins(userOf(run.userId), payout)
-      persist()
-    }
+    const cleared = survivalClearedWaves(run.wave)
+    const best = recordSurvivalBest(userOf(run.userId), cleared, run.character.name)
+    store.users[run.userId] = payout > 0 ? grantCoins(best.user, payout) : best.user
+    persist()
+    rememberPveOwner(run.messageId, run.userId)
     survivalRuns.delete(run.messageId)
     persistBattleState()
     await interaction.update({
@@ -4990,10 +5106,16 @@ async function handleSurvivalButton(interaction: ButtonInteraction): Promise<voi
           .setColor(EMBED_COLORS.victory)
           .setTitle(`${emojiText('skull', '💀')} Забег окончен`)
           .setDescription(
-            `Волна: **${run.wave}**. Награда: **+${payout}** ${emojiText('points', '🪙')}.`,
+            [
+              `Пройдено волн: **${cleared}**. Награда: **+${payout}** ${emojiText('points', '🪙')}.`,
+              best.improved ? `Новый личный рекорд: **${cleared}** волн!` : '',
+            ]
+              .filter(Boolean)
+              .join('\n'),
           ),
       ],
       components: survivalAgainComponents(),
+      allowedMentions: { parse: [] },
     })
     return
   }
@@ -6329,26 +6451,12 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
     return
   }
   if (interaction.customId === 'pve:survival') {
-    if (isUserInActiveBattle(ownerId)) {
-      await replyError(interaction, 'Сначала закончи текущий бой.')
-      return
-    }
-    const character = activeCharacter(user)
-    const run: SurvivalRun = {
-      messageId: interaction.message.id,
-      channelId: interaction.channelId,
-      userId: ownerId,
-      name: interaction.user.displayName,
-      character,
-      wave: 1,
-      hp: character.hp,
-      maxHp: character.hp,
-      reward: 0,
-    }
     trainingSetups.delete(interaction.message.id)
-    pveOwners.delete(interaction.message.id)
-    survivalRuns.set(run.messageId, run)
-    await startSurvivalRound(interaction, run)
+    await interaction.update({
+      embeds: [survivalPanelEmbed(user, store.users)],
+      components: survivalPanelComponents(),
+      allowedMentions: { parse: [] },
+    })
     return
   }
   if (interaction.customId === 'pve:training:start') {

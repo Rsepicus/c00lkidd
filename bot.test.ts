@@ -62,6 +62,8 @@ import {
   settingsEmbed,
   shopComponents,
   shopEmbed,
+  survivalPanelComponents,
+  survivalPanelEmbed,
   trainingSetupComponents,
   trainingSetupEmbed,
   targetComponents,
@@ -1186,6 +1188,50 @@ describe('survival mastery', () => {
     expect(progress.user.characterStats.Jason).toEqual({ wins: 0, losses: 0, xp: 20 })
     const withAbility = recordSurvivalWave(defaultUser(), 'Jason', 7)
     expect(withAbility.xpGained).toBe(27)
+  })
+})
+
+describe('survival records panel', () => {
+  test('shows the personal best, the top 10 and the run button', () => {
+    const user = {
+      ...defaultUser(),
+      survivalBest: { wave: 8, character: 'Jason', at: Date.UTC(2026, 9, 25, 23, 30) },
+    }
+    const users = {
+      '123456789012345678': {
+        ...defaultUser(),
+        survivalBest: { wave: 12, character: 'Noob', at: Date.UTC(2026, 9, 20) },
+      },
+      '123456789012345679': user,
+      'bot:survival:1': {
+        ...defaultUser(),
+        survivalBest: { wave: 99, character: 'Jason', at: 1 },
+      },
+    }
+    const embed = survivalPanelEmbed(user, users).toJSON()
+    expect(embed.title).toBe('Выживание')
+    expect(embed.description).toContain('Личный рекорд: **8** волн · Jason · 2026-10-25')
+    expect(embed.fields?.[0].name).toBe('Топ-10')
+    expect(embed.fields?.[0].value).toContain(
+      '1. <@123456789012345678> — **12** волн · Noob · 2026-10-20',
+    )
+    expect(embed.fields?.[0].value).toContain(
+      '2. <@123456789012345679> — **8** волн · Jason · 2026-10-25',
+    )
+    expect(embed.fields?.[0].value).not.toContain('bot:survival')
+    expect(embed.footer?.text).toBe('Forsaken Simulator')
+
+    const buttons = survivalPanelComponents()[0]
+      .toJSON()
+      .components.map(component => component.custom_id)
+    expect(buttons).toEqual(['survival:start', 'pve:menu'])
+  })
+
+  test('shows empty states without a personal best or any records', () => {
+    const user = defaultUser()
+    const embed = survivalPanelEmbed(user, {}).toJSON()
+    expect(embed.description).toContain('Личного рекорда пока нет.')
+    expect(embed.fields?.[0].value).toBe('Пока никто не играл.')
   })
 })
 

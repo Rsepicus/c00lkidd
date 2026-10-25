@@ -82,6 +82,12 @@ export type BossRecord = {
   wins: number
 }
 
+export type SurvivalBest = {
+  wave: number
+  character: string
+  at: number
+}
+
 export type PvpFormat = '1x1' | '2x2'
 
 export type PvpGameMode = 'classic' | 'random' | 'draft'
@@ -108,6 +114,7 @@ export type UserData = {
   quests: QuestProgress | null
   weeklyQuest: WeeklyQuest | null
   boss: BossRecord | null
+  survivalBest: SurvivalBest | null
   history: BattleRecord[]
   characterStats: Record<string, CharacterStat>
   masteryRewards: string[]
@@ -164,6 +171,7 @@ export function defaultUser(now = Date.now()): UserData {
     quests: null,
     weeklyQuest: null,
     boss: null,
+    survivalBest: null,
     history: [],
     characterStats: {},
     masteryRewards: [],
@@ -349,6 +357,30 @@ function normalizeBoss(value: unknown): BossRecord | null {
   }
 }
 
+function normalizeSurvivalBest(value: unknown): SurvivalBest | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Partial<SurvivalBest>
+  if (
+    typeof record.wave !== 'number' ||
+    !Number.isFinite(record.wave) ||
+    record.wave < 1 ||
+    typeof record.character !== 'string' ||
+    record.character.trim() === '' ||
+    typeof record.at !== 'number' ||
+    !Number.isFinite(record.at) ||
+    record.at < 0
+  ) {
+    return null
+  }
+  const wave = Math.floor(record.wave)
+  if (wave < 1) return null
+  return {
+    wave,
+    character: record.character,
+    at: record.at,
+  }
+}
+
 function normalizeCosmetics(value: unknown): Cosmetics {
   const cosmetics: Partial<Cosmetics> =
     value && typeof value === 'object' ? (value as Partial<Cosmetics>) : {}
@@ -407,6 +439,7 @@ export function normalizeUser(user: Partial<UserData>): UserData {
     quests: normalizeQuests(user.quests),
     weeklyQuest: normalizeWeeklyQuest(user.weeklyQuest),
     boss: normalizeBoss(user.boss),
+    survivalBest: normalizeSurvivalBest(user.survivalBest),
     history: normalizeHistory(user.history),
     characterStats,
     masteryRewards: Array.isArray(user.masteryRewards)
