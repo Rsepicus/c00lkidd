@@ -13,6 +13,8 @@ import {
   bossCoopRematchComponents,
   bossPanelComponents,
   bossPanelEmbed,
+  bossRushPanelComponents,
+  bossRushPanelEmbed,
   coopBossBattle,
   timeoutForfeits,
   challengeReplyOptions,
@@ -72,6 +74,8 @@ import {
   topComponents,
   topEmbed,
   topPageCount,
+  trainingBotCharacter,
+  trainingBotPartnerCharacter,
   trainingEntries,
   userCharacterEmojiData,
   userCharacterLabel,
@@ -940,7 +944,7 @@ describe('embeds', () => {
     const buttons = pvePanelComponents()[0]
       .toJSON()
       .components.map(component => component.custom_id)
-    expect(buttons).toEqual(['pve:boss', 'pve:training', 'pve:survival'])
+    expect(buttons).toEqual(['pve:boss', 'pve:training', 'pve:survival', 'pve:bossrush'])
 
     const rows = pveBossComponents().map(row => row.toJSON())
     expect(rows[0].components.map(component => component.custom_id)).toEqual([
@@ -1015,9 +1019,32 @@ describe('embeds', () => {
       ['pve:training:ability'],
       ['pve:training:partner'],
       ['pve:training:partner-ability'],
-      ['pve:training:character'],
-      ['pve:training:start', 'pve:training:mode', 'pve:menu'],
+      ['pve:training:page:enemies', 'pve:training:start', 'pve:training:mode', 'pve:menu'],
     ])
+  })
+
+  test('training enemy page lets both bots choose abilities', () => {
+    const setup = {
+      ownerId: '1',
+      mode: '2x2' as const,
+      page: 'enemies' as const,
+      botCharacter: 'Jason',
+      botAbility: 'Raging Pace',
+      botPartner: 'Guest 1337',
+      botPartnerAbility: 'Charge',
+    }
+    const rows = trainingSetupComponents(defaultUser(), setup).map(row =>
+      row.toJSON().components.map(component => component.custom_id),
+    )
+    expect(rows).toEqual([
+      ['pve:training:character'],
+      ['pve:training:bot-ability'],
+      ['pve:training:bot-partner'],
+      ['pve:training:bot-partner-ability'],
+      ['pve:training:page:player', 'pve:training:start', 'pve:training:mode', 'pve:menu'],
+    ])
+    expect(trainingBotCharacter(setup).special.name).toBe('Raging Pace')
+    expect(trainingBotPartnerCharacter(setup).special.name).toBe('Charge')
   })
 
   test('training entries use the selected hero and partner abilities', () => {
@@ -1033,6 +1060,16 @@ describe('embeds', () => {
     expect(entries[0].character.special.name).toBe('Slateskin Potion')
     expect(entries[1].character.name).toBe('Elliot')
     expect(entries[1].character.special.name).toBe('Rush Hour')
+  })
+
+  test('Boss Rush panel offers both modes', () => {
+    expect(String(bossRushPanelEmbed().toJSON().title)).toContain('Boss Rush')
+    const buttons = bossRushPanelComponents()[0].toJSON().components
+    expect(buttons.map(button => button.custom_id)).toEqual([
+      'bossrush:start:1x1',
+      'bossrush:start:2x2',
+      'pve:menu',
+    ])
   })
 
   test('leaders is an embed', () => {

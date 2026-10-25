@@ -56,6 +56,15 @@ import {
   type BossMode,
 } from './boss'
 import {
+  BOSS_RUSH_STAGES,
+  advanceBossRush,
+  bossRushBoss,
+  bossRushReward,
+  bossRushSummary,
+  createBossRush,
+  type BossRushRun,
+} from './boss-rush'
+import {
   buyCosmetic,
   clearCosmetics,
   COSMETICS,
@@ -283,9 +292,13 @@ type TrainingSetup = {
   ownerId: string
   mode: BattleMode
   botCharacter?: string
+  botAbility?: string
+  botPartner?: string
+  botPartnerAbility?: string
   playerAbility?: string
   partner?: string
   partnerAbility?: string
+  page?: 'player' | 'enemies'
 }
 
 type DebugTestSetup = {
@@ -353,6 +366,7 @@ const pvpSetups = new Map<string, PvpSetup>()
 const duels = new Map<string, DuelSeries>()
 const pveOwners = new Map<string, string>()
 const trainingSetups = new Map<string, TrainingSetup>()
+const bossRushRuns = new Map<string, { ownerId: string; run: BossRushRun }>()
 const debugTests = new Map<string, DebugTestSetup>()
 const survivalRuns = new Map<string, SurvivalRun>()
 const drafts = new Map<string, DraftState>()
@@ -388,6 +402,7 @@ type PersistedBattleState = {
   training: string[]
   gameModes: Array<[string, PvpMode]>
   boss: Array<[string, { mode: BossMode; week: string; day?: string; coop?: boolean }]>
+  bossRush?: Array<[string, { ownerId: string; run: BossRushRun }]>
   channels: Array<[string, string]>
   deadlines: Array<[string, number]>
   strikes: Array<[string, Array<[string, number]>]>
@@ -414,6 +429,7 @@ function serializeBattleState(): PersistedBattleState {
     training: [...trainingBattles],
     gameModes: [...battleGameModes.entries()],
     boss: [...bossBattles.entries()],
+    bossRush: [...bossRushRuns.entries()],
     channels: [...battleChannels.entries()],
     deadlines: [...battleDeadlines.entries()],
     strikes: [...timeoutStrikes.entries()].map(([id, strikes]) => [id, [...strikes.entries()]]),
@@ -440,6 +456,7 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
   trainingBattles.clear()
   battleGameModes.clear()
   bossBattles.clear()
+  bossRushRuns.clear()
   battleChannels.clear()
   battleDeadlines.clear()
   timeoutStrikes.clear()
@@ -462,6 +479,19 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
     coop?: boolean
   }>(state.boss)) {
     bossBattles.set(id, boss)
+  }
+  for (const [id, stateRun] of snapshotEntries<{ ownerId: string; run: BossRushRun }>(
+    state.bossRush,
+  )) {
+    if (
+      stateRun &&
+      typeof stateRun === 'object' &&
+      typeof stateRun.ownerId === 'string' &&
+      stateRun.run &&
+      typeof stateRun.run === 'object'
+    ) {
+      bossRushRuns.set(id, stateRun)
+    }
   }
   for (const [id, channel] of snapshotEntries<string>(state.channels)) battleChannels.set(id, channel)
   for (const [id, deadline] of snapshotEntries<number>(state.deadlines)) {
@@ -1704,8 +1734,9 @@ export function pvePanelEmbed(): EmbedBuilder {
     .setTitle(`${emojiText('swordwhite', '⚔️')} PvE`)
     .setDescription(
       [
-        '**Босс** — недельный PvE-босс: solo, со своим напарником или в кооперативе с другим игроком.',
-        '**Тренировка** — бой с ботом без наград и статистики; можно выбрать героя бота и формат.',
+        '**Босс** — босс дня: solo, со своим напарником или в кооперативе с другим игроком.',
+        '**Тренировка** — бой с ботами без наград и статистики; можно выбрать героев и способности обеих сторон.',
+        '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.',
         '**Выживание** — забег по волнам. Каждая волна сильнее: у врага +25 HP и +2 атаки. Между волнами восстанавливается 25% HP, награда копится за каждую пройденную волну. После поражения или кнопки «Забрать награду» забег заканчивается.',
       ].join('\n\n'),
     )
@@ -1731,11 +1762,80 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setStyle(ButtonStyle.Secondary)
   const skull = emojiData('skull')
   if (skull) survivalButton.setEmoji(skull)
+  const rushButton = new ButtonBuilder()
+    .setCustomId('pve:bossrush')
+    .setLabel('Boss Rush')
+    .setStyle(ButtonStyle.Danger)
+  if (boss) rushButton.setEmoji(boss)
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       bossButton,
       trainingButton,
       survivalButton,
+      rushButton,
+    ),
+  ]
+}
+
+export function bossRushPanelEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.battle)
+    .setTitle(`${emojiText('boss', '👑')} Boss Rush`)
+    .setDescription(
+      [
+        `Пять боссов подряд. Между этапами восстанавливается 25% HP.`,
+        `Награды: ${bossRushReward(1)} → ${bossRushReward(BOSS_RUSH_STAGES)} ${emojiText('points', '🪙')}.`,
+        'Мастерство начисляется, PvP-статистика и квесты — нет.',
+      ].join('\n\n'),
+    )
+    .setFooter({ text: 'Forsaken Simulator' })
+}
+
+export function bossRushPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('bossrush:start:1x1')
+        .setLabel('1 на 1')
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId('bossrush:start:2x2')
+        .setLabel('2 на 2')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+function bossRushNextComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('bossrush:next')
+        .setLabel('Следующий босс')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('В меню PvE')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+function bossRushAgainComponents(mode: BossMode): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`bossrush:start:${mode}`)
+        .setLabel('Ещё забег')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('В меню PvE')
+        .setStyle(ButtonStyle.Secondary),
     ),
   ]
 }
@@ -1763,12 +1863,31 @@ function trainingPartnerBase(user: UserData, setup: TrainingSetup): Character {
   return (setup.partner ? characterByName(setup.partner) : undefined) ?? partnerCharacter(user)
 }
 
+function trainingBotBase(setup: TrainingSetup): Character {
+  return characterByName(setup.botCharacter ?? '') ?? characterByName('Jason')!
+}
+
+function trainingBotPartnerBase(setup: TrainingSetup): Character {
+  const chosen = setup.botPartner ? characterByName(setup.botPartner) : undefined
+  if (chosen) return chosen
+  const first = trainingBotBase(setup)
+  return CHARACTERS.find(character => character.name !== first.name) ?? first
+}
+
 export function trainingPlayerCharacter(user: UserData, setup: TrainingSetup): Character {
   return characterWithSpecial(trainingActiveBase(user), setup.playerAbility)
 }
 
 export function trainingPartnerCharacter(user: UserData, setup: TrainingSetup): Character {
   return characterWithSpecial(trainingPartnerBase(user, setup), setup.partnerAbility)
+}
+
+export function trainingBotCharacter(setup: TrainingSetup): Character {
+  return characterWithSpecial(trainingBotBase(setup), setup.botAbility)
+}
+
+export function trainingBotPartnerCharacter(setup: TrainingSetup): Character {
+  return characterWithSpecial(trainingBotPartnerBase(setup), setup.botPartnerAbility)
 }
 
 export function trainingEntries(
@@ -1796,6 +1915,8 @@ export function trainingEntries(
 export function trainingSetupEmbed(user: UserData, setup: TrainingSetup): EmbedBuilder {
   const player = trainingPlayerCharacter(user, setup)
   const partner = trainingPartnerCharacter(user, setup)
+  const bot = trainingBotCharacter(setup)
+  const botPartner = trainingBotPartnerCharacter(setup)
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.choose)
     .setTitle(`${emojiText('swordwhite', '⚔️')} Тренировка`)
@@ -1803,7 +1924,10 @@ export function trainingSetupEmbed(user: UserData, setup: TrainingSetup): EmbedB
       [
         `Твой герой: ${userCharacterLabel(user, player.name)} · **${player.special.name}**`,
         `Напарник: ${userCharacterLabel(user, partner.name)} · **${partner.special.name}**`,
-        `Герой бота: **${setup.botCharacter ?? 'случайный'}**`,
+        `Бот 1: ${characterLabel(bot.name)} · **${bot.special.name}**`,
+        ...(setup.mode === '2x2'
+          ? [`Бот 2: ${characterLabel(botPartner.name)} · **${botPartner.special.name}**`]
+          : []),
         `Формат: **${setup.mode === '2x2' ? '2 на 2' : '1 на 1'}**`,
       ].join('\n'),
     )
@@ -1822,59 +1946,106 @@ function trainingAbilityOptions(character: Character, selected: string, language
   }))
 }
 
+function trainingCharacterOptions(selected: string) {
+  return [
+    {
+      label: 'Случайный',
+      value: 'random',
+      default: false,
+      ...(emojiData('question') ? { emoji: emojiData('question') } : {}),
+    },
+    ...CHARACTERS.map(character => ({
+      label: character.name,
+      value: character.name,
+      default: character.name === selected,
+      ...(characterEmojiData(character.name) ? { emoji: characterEmojiData(character.name) } : {}),
+    })),
+  ]
+}
+
 export function trainingSetupComponents(
   user: UserData,
   setup: TrainingSetup,
 ): Array<
   ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
 > {
-  const playerBase = trainingActiveBase(user)
-  const player = trainingPlayerCharacter(user, setup)
-  const partnerBase = trainingPartnerBase(user, setup)
-  const partner = trainingPartnerCharacter(user, setup)
-  const abilityMenu = new StringSelectMenuBuilder()
-    .setCustomId('pve:training:ability')
-    .setPlaceholder('Способность героя')
-    .addOptions(trainingAbilityOptions(playerBase, player.special.name, user.language))
-  const partnerMenu = new StringSelectMenuBuilder()
-    .setCustomId('pve:training:partner')
-    .setPlaceholder('Напарник')
-    .addOptions(
-      CHARACTERS.map(character => ({
-        label: character.name,
-        value: character.name,
-        default: character.name === partnerBase.name,
-        ...(characterEmojiData(character.name) ? { emoji: characterEmojiData(character.name) } : {}),
-      })),
+  const page = setup.page ?? 'player'
+  const rows: Array<
+    ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
+  > = []
+  if (page === 'player') {
+    const playerBase = trainingActiveBase(user)
+    const player = trainingPlayerCharacter(user, setup)
+    const partnerBase = trainingPartnerBase(user, setup)
+    const partner = trainingPartnerCharacter(user, setup)
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('pve:training:ability')
+          .setPlaceholder('Способность героя')
+          .addOptions(trainingAbilityOptions(playerBase, player.special.name, user.language)),
+      ),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('pve:training:partner')
+          .setPlaceholder('Напарник')
+          .addOptions(trainingCharacterOptions(partnerBase.name)),
+      ),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('pve:training:partner-ability')
+          .setPlaceholder('Способность напарника')
+          .addOptions(trainingAbilityOptions(partnerBase, partner.special.name, user.language)),
+      ),
     )
-  const partnerAbilityMenu = new StringSelectMenuBuilder()
-    .setCustomId('pve:training:partner-ability')
-    .setPlaceholder('Способность напарника')
-    .addOptions(trainingAbilityOptions(partnerBase, partner.special.name, user.language))
-  const characterMenu = new StringSelectMenuBuilder()
-    .setCustomId('pve:training:character')
-    .setPlaceholder('Герой бота')
-    .addOptions([
-      {
-        label: 'Случайный',
-        value: 'random',
-        default: !setup.botCharacter,
-        ...(emojiData('question') ? { emoji: emojiData('question') } : {}),
-      },
-      ...CHARACTERS.map(character => ({
-        label: character.name,
-        value: character.name,
-        default: setup.botCharacter === character.name,
-        ...(characterEmojiData(character.name) ? { emoji: characterEmojiData(character.name) } : {}),
-      })),
-    ])
+  } else {
+    const botBase = trainingBotBase(setup)
+    const bot = trainingBotCharacter(setup)
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('pve:training:character')
+          .setPlaceholder('Бот 1')
+          .addOptions(trainingCharacterOptions(botBase.name)),
+      ),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('pve:training:bot-ability')
+          .setPlaceholder('Способность бота 1')
+          .addOptions(trainingAbilityOptions(botBase, bot.special.name, user.language)),
+      ),
+    )
+    if (setup.mode === '2x2') {
+      const botPartnerBase = trainingBotPartnerBase(setup)
+      const botPartner = trainingBotPartnerCharacter(setup)
+      rows.push(
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('pve:training:bot-partner')
+            .setPlaceholder('Бот 2')
+            .addOptions(trainingCharacterOptions(botPartnerBase.name)),
+        ),
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('pve:training:bot-partner-ability')
+            .setPlaceholder('Способность бота 2')
+            .addOptions(
+              trainingAbilityOptions(botPartnerBase, botPartner.special.name, user.language),
+            ),
+        ),
+      )
+    }
+  }
+
   const sword = emojiData('swordwhite')
-  return [
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(abilityMenu),
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(partnerMenu),
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(partnerAbilityMenu),
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(characterMenu),
+  rows.push(
     new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(
+          page === 'player' ? 'pve:training:page:enemies' : 'pve:training:page:player',
+        )
+        .setLabel(page === 'player' ? 'Бот →' : '← Игрок')
+        .setStyle(ButtonStyle.Secondary),
       (() => {
         const button = new ButtonBuilder()
           .setCustomId('pve:training:start')
@@ -1892,7 +2063,8 @@ export function trainingSetupComponents(
         .setLabel('← Назад')
         .setStyle(ButtonStyle.Secondary),
     ),
-  ]
+  )
+  return rows
 }
 
 export function debugPanelEmbed(): EmbedBuilder {
@@ -3763,6 +3935,7 @@ function finishBattleState(
   const training = trainingBattles.has(messageId)
   const gameMode = battleGameModes.get(messageId) ?? 'classic'
   const boss = bossBattles.get(messageId)
+  const bossRush = bossRushRuns.get(messageId)
   let note = ''
   let components: ActionRowBuilder<ButtonBuilder>[] = []
 
@@ -3933,6 +4106,61 @@ function finishBattleState(
     } else {
       components = bossRetryComponents(boss.mode)
     }
+  } else if (bossRush) {
+    const ownerId = bossRush.ownerId
+    const run = bossRush.run
+    const playerSides = battle.sides.filter(
+      side => side.team === 0 && !side.fake && !side.minion,
+    )
+    const totalHp = playerSides.reduce((sum, side) => sum + side.maxHp, 0)
+    const currentHp = playerSides.reduce((sum, side) => sum + Math.max(0, side.hp), 0)
+    const hpRatio = totalHp > 0 ? currentHp / totalHp : 0
+    const won = battle.winner === 0
+    const nextRun = advanceBossRush(run, won, hpRatio)
+    const summary = bossRushSummary(nextRun)
+    let user = userOf(ownerId)
+    let reward = 0
+    if (won) {
+      reward = bossRushReward(run.stage)
+      user = grantCoins(user, reward)
+    }
+    const characterNames = [...new Set(playerSides.map(side => side.character.name))]
+    const rushNotes: string[] = []
+    for (const characterName of characterNames) {
+      const characterSides = playerSides.filter(side => side.character.name === characterName)
+      const abilityUses = characterSides.reduce((sum, side) => sum + side.abilityUses, 0)
+      const bonusXp = abilityXp(
+        abilityUses,
+        specialCooldown(characterSides[0]!.character.special),
+      )
+      const progress = recordCharacterResult(user, characterName, won, false, bonusXp)
+      user = progress.user
+      rushNotes.push(...masteryProgressNotes(progress, characterName, user.language))
+    }
+    store.users[ownerId] = user
+    persist()
+    bossRushRuns.set(messageId, { ownerId, run: nextRun })
+    rememberPveOwner(messageId, ownerId)
+    const nextBoss =
+      nextRun.status === 'active' ? bossRushBoss(nextRun).character.name : null
+    note = [
+      notePrefix,
+      `Boss Rush · этап ${run.stage}/${BOSS_RUSH_STAGES}: ` +
+        `${battle.winner === 0 ? 'победа' : battle.winner === null ? 'ничья' : 'поражение'}.`,
+      reward > 0 ? `Награда: **+${reward}** ${emojiText('points', '🪙')}.` : '',
+      `Пройдено боссов: **${summary.bossesDefeated}/${summary.totalStages}**.`,
+      nextBoss ? `Следующий босс: **${nextBoss}**.` : '',
+      nextRun.status === 'completed' ? 'Забег завершён!' : '',
+      nextRun.status === 'failed' ? 'Забег окончен.' : '',
+      `HP к следующему этапу: **${Math.round(nextRun.hpRatio * 100)}%**.`,
+      ...rushNotes,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    components =
+      nextRun.status === 'active'
+        ? bossRushNextComponents()
+        : bossRushAgainComponents(run.mode)
   } else if (battle.winner === null) {
     note = [notePrefix, 'Бой окончен вничью.'].filter(Boolean).join('\n')
   } else if (training) {
@@ -6535,15 +6763,89 @@ async function handleDebugTestSelect(
   })
 }
 
+function bossRushBattle(
+  user: UserData,
+  ownerId: string,
+  displayName: string,
+  run: BossRushRun,
+): Battle {
+  const boss = bossRushBoss(run)
+  const bossEntry: FighterEntry = {
+    userId: `bossrush:${run.seed}:${run.stage}`,
+    name: `БОСС · ${boss.character.name}`,
+    character: boss.character,
+    boss: true,
+  }
+  return run.mode === '2x2'
+    ? createTeamBattle(teamEntries(user, ownerId, displayName), [bossEntry])
+    : createBattle(
+        { userId: ownerId, name: displayName, character: activeCharacter(user) },
+        bossEntry,
+      )
+}
+
+function applyBossRushHp(battle: Battle, run: BossRushRun): void {
+  for (const side of battle.sides) {
+    if (side.team !== 0 || side.fake || side.minion) continue
+    side.hp = Math.max(1, Math.round(side.maxHp * run.hpRatio))
+    side.tempHp = 0
+    side.tempHpTurns = 0
+  }
+}
+
+async function launchBossRushBattle(
+  interaction: ButtonInteraction,
+  ownerId: string,
+  run: BossRushRun,
+  messageId: string,
+): Promise<void> {
+  const user = userOf(ownerId)
+  const battle = bossRushBattle(user, ownerId, interaction.user.displayName, run)
+  applyBossRushHp(battle, run)
+  bossRushRuns.set(messageId, { ownerId, run })
+  rememberPveOwner(messageId, ownerId)
+  battles.set(messageId, battle)
+  battleChannels.set(messageId, interaction.channelId)
+  const deadline = armBattleTimer(interaction.client, messageId, battle)
+  await interaction.update({
+    embeds: [battleEmbed(battle, [], undefined, deadline)],
+    components: battleComponents(battle),
+  })
+  notifyBattleStart(interaction.client, battle, interaction.channelId, messageId)
+}
+
+async function handleBossRushButton(interaction: ButtonInteraction): Promise<void> {
+  const messageId = interaction.message.id
+  const state = bossRushRuns.get(messageId)
+  const ownerId = state?.ownerId ?? pveOwners.get(messageId)
+  if (!ownerId || interaction.user.id !== ownerId) {
+    await replyError(interaction, 'Это чужой забег.')
+    return
+  }
+  if (interaction.customId === 'bossrush:next') {
+    if (!state || state.run.status !== 'active') {
+      await replyError(interaction, 'Забег уже окончен.')
+      return
+    }
+    await launchBossRushBattle(interaction, ownerId, state.run, messageId)
+    return
+  }
+  if (interaction.customId.startsWith('bossrush:start:')) {
+    const mode: BossMode = interaction.customId.endsWith(':2x2') ? '2x2' : '1x1'
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0
+    const run = createBossRush(mode, seed)
+    await launchBossRushBattle(interaction, ownerId, run, messageId)
+  }
+}
+
 async function startTrainingBattle(
   interaction: ButtonInteraction,
   setup: TrainingSetup,
   messageId: string,
 ): Promise<void> {
   const user = userOf(setup.ownerId)
-  const botCharacter =
-    (setup.botCharacter ? characterByName(setup.botCharacter) : undefined) ??
-    randomCharacter(Math.random)
+  const botCharacter = trainingBotCharacter(setup)
+  const botPartner = trainingBotPartnerCharacter(setup)
   const entries = trainingEntries(
     user,
     setup,
@@ -6553,8 +6855,6 @@ async function startTrainingBattle(
 
   let battle: Battle
   if (setup.mode === '2x2') {
-    const botPool = CHARACTERS.filter(character => character.name !== botCharacter.name)
-    const botPartner = botPool[Math.floor(Math.random() * botPool.length)] ?? botCharacter
     battle = createTeamBattle(entries, [
       {
         userId: `bot:${interaction.id}:1`,
@@ -6598,14 +6898,36 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
   }
   const user = userOf(ownerId)
   if (interaction.customId === 'pve:boss') {
+    bossRushRuns.delete(interaction.message.id)
     await interaction.update({
       embeds: [bossPanelEmbed(user)],
       components: pveBossComponents(),
     })
     return
   }
+  if (interaction.customId === 'pve:bossrush') {
+    bossRushRuns.delete(interaction.message.id)
+    await interaction.update({
+      embeds: [bossRushPanelEmbed()],
+      components: bossRushPanelComponents(),
+    })
+    return
+  }
   if (interaction.customId === 'pve:training') {
-    const setup: TrainingSetup = { ownerId, mode: '1x1' }
+    bossRushRuns.delete(interaction.message.id)
+    const bot = randomCharacter(Math.random)
+    const partnerPool = CHARACTERS.filter(character => character.name !== bot.name)
+    const botPartner =
+      partnerPool[Math.floor(Math.random() * partnerPool.length)] ?? bot
+    const setup: TrainingSetup = {
+      ownerId,
+      mode: '1x1',
+      page: 'player',
+      botCharacter: bot.name,
+      botAbility: bot.special.name,
+      botPartner: botPartner.name,
+      botPartnerAbility: botPartner.special.name,
+    }
     trainingSetups.set(interaction.message.id, setup)
     await interaction.update({
       embeds: [trainingSetupEmbed(user, setup)],
@@ -6615,10 +6937,28 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
   }
   if (interaction.customId === 'pve:survival') {
     trainingSetups.delete(interaction.message.id)
+    bossRushRuns.delete(interaction.message.id)
     await interaction.update({
       embeds: [survivalPanelEmbed(user, store.users)],
       components: survivalPanelComponents(),
       allowedMentions: { parse: [] },
+    })
+    return
+  }
+  if (
+    interaction.customId === 'pve:training:page:enemies' ||
+    interaction.customId === 'pve:training:page:player'
+  ) {
+    const setup = trainingSetups.get(interaction.message.id)
+    if (!setup) {
+      await replyError(interaction, 'Настройка тренировки устарела. Открой /пве заново.')
+      return
+    }
+    setup.page = interaction.customId.endsWith('enemies') ? 'enemies' : 'player'
+    trainingSetups.set(interaction.message.id, setup)
+    await interaction.update({
+      embeds: [trainingSetupEmbed(user, setup)],
+      components: trainingSetupComponents(user, setup),
     })
     return
   }
@@ -6647,6 +6987,7 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
   }
   if (interaction.customId === 'pve:menu') {
     trainingSetups.delete(interaction.message.id)
+    bossRushRuns.delete(interaction.message.id)
     await interaction.update({
       embeds: [pvePanelEmbed()],
       components: pvePanelComponents(),
@@ -6668,12 +7009,29 @@ async function handlePveTrainingSelect(
   }
   const value = interaction.values[0]
   if (interaction.customId === 'pve:training:character') {
-    setup.botCharacter = value === 'random' ? undefined : value
+    const base = value === 'random' ? randomCharacter(Math.random) : characterByName(value)
+    if (base) {
+      setup.botCharacter = base.name
+      setup.botAbility = base.special.name
+    }
+  } else if (interaction.customId === 'pve:training:bot-ability') {
+    setup.botAbility = value
+  } else if (interaction.customId === 'pve:training:bot-partner') {
+    const base = value === 'random' ? randomCharacter(Math.random) : characterByName(value)
+    if (base) {
+      setup.botPartner = base.name
+      setup.botPartnerAbility = base.special.name
+    }
+  } else if (interaction.customId === 'pve:training:bot-partner-ability') {
+    setup.botPartnerAbility = value
   } else if (interaction.customId === 'pve:training:ability') {
     setup.playerAbility = value
   } else if (interaction.customId === 'pve:training:partner') {
-    setup.partner = value
-    setup.partnerAbility = undefined
+    const base = value === 'random' ? randomCharacter(Math.random) : characterByName(value)
+    if (base) {
+      setup.partner = base.name
+      setup.partnerAbility = base.special.name
+    }
   } else if (interaction.customId === 'pve:training:partner-ability') {
     setup.partnerAbility = value
   }
@@ -6829,6 +7187,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   }
   if (interaction.customId.startsWith('pve:')) {
     await handlePveButton(interaction)
+    return
+  }
+  if (interaction.customId.startsWith('bossrush:')) {
+    await handleBossRushButton(interaction)
     return
   }
   if (interaction.customId.startsWith('top:')) {

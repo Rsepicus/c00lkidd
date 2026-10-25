@@ -186,6 +186,12 @@ const EXACT: Record<string, string> = {
   '← Назад': '← Back',
   'Герой бота': 'Bot hero',
   'Способность героя': 'Hero ability',
+  'Бот 1': 'Bot 1',
+  'Бот 2': 'Bot 2',
+  'Способность бота 1': 'Bot 1 ability',
+  'Способность бота 2': 'Bot 2 ability',
+  'Бот →': 'Bot →',
+  '← Игрок': '← Player',
   'Формат: 1 на 1': 'Format: 1v1',
   'Формат: 2 на 2': 'Format: 2v2',
   'Тени: вкл': 'Shadows: on',
@@ -193,6 +199,12 @@ const EXACT: Record<string, string> = {
   'Противник: **тени игроков**': 'Opponent: **player shadows**',
   'Ещё бой': 'Battle again',
   'В меню PvE': 'PvE menu',
+  'Пять боссов подряд. Между этапами восстанавливается 25% HP.':
+    'Five bosses in a row. You restore 25% HP between stages.',
+  'Мастерство начисляется, PvP-статистика и квесты — нет.':
+    'Mastery is awarded; PvP stats and quests are not.',
+  'Следующий босс': 'Next boss',
+  'Ещё забег': 'Another run',
   'Бой с тенями окончен.': 'Shadow battle over.',
   'Бой с тенями 2 на 2 окончен.': '2v2 shadow battle over.',
   'Победа — мастерство начислено.': 'Victory — mastery awarded.',
@@ -426,10 +438,12 @@ const EXACT: Record<string, string> = {
   'Выживший': 'Survivor',
   'HEX-код цвета': 'HEX color code',
   'Пока нет боёв.': 'No battles yet.',
-  '**Босс** — недельный PvE-босс: solo, со своим напарником или в кооперативе с другим игроком.':
-    '**Boss** — weekly PvE boss: solo, with your partner or co-op with another player.',
-  '**Тренировка** — бой с ботом без наград и статистики; можно выбрать героя бота и формат.':
-    '**Training** — a battle against a bot with no rewards or stats; choose the bot character and format.',
+  '**Босс** — босс дня: solo, со своим напарником или в кооперативе с другим игроком.':
+    '**Boss** — boss of the day: solo, with your partner or co-op with another player.',
+  '**Тренировка** — бой с ботами без наград и статистики; можно выбрать героев и способности обеих сторон.':
+    '**Training** — a battle against bots with no rewards or stats; choose heroes and abilities for both sides.',
+  '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.':
+    '**Boss Rush** — five bosses in a row. After each win you restore 25% HP and the reward grows.',
   '**Выживание** — забег по волнам. Каждая волна сильнее: у врага +25 HP и +2 атаки. Между волнами восстанавливается 25% HP, награда копится за каждую пройденную волну. После поражения или кнопки «Забрать награду» забег заканчивается.':
     '**Survival** — a wave run. Each wave is stronger: the enemy gets +25 HP and +2 attack. Between waves you restore 25% HP, and the reward grows for every cleared wave. The run ends after a loss or when you press “Claim reward”.',
   'Выживание': 'Survival',
@@ -458,10 +472,13 @@ const EXACT: Record<string, string> = {
 const PATTERNS: Array<[RegExp, string]> = [
   [/^Твой герой: (.+) · \*\*(.+)\*\*$/, 'Your hero: $1 · **$2**'],
   [/^Напарник: (.+) · \*\*(.+)\*\*$/, 'Partner: $1 · **$2**'],
+  [/^Бот 1: (.+) · \*\*(.+)\*\*$/, 'Bot 1: $1 · **$2**'],
+  [/^Бот 2: (.+) · \*\*(.+)\*\*$/, 'Bot 2: $1 · **$2**'],
   [/^Герой бота: \*\*(.+)\*\*$/, 'Bot hero: **$1**'],
   [/^Противник: \*\*тени игроков\*\*$/, 'Opponent: **player shadows**'],
   [/^Формат: \*\*(.+)\*\*$/, 'Format: **$1**'],
   [/^Страница (\d+)\/(\d+) · всего (\d+)$/, 'Page $1/$2 · total $3'],
+  [/^Награды: (\d+) → (\d+) (.+)$/, 'Rewards: $1 → $2 $3'],
   [/^(.+) получает приоритет хода\.$/, '$1 gains turn priority.'],
   [/^(.+) действует ещё раз \(приоритет хода\)\.$/, '$1 acts again (turn priority).'],
   [/^(.+) получает иммунитет к стану на (\d+) хода?\.$/, '$1 gains stun immunity for $2 turns.'],
