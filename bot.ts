@@ -82,6 +82,8 @@ import {
   claimTrialResult,
   createTrialBattle,
   trialClaimKey,
+  trialProgress,
+  trialResultFromBattle,
   type Trial,
 } from './trials'
 import {
@@ -1923,6 +1925,12 @@ const TRIAL_OBJECTIVE_LABELS: Record<Trial['objective'], string> = {
   survive: 'Продержаться {n} ходов',
   special: 'Применить способность {n} раз',
   win_without_rest: 'Победить без отдыха',
+  heal: 'Восстановить {n} HP',
+  damage: 'Нанести {n} урона',
+  summon: 'Призвать {n} юнитов',
+  block: 'Заблокировать {n} атак',
+  stun: 'Оглушить {n} раз',
+  revive: 'Активировать вторую жизнь',
 }
 
 const TRIAL_OBJECTIVE_LABELS_EN: Record<Trial['objective'], string> = {
@@ -1930,6 +1938,12 @@ const TRIAL_OBJECTIVE_LABELS_EN: Record<Trial['objective'], string> = {
   survive: 'Survive {n} turns',
   special: 'Use the ability {n} times',
   win_without_rest: 'Win without resting',
+  heal: 'Restore {n} HP',
+  damage: 'Deal {n} damage',
+  summon: 'Summon {n} units',
+  block: 'Block {n} attacks',
+  stun: 'Stun {n} times',
+  revive: 'Trigger a second life',
 }
 
 function trialObjectiveText(trial: Trial): string {
@@ -1944,9 +1958,28 @@ function trialGoalLine(trial: Trial): string {
     : `Цель: ${trialObjectiveText(trial)}.`
 }
 
+function trialAbilityLine(trial: Trial): string {
+  if (!trial.specialName) {
+    return activeLanguage() === 'en'
+      ? 'Ability: Sentry or Dispenser from your loadout.'
+      : 'Способность: **Sentry** или **Dispenser** из твоего лоадаута.'
+  }
+  const icon = abilityEmojiText(trial.characterName, trial.specialName)
+  const label = icon ? `${icon} **${trial.specialName}**` : `**${trial.specialName}**`
+  return activeLanguage() === 'en'
+    ? `Ability: ${label}. It is fixed for the trial.`
+    : `Способность: ${label}. В испытании она фиксирована.`
+}
+
 export function availableTrials(user?: UserData): Trial[] {
   if (!user) return [...TRIALS]
   return TRIALS.filter(trial => (user.trialClaimed[trialClaimKey(trial)] ?? 0) === 0)
+}
+
+export function trialCharacterFor(trial: Trial, user: UserData): Character {
+  const base = characterByName(trial.characterName)
+  if (!base) throw new Error('Trial character is missing.')
+  return characterWithSpecial(base, trial.specialName ?? user.loadouts[base.name])
 }
 
 export function trialsPanelEmbed(selected?: Trial, user?: UserData): EmbedBuilder {
@@ -1955,6 +1988,7 @@ export function trialsPanelEmbed(selected?: Trial, user?: UserData): EmbedBuilde
   const lines = selected
     ? [
         `${characterLabel(selected.characterName)} · ${selected.mode}`,
+        trialAbilityLine(selected),
         trialGoalLine(selected),
         `Награда: **+${selected.bonusXp} XP**.`,
         'В 2 на 2 напарник — бот. Мастерство начисляется один раз за испытание.',
@@ -3156,8 +3190,10 @@ function sideCharacterLabel(side: Side): string {
 }
 
 function minionSummaryLines(minions: Side[]): string[] {
-  const rotten = minions.filter(side => !side.pizzaMinion)
+  const rotten = minions.filter(side => !side.pizzaMinion && !side.structure)
   const pizza = minions.filter(side => side.pizzaMinion)
+  const sentries = minions.filter(side => side.structure === 'sentry')
+  const dispensers = minions.filter(side => side.structure === 'dispenser')
   const hp = (group: Side[]) =>
     `**${group.reduce((sum, side) => sum + side.hp, 0)}/${group.reduce(
       (sum, side) => sum + side.maxHp,
@@ -3173,6 +3209,17 @@ function minionSummaryLines(minions: Side[]): string[] {
   if (pizza.length > 0) {
     lines.push(
       `${emojiText('pizzadelivery', '🍕')} Пицца-миньоны: **${pizza.length}** · HP ${hp(pizza)}`,
+    )
+  }
+  if (sentries.length > 0) {
+    lines.push(
+      `${emojiText('sentry', '🔫')} Турели: **${sentries.length}** · HP ${hp(sentries)} · ` +
+        `урон **${sentries.reduce((sum, side) => sum + side.character.attack, 0)}**`,
+    )
+  }
+  if (dispensers.length > 0) {
+    lines.push(
+      `${emojiText('dispenser', '💉')} Диспенсеры: **${dispensers.length}** · HP ${hp(dispensers)}`,
     )
   }
   return lines
@@ -3597,7 +3644,9 @@ export function targetComponents(
   const minionGroups = [
     {
       type: 'rotten',
-      targets: minionTargets.filter(index => !battle.sides[index]?.pizzaMinion),
+      targets: minionTargets.filter(
+        index => !battle.sides[index]?.pizzaMinion && !battle.sides[index]?.structure,
+      ),
       label: 'Миньоны',
       slug: 'rottenminion',
       fallback: '🧟',
@@ -3608,6 +3657,20 @@ export function targetComponents(
       label: 'Пицца-миньоны',
       slug: 'pizzadelivery',
       fallback: '🍕',
+    },
+    {
+      type: 'sentry',
+      targets: minionTargets.filter(index => battle.sides[index]?.structure === 'sentry'),
+      label: 'Турели',
+      slug: 'sentry',
+      fallback: '🔫',
+    },
+    {
+      type: 'dispenser',
+      targets: minionTargets.filter(index => battle.sides[index]?.structure === 'dispenser'),
+      label: 'Диспенсеры',
+      slug: 'dispenser',
+      fallback: '💉',
     },
   ]
   for (const group of minionGroups) {
@@ -3868,11 +3931,13 @@ function runAutomatedTurns(input: Battle, events: string[]): Battle {
     const side = current.sides[current.turn]
     const decision: BotDecision = side.fake
       ? { action: 'attack', specialIndex: 0 }
-      : side.boss
-        ? chooseBossAction(current, Math.random)
-        : side.minion
-          ? { action: 'attack', specialIndex: 0 }
-          : chooseBotTurn(current, Math.random)
+      : side.structure === 'dispenser'
+        ? { action: 'special', specialIndex: 0 }
+        : side.boss
+          ? chooseBossAction(current, Math.random)
+          : side.minion
+            ? { action: 'attack', specialIndex: 0 }
+            : chooseBotTurn(current, Math.random)
     const result = takeTurn(
       current,
       decision.action,
@@ -4522,12 +4587,7 @@ function finishBattleState(
     const playerSide = battle.sides.find(
       side => side.userId === ownerId && side.team === 0 && !side.fake && !side.minion,
     )
-    const trialResult = {
-      won: battle.winner === 0,
-      turns: playerSide?.turns ?? 0,
-      abilityUses: playerSide?.abilityUses ?? 0,
-      rests: playerSide?.rests ?? 0,
-    }
+    const trialResult = trialResultFromBattle(battle, ownerId)
     const cleared = trialDef ? checkTrialResult(trialDef, trialResult) : false
     let user = userOf(ownerId)
     const claim = trialDef ? claimTrialResult(user, trialDef, cleared) : undefined
@@ -4542,7 +4602,8 @@ function finishBattleState(
       notePrefix,
       `Испытание · **${label}**: ${cleared ? 'цель выполнена' : 'цель не выполнена'}.`,
       trialDef
-        ? `${trialGoalLine(trialDef).replace(/\.$/, '')} (${trialResult.turns} ходов).`
+        ? `${trialGoalLine(trialDef).replace(/\.$/, '')} ` +
+          `(${trialProgress(trialDef, trialResult)}/${trialDef.target}).`
         : '',
       claim?.claimed
         ? `Награда: **+${claim.xpGained} XP**` +
@@ -6549,7 +6610,9 @@ async function handleTargetButton(interaction: ButtonInteraction): Promise<void>
       const side = battle.sides[index]
       if (!side?.minion || side.hp <= 0) return false
       if (type === 'pizza') return side.pizzaMinion === true
-      if (type === 'rotten') return !side.pizzaMinion
+      if (type === 'sentry') return side.structure === 'sentry'
+      if (type === 'dispenser') return side.structure === 'dispenser'
+      if (type === 'rotten') return !side.pizzaMinion && !side.structure
       return true
     })
     if (minionIndex === undefined) {
@@ -7373,7 +7436,7 @@ async function launchTrialBattle(
     return
   }
   await interaction.deferUpdate()
-  const character = characterWithSpecial(base, user.loadouts[base.name])
+  const character = trialCharacterFor(trial, user)
   const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0
   const battle = trialBattle(ownerId, interaction.user.displayName, trial, character, seed)
   trialRuns.set(messageId, { ownerId, trialId: trial.id })

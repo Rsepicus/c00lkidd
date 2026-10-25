@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { CHARACTERS, characterByName } from './forsaken'
+import { availableSpecials, CHARACTERS, characterByName } from './forsaken'
 import { MASTERY_MAX_XP, MASTERY_WIN_XP } from './progress'
 import { defaultUser, type UserData } from './store'
 import {
@@ -7,7 +7,9 @@ import {
   claimTrialResult,
   createTrialBattle,
   TRIALS,
+  trialClaimKey,
   trialForCharacter,
+  trialResultFromBattle,
   trialReward,
   type Trial,
   type TrialObjective,
@@ -19,6 +21,12 @@ const OBJECTIVES: readonly TrialObjective[] = [
   'survive',
   'special',
   'win_without_rest',
+  'heal',
+  'damage',
+  'summon',
+  'block',
+  'stun',
+  'revive',
 ]
 
 function characterFor(trial: Trial) {
@@ -37,6 +45,18 @@ function resultFor(trial: Trial): TrialResult {
       return { won: false, turns: 1, abilityUses: trial.target, rests: 0 }
     case 'win_without_rest':
       return { won: true, turns: 1, abilityUses: 0, rests: 0 }
+    case 'heal':
+      return { won: false, turns: 1, abilityUses: 0, rests: 0, healingDone: trial.target }
+    case 'damage':
+      return { won: false, turns: 1, abilityUses: 0, rests: 0, damageDealt: trial.target }
+    case 'summon':
+      return { won: false, turns: 1, abilityUses: 0, rests: 0, summoned: trial.target }
+    case 'block':
+      return { won: false, turns: 1, abilityUses: 0, rests: 0, blocks: trial.target }
+    case 'stun':
+      return { won: false, turns: 1, abilityUses: 0, rests: 0, stuns: trial.target }
+    case 'revive':
+      return { won: false, turns: 1, abilityUses: 0, rests: 0, revives: trial.target }
   }
 }
 
@@ -50,6 +70,18 @@ function failingResultFor(trial: Trial): TrialResult {
       return { won: true, turns: 99, abilityUses: trial.target - 1, rests: 0 }
     case 'win_without_rest':
       return { won: true, turns: 99, abilityUses: 99, rests: 1 }
+    case 'heal':
+      return { won: true, turns: 99, abilityUses: 99, rests: 0, healingDone: trial.target - 1 }
+    case 'damage':
+      return { won: true, turns: 99, abilityUses: 99, rests: 0, damageDealt: trial.target - 1 }
+    case 'summon':
+      return { won: true, turns: 99, abilityUses: 99, rests: 0, summoned: trial.target - 1 }
+    case 'block':
+      return { won: true, turns: 99, abilityUses: 99, rests: 0, blocks: trial.target - 1 }
+    case 'stun':
+      return { won: true, turns: 99, abilityUses: 99, rests: 0, stuns: trial.target - 1 }
+    case 'revive':
+      return { won: true, turns: 99, abilityUses: 99, rests: 0, revives: trial.target - 1 }
   }
 }
 
@@ -122,8 +154,12 @@ describe('trial roster', () => {
     expect(names).toEqual(new Set(CHARACTERS.map(character => character.name)))
   })
 
-  test('covers all four objective kinds and both battle modes', () => {
-    expect(new Set(TRIALS.map(trial => trial.objective))).toEqual(new Set(OBJECTIVES))
+  test('uses the kit objective kinds and both battle modes', () => {
+    const used = new Set(TRIALS.map(trial => trial.objective))
+    expect([...used].every(objective => OBJECTIVES.includes(objective))).toBe(true)
+    expect(used.size).toBeGreaterThanOrEqual(8)
+    expect(used).toContain('heal')
+    expect(used).toContain('summon')
     expect(new Set(TRIALS.map(trial => trial.mode))).toEqual(new Set(['1x1', '2x2']))
   })
 
@@ -209,6 +245,67 @@ describe('trial objectives', () => {
     expect(checkTrialResult(trial, { won: true, turns: 9, abilityUses: 2, rests: 1 })).toBe(false)
     expect(checkTrialResult(trial, { won: true, turns: 9, abilityUses: 2, rests: 0 })).toBe(true)
   })
+
+  test('kit objectives read the new counters', () => {
+    const trial = (objective: TrialObjective): Trial => ({
+      id: `test-${objective}`,
+      characterName: 'Noob',
+      mode: '2x2',
+      objective,
+      target: 2,
+      bonusXp: 10,
+    })
+    const base = { won: false, turns: 1, abilityUses: 0, rests: 0 }
+    expect(checkTrialResult(trial('heal'), { ...base, healingDone: 2 })).toBe(true)
+    expect(checkTrialResult(trial('heal'), { ...base, healingDone: 1 })).toBe(false)
+    expect(checkTrialResult(trial('damage'), { ...base, damageDealt: 2 })).toBe(true)
+    expect(checkTrialResult(trial('summon'), { ...base, summoned: 2 })).toBe(true)
+    expect(checkTrialResult(trial('block'), { ...base, blocks: 2 })).toBe(true)
+    expect(checkTrialResult(trial('stun'), { ...base, stuns: 2 })).toBe(true)
+    expect(checkTrialResult(trial('revive'), { ...base, revives: 2 })).toBe(true)
+    expect(checkTrialResult(trial('revive'), base)).toBe(false)
+  })
+
+  test('every trial signature ability exists on its character', () => {
+    for (const trial of TRIALS) {
+      if (!trial.specialName) continue
+      const character = characterByName(trial.characterName)
+      if (!character) throw new Error(`Missing character: ${trial.characterName}`)
+      const names = availableSpecials(character).map(special => special.name)
+      expect(names).toContain(trial.specialName)
+    }
+  })
+
+  test('trialResultFromBattle copies the player side counters', () => {
+    const trial = TRIALS.find(candidate => candidate.id === 'jason')!
+    const battle = createTrialBattle(
+      trial,
+      characterByName('Jason')!,
+      7,
+    )
+    const side = battle.sides.find(candidate => candidate.userId === 'trial:player')!
+    side.userId = 'owner'
+    side.turns = 3
+    side.abilityUses = 2
+    side.damageDealt = 50
+    side.healingDone = 12
+    side.minionsSummoned = 4
+    side.blocks = 1
+    side.stuns = 1
+    side.revives = 1
+    battle.winner = 0
+    expect(trialResultFromBattle(battle, 'owner')).toMatchObject({
+      won: true,
+      turns: 3,
+      abilityUses: 2,
+      damageDealt: 50,
+      healingDone: 12,
+      summoned: 4,
+      blocks: 1,
+      stuns: 1,
+      revives: 1,
+    })
+  })
 })
 
 describe('trial battles', () => {
@@ -293,7 +390,7 @@ describe('claiming trial results', () => {
     expect(result.xpGained).toBe(result.user.characterStats.Jason.xp - beforeXp)
     expect(result.user.trialClaimed).toEqual({
       ...user.trialClaimed,
-      [`pve:${trial.id}`]: 1,
+      [trialClaimKey(trial)]: 1,
     })
     expect(result.user.trialClaimed.Jason).toBe(2)
     expect(result.user.trialClaimed['pve:already-claimed']).toBe(1)
@@ -343,7 +440,7 @@ describe('claiming trial results', () => {
     const noobClaim = claimTrialResult(jasonClaim.user, noob, true)
 
     expect(noobClaim.claimed).toBe(true)
-    expect(noobClaim.user.trialClaimed[`pve:${jason.id}`]).toBe(1)
-    expect(noobClaim.user.trialClaimed[`pve:${noob.id}`]).toBe(1)
+    expect(noobClaim.user.trialClaimed[trialClaimKey(jason)]).toBe(1)
+    expect(noobClaim.user.trialClaimed[trialClaimKey(noob)]).toBe(1)
   })
 })

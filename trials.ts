@@ -15,7 +15,17 @@ import type { UserData } from './store'
 
 export type TrialMode = '1x1' | '2x2'
 
-export type TrialObjective = 'win' | 'survive' | 'special' | 'win_without_rest'
+export type TrialObjective =
+  | 'win'
+  | 'survive'
+  | 'special'
+  | 'win_without_rest'
+  | 'heal'
+  | 'damage'
+  | 'summon'
+  | 'block'
+  | 'stun'
+  | 'revive'
 
 export type Trial = {
   id: string
@@ -24,6 +34,8 @@ export type Trial = {
   objective: TrialObjective
   target: number
   bonusXp: number
+  /** Ability the trial is built around; omitted to use the player's loadout. */
+  specialName?: string
 }
 
 export type TrialResult = {
@@ -31,6 +43,12 @@ export type TrialResult = {
   turns: number
   abilityUses: number
   rests: number
+  damageDealt?: number
+  healingDone?: number
+  summoned?: number
+  blocks?: number
+  stuns?: number
+  revives?: number
 }
 
 export type TrialClaimResult = {
@@ -52,17 +70,19 @@ export const TRIALS: readonly Trial[] = [
     id: 'jason',
     characterName: 'Jason',
     mode: '1x1',
-    objective: 'win_without_rest',
-    target: 1,
+    objective: 'damage',
+    target: 60,
     bonusXp: 40,
+    specialName: 'Gashing Wound',
   },
   {
     id: 'c00lkidd',
     characterName: 'c00lkidd',
     mode: '1x1',
-    objective: 'special',
-    target: 3,
+    objective: 'summon',
+    target: 4,
     bonusXp: 50,
+    specialName: 'Pizza Delivery',
   },
   {
     id: 'john-doe',
@@ -71,6 +91,7 @@ export const TRIALS: readonly Trial[] = [
     objective: 'survive',
     target: 8,
     bonusXp: 40,
+    specialName: 'Digital Footprint',
   },
   {
     id: 'noli',
@@ -79,14 +100,16 @@ export const TRIALS: readonly Trial[] = [
     objective: 'win',
     target: 1,
     bonusXp: 50,
+    specialName: 'Observant',
   },
   {
     id: '1x1x1x1',
     characterName: '1x1x1x1',
-    mode: '1x1',
-    objective: 'special',
-    target: 2,
+    mode: '2x2',
+    objective: 'summon',
+    target: 1,
     bonusXp: 70,
+    specialName: 'Rejuvenate the Rotten',
   },
   {
     id: 'guest-666',
@@ -95,6 +118,7 @@ export const TRIALS: readonly Trial[] = [
     objective: 'special',
     target: 3,
     bonusXp: 60,
+    specialName: 'Infernal Cry',
   },
   {
     id: 'nosferatu',
@@ -103,6 +127,7 @@ export const TRIALS: readonly Trial[] = [
     objective: 'survive',
     target: 10,
     bonusXp: 60,
+    specialName: 'Ascension',
   },
   {
     id: 'azure',
@@ -111,30 +136,34 @@ export const TRIALS: readonly Trial[] = [
     objective: 'special',
     target: 3,
     bonusXp: 60,
+    specialName: 'Seeker Bulb',
   },
   {
     id: 'noob',
     characterName: 'Noob',
     mode: '2x2',
-    objective: 'survive',
-    target: 8,
+    objective: 'heal',
+    target: 40,
     bonusXp: 40,
+    specialName: 'Slateskin Potion',
   },
   {
     id: 'shedletsky',
     characterName: 'Shedletsky',
     mode: '2x2',
-    objective: 'special',
-    target: 3,
+    objective: 'heal',
+    target: 60,
     bonusXp: 50,
+    specialName: 'Fried Chicken',
   },
   {
     id: 'elliot',
     characterName: 'Elliot',
     mode: '2x2',
-    objective: 'win_without_rest',
-    target: 1,
+    objective: 'heal',
+    target: 60,
     bonusXp: 50,
+    specialName: 'Pizza Throw',
   },
   {
     id: '007n7',
@@ -143,29 +172,32 @@ export const TRIALS: readonly Trial[] = [
     objective: 'survive',
     target: 10,
     bonusXp: 50,
+    specialName: 'Clone',
   },
   {
     id: 'guest-1337',
     characterName: 'Guest 1337',
     mode: '2x2',
-    objective: 'win_without_rest',
-    target: 1,
+    objective: 'block',
+    target: 2,
     bonusXp: 60,
+    specialName: 'Block',
   },
   {
     id: 'two-time',
     characterName: 'Two Time',
     mode: '2x2',
-    objective: 'survive',
-    target: 12,
+    objective: 'revive',
+    target: 1,
     bonusXp: 70,
+    specialName: 'Oblation',
   },
   {
     id: 'builderman',
     characterName: 'Builderman',
     mode: '2x2',
-    objective: 'special',
-    target: 3,
+    objective: 'summon',
+    target: 2,
     bonusXp: 50,
   },
   {
@@ -175,14 +207,16 @@ export const TRIALS: readonly Trial[] = [
     objective: 'special',
     target: 2,
     bonusXp: 50,
+    specialName: 'Spawn Protection',
   },
   {
     id: 'taph',
     characterName: 'Taph',
     mode: '2x2',
-    objective: 'special',
-    target: 3,
+    objective: 'stun',
+    target: 2,
     bonusXp: 50,
+    specialName: 'Subspace Tripmine',
   },
   {
     id: 'chance',
@@ -191,6 +225,7 @@ export const TRIALS: readonly Trial[] = [
     objective: 'win',
     target: 1,
     bonusXp: 50,
+    specialName: 'Coin Flip',
   },
   {
     id: 'veeronica',
@@ -199,6 +234,7 @@ export const TRIALS: readonly Trial[] = [
     objective: 'special',
     target: 3,
     bonusXp: 60,
+    specialName: 'Activate Battery',
   },
   {
     id: 'jane-doe',
@@ -207,6 +243,7 @@ export const TRIALS: readonly Trial[] = [
     objective: 'special',
     target: 3,
     bonusXp: 60,
+    specialName: 'Crystal Pitch',
   },
   {
     id: 'helperbot',
@@ -215,6 +252,7 @@ export const TRIALS: readonly Trial[] = [
     objective: 'special',
     target: 4,
     bonusXp: 60,
+    specialName: 'Pulse',
   },
 ]
 
@@ -223,19 +261,63 @@ export function trialForCharacter(name: string): Trial | undefined {
 }
 
 export function trialClaimKey(trial: Trial): string {
-  return `${TRIAL_CLAIM_PREFIX}${trial.id}`
+  // The objective is part of the key so reworked trials become playable again
+  // without erasing the rewards players already earned.
+  return `${TRIAL_CLAIM_PREFIX}${trial.id}:${trial.objective}:${trial.target}:${
+    trial.specialName ?? 'loadout'
+  }`
+}
+
+/** Current progress of the trial's objective for the result screen. */
+export function trialProgress(trial: Trial, result: TrialResult): number {
+  switch (trial.objective) {
+    case 'win':
+      return result.won ? 1 : 0
+    case 'survive':
+      return result.turns
+    case 'special':
+      return result.abilityUses
+    case 'win_without_rest':
+      return result.won && result.rests === 0 ? 1 : 0
+    case 'heal':
+      return result.healingDone ?? 0
+    case 'damage':
+      return result.damageDealt ?? 0
+    case 'summon':
+      return result.summoned ?? 0
+    case 'block':
+      return result.blocks ?? 0
+    case 'stun':
+      return result.stuns ?? 0
+    case 'revive':
+      return result.revives ?? 0
+  }
 }
 
 export function checkTrialResult(trial: Trial, result: TrialResult): boolean {
-  switch (trial.objective) {
-    case 'win':
-      return result.won
-    case 'survive':
-      return result.turns >= trial.target
-    case 'special':
-      return result.abilityUses >= trial.target
-    case 'win_without_rest':
-      return result.won && result.rests === 0
+  return trialProgress(trial, result) >= trial.target
+}
+
+/** Reads the trial metrics of the human side that played the trial. */
+export function trialResultFromBattle(battle: Battle, ownerId: string): TrialResult {
+  const side = battle.sides.find(
+    candidate =>
+      candidate.userId === ownerId &&
+      candidate.team === 0 &&
+      !candidate.fake &&
+      !candidate.minion,
+  )
+  return {
+    won: battle.winner === 0,
+    turns: side?.turns ?? 0,
+    abilityUses: side?.abilityUses ?? 0,
+    rests: side?.rests ?? 0,
+    damageDealt: side?.damageDealt ?? 0,
+    healingDone: side?.healingDone ?? 0,
+    summoned: side?.minionsSummoned ?? 0,
+    blocks: side?.blocks ?? 0,
+    stuns: side?.stuns ?? 0,
+    revives: side?.revives ?? 0,
   }
 }
 

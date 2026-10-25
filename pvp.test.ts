@@ -193,35 +193,75 @@ describe('2 на 2', () => {
     expect(haste.sides[2].effects.haste).toBe(2)
   })
 
-  test('Dispenser heals the ally and slows Builderman', () => {
+  test('Sentry places a turret that attacks on its own turn', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    let battle = createTeamBattle(team(builderman, heavy), opponents())
+
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const turret = battle.sides.find(side => side.structure === 'sentry')
+    expect(turret).toBeDefined()
+    expect(turret!.hp).toBe(25)
+    expect(turret!.minion).toBe(true)
+    expect(battle.sides[1].dotTurns).toBe(0)
+    expect(battle.sides[0].minionsSummoned).toBe(1)
+
+    battle.turn = turret!.id
+    const before = battle.sides[1].hp
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.sides[1].hp).toBeLessThan(before)
+  })
+
+  test('Dispenser places a structure that heals allies on its turn', () => {
     const builderman = characterWithSpecial(characterByName('Builderman')!, 'Dispenser')
     let battle = createTeamBattle(team(builderman, heavy), opponents())
     battle.sides[0].hp = 50
     battle.sides[2].hp = 50
 
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].effects.regeneration).toBe(2)
-    expect(battle.sides[2].effects.regeneration).toBe(2)
-    expect(jukeBonusOf(battle.sides[0])).toBeCloseTo(-0.1)
+    const dispenser = battle.sides.find(side => side.structure === 'dispenser')
+    expect(dispenser).toBeDefined()
+    expect(dispenser!.hp).toBe(25)
+    expect(battle.sides[0].effects.regeneration).toBeUndefined()
+    expect(battle.sides[0].minionsSummoned).toBe(1)
 
-    battle = takeTurn(battle, 'rest', () => 0).battle
-    const allyTurn = takeTurn(battle, 'rest', () => 0).battle
-    expect(allyTurn.sides[2].hp).toBe(70)
-    expect(allyTurn.sides[2].effects.regeneration).toBe(2)
+    battle.turn = dispenser!.id
+    battle = takeTurn(battle, 'special', () => 0).battle
+    expect(battle.sides[0].hp).toBe(60)
+    expect(battle.sides[2].hp).toBe(60)
   })
 
-  test('Dispenser in solo heals only Builderman', () => {
-    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Dispenser')
+  test('structures collapse when Builderman dies', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    let battle = createTeamBattle(team(builderman, heavy), opponents())
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const turret = battle.sides.find(side => side.structure === 'sentry')!
+
+    battle.sides[0].hp = 1
+    battle.turn = 1
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.sides[0].hp).toBe(0)
+    expect(battle.sides.find(side => side.id === turret.id)?.hp ?? 0).toBe(0)
+  })
+
+  test('Sentry does not ask for an enemy target', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    const battle = createBattle(
+      { userId: 'a', name: 'A', character: builderman },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    expect(specialNeedsEnemyTarget(battle.sides[0])).toBe(false)
+  })
+
+  test('Sentry in solo still places a structure', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
     let battle = createBattle(
       { userId: 'a', name: 'A', character: builderman },
       { userId: 'b', name: 'B', character: heavy },
     )
-    battle.sides[0].hp = 50
 
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].effects.regeneration).toBe(2)
-    expect(battle.sides[1].effects.regeneration).toBeUndefined()
-    expect(jukeBonusOf(battle.sides[0])).toBeCloseTo(-0.1)
+    expect(battle.sides.some(side => side.structure === 'sentry')).toBe(true)
+    expect(battle.sides[1].dotTurns).toBe(0)
   })
 
   test('a team keeps fighting after one fighter goes down', () => {
@@ -417,6 +457,7 @@ describe('Guest 1337 block', () => {
     expect(battle.sides[0].hp).toBe(115)
     expect(battle.sides[0].blocking).toBe(false)
     expect(battle.sides[0].counterReady).toBe(true)
+    expect(battle.sides[0].blocks).toBe(1)
 
     const result = takeTurn(battle, 'attack', () => 0)
     expect(result.battle.sides[1].hp).toBe(82)
@@ -1181,6 +1222,7 @@ describe('special states', () => {
     expect(revived.battle.sides[0].hp).toBe(50)
     expect(revived.finished).toBe(false)
     expect(specialLabel(revived.battle.sides[0])).toBe('Oblation (потрачена)')
+    expect(revived.battle.sides[0].revives).toBe(1)
 
     const afterExtraTurn = takeTurn(revived.battle, 'rest', () => 0)
     afterExtraTurn.battle.sides[0].hp = 5
@@ -1278,6 +1320,7 @@ describe('takeTurn', () => {
     expect(result.battle.sides[0].hp).toBe(100)
     expect(result.battle.turn).toBe(0)
     expect(result.events.join(' ')).toContain('пропускает')
+    expect(result.battle.sides[0].stuns).toBe(1)
   })
 
   test('poison special damages the opponent at the start of their turn', () => {
@@ -1437,11 +1480,10 @@ describe('takeTurn', () => {
     expect(result.sides[1].hp).toBe(50)
   })
 
-  test('turret and mines use their own damage wording', () => {
+  test('Sentry places a turret and mines use their own damage wording', () => {
     let turretBattle = battleWith(turret, heavy)
     turretBattle = takeTurn(turretBattle, 'special', () => 0).battle
-    const turretTick = takeTurn(turretBattle, 'attack', () => 0)
-    expect(turretTick.events.join(' ')).toContain('турели')
+    expect(turretBattle.sides.some(side => side.structure === 'sentry')).toBe(true)
 
     let trapBattle = battleWith(trap, heavy)
     trapBattle = takeTurn(trapBattle, 'special', () => 0).battle
@@ -1716,6 +1758,7 @@ describe('character passives and new survivors', () => {
     expect(result.battle.sides[1].hp).toBe(100)
     expect(result.battle.sides[1].dotTurns).toBe(0)
     expect(result.battle.sides[0].cooldown).toBe(3)
+    expect(result.battle.sides[0].minionsSummoned).toBe(2)
     expect(result.events.join(' ')).toContain('двух пицца-миньонов')
   })
 

@@ -94,7 +94,6 @@ function immediateDamage(special: Special, side: Side): number {
     case 'turret':
     case 'trap':
       if (special.name === 'Mass Infection') return 4
-      if (special.name === 'Sentry') return 5
       return 0
     case 'bleed':
       return special.name === 'Tripwire' ? 4 : 0
@@ -166,8 +165,26 @@ function scoreSpecial(battle: Battle, side: Side, index = 0): number {
       if (urgency < 0) return 0
       return 62 + urgency
     }
-    case 'regeneration':
+    case 'turret': {
+      if (special.name !== 'Sentry') break
+      const turrets = battle.sides.filter(
+        candidate =>
+          candidate.team === side.team && candidate.structure === 'sentry' && candidate.hp > 0,
+      ).length
+      return turrets >= 2 ? 35 : 65
+    }
     case 'dispenser': {
+      const dispensers = battle.sides.filter(
+        candidate =>
+          candidate.team === side.team &&
+          candidate.structure === 'dispenser' &&
+          candidate.hp > 0,
+      ).length
+      // The dispenser is a permanent healer now, so it is worth placing early.
+      if (dispensers >= 2) return 35
+      return 65
+    }
+    case 'regeneration': {
       if (urgency < 0) return 0
       return 58 + urgency
     }

@@ -104,6 +104,11 @@ export type Side = {
   abilityUses: number
   turns?: number
   rests?: number
+  blocks?: number
+  stuns?: number
+  revives?: number
+  minionsSummoned?: number
+  structure?: 'sentry' | 'dispenser'
   blocking: boolean
   blockTargetId: number | null
   purified: boolean
@@ -274,12 +279,13 @@ function grantExtraTurn(side: Side, events: string[]): void {
   events.push(`${side.name} получает приоритет хода.`)
 }
 
-function tryStun(target: Side, events: string[]): boolean {
+function tryStun(target: Side, events: string[], source?: Side): boolean {
   if (hasStatus(target, 'stunImmune')) {
     events.push(`${target.name} игнорирует оглушение (иммунитет).`)
     return false
   }
   target.stunned = true
+  if (source) source.stuns = (source.stuns ?? 0) + 1
   return true
 }
 
@@ -499,7 +505,10 @@ const TARGETED_SPECIAL_KINDS: ReadonlySet<SpecialKind> = new Set([
 ])
 
 export function specialNeedsEnemyTarget(side: Side, index = 0): boolean {
-  return TARGETED_SPECIAL_KINDS.has(specialOf(side, index).kind)
+  const special = specialOf(side, index)
+  // Builderman's Sentry builds a turret; the old target pick is meaningless.
+  if (special.name === 'Sentry' && side.character.name === 'Builderman') return false
+  return TARGETED_SPECIAL_KINDS.has(special.kind)
 }
 
 export function specialNeedsAllyTarget(side: Side, index = 0): boolean {
@@ -576,6 +585,7 @@ function maybeRevive(side: Side, events: string[]): void {
     side.tempHpTurns = 0
     side.oblationArmed = false
     side.oblationSpent = true
+    side.revives = (side.revives ?? 0) + 1
     if (side.character.name === 'Two Time') {
       side.jukeMods = side.jukeMods.filter(mod => mod.source !== 'Однажды ещё раз')
       side.jukeMods.push({ source: 'Однажды ещё раз', amount: 0.2, turns: 2 })
@@ -648,6 +658,7 @@ function dealDamage(
     blocker.blocking = false
     blocker.blockTargetId = null
     blocker.counterReady = true
+    blocker.blocks = (blocker.blocks ?? 0) + 1
     const gained = grantTemporaryHp(blocker, 5, 2)
     events.push(`Block: ${blocker.name} +${gained} временных HP.`)
     damage = 0
@@ -783,6 +794,7 @@ export function addRottenMinion(
   minion.minionOwnerId = owner.userId
   minion.minionOwnerSideId = owner.id
   minion.rottenCorpses = []
+  owner.minionsSummoned = (owner.minionsSummoned ?? 0) + 1
   battle.sides.push(minion)
   return minion
 }
@@ -825,6 +837,7 @@ function addPizzaMinion(battle: Battle, owner: Side): Side {
   minion.minionOwnerId = owner.userId
   minion.minionOwnerSideId = owner.id
   minion.rottenCorpses = []
+  owner.minionsSummoned = (owner.minionsSummoned ?? 0) + 1
   battle.sides.push(minion)
   return minion
 }
@@ -832,6 +845,61 @@ function addPizzaMinion(battle: Battle, owner: Side): Side {
 function pickPizzaTarget(enemies: Side[]): Side {
   const realEnemies = enemies.filter(enemy => !enemy.minion && !enemy.fake)
   return pickTarget(realEnemies.length > 0 ? realEnemies : enemies)
+}
+
+function structureCharacter(kind: 'sentry' | 'dispenser'): Character {
+  if (kind === 'sentry') {
+    return {
+      name: 'Sentry',
+      role: 'survivor',
+      class: 'Minion',
+      ability: 'Турель: 6 урона в свой ход.',
+      power: 0,
+      price: 0,
+      hp: 25,
+      attack: 6,
+      special: { name: 'Sentry', kind: 'heavy', power: 6, cooldown: 0, description: '' },
+    }
+  }
+  return {
+    name: 'Dispenser',
+    role: 'survivor',
+    class: 'Minion',
+    ability: 'Диспенсер: лечит союзников на 10 HP в свой ход.',
+    power: 0,
+    price: 0,
+    hp: 25,
+    attack: 0,
+    special: { name: 'Dispenser', kind: 'dispenser', power: 10, cooldown: 0, description: '' },
+  }
+}
+
+/** Builderman's Sentry/Dispenser: a killable unit that acts on its own turn. */
+export function addStructure(
+  battle: Battle,
+  owner: Side,
+  kind: 'sentry' | 'dispenser',
+): Side {
+  const character = structureCharacter(kind)
+  const minion = makeSide(
+    {
+      userId: `structure:${owner.userId}:${battle.clock}:${battle.sides.length}`,
+      name: kind === 'sentry' ? 'Sentry' : 'Dispenser',
+      character,
+    },
+    owner.team,
+  )
+  minion.id = battle.sides.length
+  minion.hp = character.hp
+  minion.maxHp = character.hp
+  minion.lastActed = battle.clock
+  minion.minion = true
+  minion.structure = kind
+  minion.minionOwnerId = owner.userId
+  minion.minionOwnerSideId = owner.id
+  owner.minionsSummoned = (owner.minionsSummoned ?? 0) + 1
+  battle.sides.push(minion)
+  return minion
 }
 
 function pizzaDeliveryMisses(
@@ -1112,7 +1180,7 @@ function applySpecial(
         addStatus(other, 'weakness', 2)
         events.push(`${other.name} получает Weakness на 2 хода.`)
       }
-      if (tryStun(other, events)) {
+      if (tryStun(other, events, side)) {
         events.push(`${side.name} применяет «${special.name}»: ${other.name} пропустит ход.`)
       } else {
         events.push(`${side.name} применяет «${special.name}».`)
@@ -1123,13 +1191,17 @@ function applySpecial(
     case 'burn':
     case 'turret':
     case 'trap':
+      if (special.name === 'Sentry') {
+        addStructure(battle, side, 'sentry')
+        events.push(
+          `${side.name} ставит турель: 25 HP, 6 урона в свой ход.`,
+        )
+        applyJuke = false
+        break
+      }
       if (special.name === 'Mass Infection') {
         events.push(`${side.name} применяет «${special.name}».`)
         dealDamage(side, other, 4, events, rng, battle)
-      }
-      if (special.name === 'Sentry') {
-        events.push(`${side.name} применяет «${special.name}».`)
-        dealDamage(side, other, 5, events, rng, battle)
       }
       other.dotDamage = special.power
       other.dotTurns = 2
@@ -1411,12 +1483,18 @@ function applySpecial(
       break
     }
     case 'dispenser':
-      for (const ally of allies) addSupportStatus(side, ally, 'regeneration')
-      events.push(
-        `${side.name} ставит диспенсер: ${
-          allies.length > 1 ? 'оба союзника' : side.name
-        } лечатся 10 HP в начале хода два хода.`,
-      )
+      if (side.structure === 'dispenser') {
+        const targets = allies.filter(ally => !ally.minion)
+        const heals = targets.map(
+          ally => `${ally.name}: +${healSide(side, ally, special.power)}`,
+        )
+        events.push(`${side.name} раздаёт лечение — ${heals.join(', ')} HP.`)
+        applyJuke = false
+        break
+      }
+      addStructure(battle, side, 'dispenser')
+      events.push(`${side.name} ставит диспенсер: 25 HP, 10 лечения в свой ход.`)
+      applyJuke = false
       break
     case 'pulse':
       for (const ally of allies) {
@@ -1465,7 +1543,7 @@ function applySpecial(
           effect = `${other.name} отравлен`
           break
         case 'Ice Dagger':
-          if (tryStun(other, events)) effect = `${other.name} заморожен и пропустит ход`
+          if (tryStun(other, events, side)) effect = `${other.name} заморожен и пропустит ход`
           else effect = `${other.name} игнорирует заморозку`
           break
         case 'Darkheart':
@@ -1506,7 +1584,7 @@ function applySpecial(
       }
       break
     case 'stigmatize': {
-      const stunned = tryStun(other, events)
+      const stunned = tryStun(other, events, side)
       applyAtropa(other, special.power, events)
       events.push(
         `${side.name} применяет «${special.name}»: ${
@@ -1970,7 +2048,7 @@ export function takeTurn(
       if (dealt > 0 && hatchetStacks > 0) {
         target.resonance = 0
         target.resonanceTurns = 0
-        if (hatchetStacks >= 3) tryStun(target, events)
+        if (hatchetStacks >= 3) tryStun(target, events, side)
         restoreShatterpoint(side, 8)
         events.push(`Hatchet: ${hatchetStacks} Resonance, +${hatchetStacks * 4} урона.`)
       }

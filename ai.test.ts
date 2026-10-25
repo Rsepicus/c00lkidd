@@ -161,6 +161,18 @@ describe('chooseBotAction', () => {
     expect(chooseBotAction(battle, () => 0.9)).toBe('attack')
   })
 
+  test('places Sentry and Dispenser even at full HP', () => {
+    const specials = [
+      { name: 'Sentry', kind: 'turret' as const, power: 6, description: '' },
+      { name: 'Dispenser', kind: 'dispenser' as const, power: 0, description: '' },
+    ]
+    for (const special of specials) {
+      const battle = battleWith({ special })
+      battle.turn = 1
+      expect(chooseBotAction(battle, () => 0.5)).toBe('special')
+    }
+  })
+
   test('uses Activate Battery only when hurt', () => {
     const battle = battleWith({
       special: { name: 'Activate Battery', kind: 'battery', power: 20, description: '' },

@@ -53,7 +53,7 @@ import {
   trialsPanelComponents,
   trialsPanelEmbed,
 } from './bot'
-import { TRIALS } from './trials'
+import { TRIALS, trialClaimKey } from './trials'
 import {
   availableSpecials,
   CHARACTERS,
@@ -220,7 +220,7 @@ describe('i18n', () => {
       const user = englishUser()
       const doneUser = {
         ...user,
-        trialClaimed: Object.fromEntries(TRIALS.map(trial => [`pve:${trial.id}`, 1])),
+        trialClaimed: Object.fromEntries(TRIALS.map(trial => [trialClaimKey(trial), 1])),
       }
       const character = characterByName('Guest 1337')!
       const panels = [
@@ -258,7 +258,10 @@ describe('i18n', () => {
         bossRushPanelEmbed(),
         towerPanelEmbed(),
         trialsPanelEmbed(),
-        trialsPanelEmbed(undefined, { ...user, trialClaimed: { 'pve:jason': 1 } }),
+        trialsPanelEmbed(undefined, {
+          ...user,
+          trialClaimed: { [trialClaimKey(TRIALS[0])]: 1 },
+        }),
         trialsPanelEmbed(undefined, doneUser),
         trialsPanelEmbed(TRIALS[0]),
         bossCoopEmbed('Rsepicus', '2026-W01'),

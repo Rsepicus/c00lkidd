@@ -83,6 +83,7 @@ import {
   towerPanelComponents,
   towerPanelEmbed,
   trialBattle,
+  trialCharacterFor,
   trialsPanelComponents,
   trialsPanelEmbed,
   userCharacterEmojiData,
@@ -98,7 +99,7 @@ import {
 } from './forsaken'
 import { addRottenMinion, createBattle, createTeamBattle, takeTurn } from './pvp'
 import { createTowerRun } from './tower'
-import { TRIALS } from './trials'
+import { TRIALS, trialClaimKey } from './trials'
 import { defaultUser } from './store'
 
 describe('parseToken', () => {
@@ -1072,7 +1073,8 @@ describe('embeds', () => {
   })
 
   test('completed trials disappear from the list', () => {
-    const user = { ...defaultUser(), trialClaimed: { 'pve:jason': 1 } }
+    const jason = TRIALS.find(trial => trial.id === 'jason')!
+    const user = { ...defaultUser(), trialClaimed: { [trialClaimKey(jason)]: 1 } }
     const rows = trialsPanelComponents(user).map(row => row.toJSON())
     const select = rows[0].components[0] as {
       options: Array<{ value: string }>
@@ -1087,7 +1089,7 @@ describe('embeds', () => {
   test('the trials panel reports when everything is done', () => {
     const user = {
       ...defaultUser(),
-      trialClaimed: Object.fromEntries(TRIALS.map(trial => [`pve:${trial.id}`, 1])),
+      trialClaimed: Object.fromEntries(TRIALS.map(trial => [trialClaimKey(trial), 1])),
     }
     const rows = trialsPanelComponents(user).map(row => row.toJSON())
     expect(rows).toHaveLength(1)
@@ -1127,6 +1129,41 @@ describe('embeds', () => {
     )
     expect(battle.sides.filter(side => side.team === 0)).toHaveLength(1)
     expect(battle.sides.filter(side => side.team === 1)).toHaveLength(1)
+  })
+
+  test('trials force the signature ability', () => {
+    const user = {
+      ...defaultUser(),
+      loadouts: { Jason: 'Raging Pace', Builderman: 'Dispenser' } as Record<string, string>,
+    }
+    const jason = TRIALS.find(candidate => candidate.id === 'jason')!
+    expect(trialCharacterFor(jason, user).special.name).toBe('Gashing Wound')
+
+    const builderman = TRIALS.find(candidate => candidate.id === 'builderman')!
+    expect(trialCharacterFor(builderman, user).special.name).toBe('Dispenser')
+  })
+
+  test('the selected trial shows its signature ability', () => {
+    const trial = TRIALS.find(candidate => candidate.id === 'jason')!
+    expect(String(trialsPanelEmbed(trial).toJSON().description)).toContain('Gashing Wound')
+  })
+
+  test('structure minions are shown with their ability icons and targets', () => {
+    const battle = createBattle(
+      {
+        userId: 'a',
+        name: 'Builder',
+        character: characterWithSpecial(characterByName('Builderman')!, 'Sentry'),
+      },
+      { userId: 'b', name: 'B', character: characterByName('Noob')! },
+    )
+    const afterCast = takeTurn(battle, 'special', () => 0).battle
+    const turret = afterCast.sides.find(side => side.structure === 'sentry')!
+    expect(String(battleEmbed(afterCast).toJSON().description)).toContain('<:sentry:')
+    const targetIds = targetComponents(afterCast, [turret.id], 'enemy')[0]
+      .toJSON()
+      .components.map(component => component.custom_id)
+    expect(targetIds).toContain('pvp:target:minions:sentry')
   })
 
   test('debug panel exposes coins and balance test', () => {
