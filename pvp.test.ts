@@ -188,8 +188,8 @@ describe('2 на 2', () => {
       'special',
       () => 0,
     ).battle
-    expect(haste.sides[0].effects.haste).toBe(3)
-    expect(haste.sides[2].effects.haste).toBe(3)
+    expect(haste.sides[0].effects.haste).toBe(2)
+    expect(haste.sides[2].effects.haste).toBe(2)
   })
 
   test('Dispenser heals the ally and slows Builderman', () => {
@@ -205,7 +205,7 @@ describe('2 на 2', () => {
 
     battle = takeTurn(battle, 'rest', () => 0).battle
     const allyTurn = takeTurn(battle, 'rest', () => 0).battle
-    expect(allyTurn.sides[2].hp).toBe(68)
+    expect(allyTurn.sides[2].hp).toBe(70)
     expect(allyTurn.sides[2].effects.regeneration).toBe(2)
   })
 
@@ -267,7 +267,7 @@ describe('2 на 2', () => {
 
     const result = takeTurn(battle, 'special', () => 0).battle
     expect(result.sides[0].hp).toBe(50)
-    expect(result.sides[2].hp).toBe(64)
+    expect(result.sides[2].hp).toBe(66)
     expect(result.sides[1].hp).toBe(100)
   })
 
@@ -276,7 +276,7 @@ describe('2 на 2', () => {
     battle.sides[0].hp = 50
 
     const result = takeTurn(battle, 'special', () => 0).battle
-    expect(result.sides[0].hp).toBe(64)
+    expect(result.sides[0].hp).toBe(66)
   })
 
   test('Rush Hour gives speed to both allies and does not heal', () => {
@@ -351,10 +351,14 @@ describe('2 на 2', () => {
       'special',
       () => 0,
     ).battle
-    expect(shieldBattle.sides[0].shield).toBe(65)
-    expect(shieldBattle.sides[2].shield).toBe(65)
-    expect(jukeBonusOf(shieldBattle.sides[0])).toBeCloseTo(0.1)
-    expect(jukeBonusOf(shieldBattle.sides[2])).toBeCloseTo(0.1)
+    expect(shieldBattle.sides[0].shield).toBe(60)
+    expect(shieldBattle.sides[2].shield).toBe(60)
+    expect(shieldBattle.sides[0].tempHp).toBe(5)
+    expect(shieldBattle.sides[2].tempHp).toBe(5)
+    expect(jukeBonusOf(shieldBattle.sides[0])).toBeCloseTo(0)
+    expect(jukeBonusOf(shieldBattle.sides[2])).toBeCloseTo(0)
+    expect(shieldBattle.sides[0].effects.stunImmune).toBe(2)
+    expect(shieldBattle.sides[2].effects.stunImmune).toBe(2)
 
     const beamer = characterWithSpecial(characterByName('Dusekkar')!, 'Plasma Beam')
     const beamBattle = takeTurn(
@@ -409,7 +413,7 @@ describe('Guest 1337 block', () => {
     expect(blockResult.events.join(' ')).toContain('обычную атаку')
 
     battle = takeTurn(blockResult.battle, 'attack', () => 0).battle
-    expect(battle.sides[0].hp).toBe(110)
+    expect(battle.sides[0].hp).toBe(115)
     expect(battle.sides[0].blocking).toBe(false)
     expect(battle.sides[0].counterReady).toBe(true)
 
@@ -570,22 +574,21 @@ describe('Two Time prayer', () => {
       { userId: 'b', name: 'B', character: heavy },
     )
     battle = takeTurn(battle, 'attack', () => 0).battle
-    expect(battle.sides[0].charge).toBe(25)
+    expect(battle.sides[0].charge).toBe(34)
   })
 })
 
 describe('c00lkidd Corrupt Nature', () => {
-  test('applies -60% dodge for two turns without dealing damage', () => {
+  test('deals 10 damage and applies -25% dodge for two turns', () => {
     const c00lkidd = characterWithSpecial(characterByName('c00lkidd')!, 'Corrupt Nature')
     let battle = createBattle(
       { userId: 'a', name: 'c00lkidd', character: c00lkidd },
       { userId: 'b', name: 'B', character: heavy },
     )
-    const opponentHp = battle.sides[1].hp
 
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[1].hp).toBe(opponentHp)
-    expect(jukeBonusOf(battle.sides[1])).toBeCloseTo(-0.6)
+    expect(battle.sides[1].hp).toBe(90)
+    expect(jukeBonusOf(battle.sides[1])).toBeCloseTo(-0.25)
   })
 })
 
@@ -701,9 +704,8 @@ describe('wiki status effects', () => {
   test('Strength increases damage dealt by 20%', () => {
     let battle = battleWith(statusFighter('Raging Pace', 'strength'), heavy)
     battle = takeTurn(battle, 'special', () => 0).battle
-    battle = takeTurn(battle, 'rest', () => 0).battle
     battle = takeTurn(battle, 'attack', () => 0).battle
-    expect(battle.sides[1].hp).toBe(83)
+    expect(battle.sides[1].hp).toBe(88)
   })
 
   test('Weakness reduces damage dealt by 20%', () => {
@@ -753,7 +755,7 @@ describe('wiki status effects', () => {
     battle.sides[1].hp = 50
     battle = takeTurn(battle, 'special', () => 0).battle
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[1].hp).toBe(45)
+    expect(battle.sides[1].hp).toBe(40)
   })
 
   test('Rest clears Hemorrhage without restoring HP', () => {
@@ -783,7 +785,7 @@ describe('wiki status effects', () => {
   test('Slateskin grants overheal, DoT immunity and a dodge penalty', () => {
     let battle = battleWith(statusFighter('Slateskin Potion', 'slateskin'), heavy)
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].hp).toBe(118)
+    expect(battle.sides[0].hp).toBe(122)
     expect(battle.sides[0].effects.slateskin).toBe(2)
     expect(jukeBonusOf(battle.sides[0])).toBeCloseTo(-0.1)
   })
@@ -819,7 +821,7 @@ describe('wiki status effects', () => {
     let battle = battleWith(statusFighter('Tripwire', 'bleed', 7), heavy)
     battle = takeTurn(battle, 'special', () => 0).battle
     const result = takeTurn(battle, 'attack', () => 0)
-    expect(result.battle.sides[1].hp).toBe(93)
+    expect(result.battle.sides[1].hp).toBe(89)
     expect(result.events.join(' ')).toContain('кровотечения')
   })
 })
@@ -834,7 +836,7 @@ describe('Azure and Helperbot kits', () => {
 
     battle = takeTurn(battle, 'attack', () => 0).battle
     const result = takeTurn(battle, 'attack', () => 0)
-    expect(result.battle.sides[1].hp).toBe(77)
+    expect(result.battle.sides[1].hp).toBe(74)
     expect(result.battle.sides[1].atropa).toBe(0)
     expect(result.battle.sides[0].hp).toBe(91)
     expect(result.events.join(' ')).toContain('Atropa')
@@ -862,7 +864,7 @@ describe('Azure and Helperbot kits', () => {
     const helperbot = characterWithSpecial(characterByName('Helperbot')!, 'Inspiration')
     let battle = battleWith(helperbot, heavy)
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].effects.haste).toBe(3)
+    expect(battle.sides[0].effects.haste).toBe(2)
   })
 })
 
@@ -896,7 +898,7 @@ describe('c00lgui copy', () => {
     battle = result.battle
     battle = takeTurn(battle, 'rest', () => 0).battle
     const copiedTurn = takeTurn(battle, 'special', () => 0).battle
-    expect(copiedTurn.sides[1].hp).toBe(88)
+    expect(copiedTurn.sides[1].hp).toBe(86)
     expect(copiedTurn.sides[1].dotKind).toBe('bleeding')
     expect(copiedTurn.sides[0].cooldown).toBe(3)
   })
@@ -942,9 +944,9 @@ describe('c00lgui copy', () => {
 describe('One Shot', () => {
   const chance = () => characterWithSpecial(characterByName('Chance')!, 'One Shot')
 
-  test('fires for 24 and applies Vulnerable on a good roll', () => {
+  test('fires for 28 and applies Vulnerable on a good roll', () => {
     const result = takeTurn(battleWith(chance(), heavy), 'special', () => 0).battle
-    expect(result.sides[1].hp).toBe(76)
+    expect(result.sides[1].hp).toBe(72)
     expect(result.sides[1].effects.vulnerable).toBe(2)
     expect(result.sides[0].effects.weakness).toBeUndefined()
   })
@@ -984,13 +986,13 @@ describe('balance cooldowns', () => {
     ).toBe(4)
     expect(
       specialCooldown(characterWithSpecial(characterByName('Jane Doe')!, 'Crystal Pitch').special),
-    ).toBe(4)
+    ).toBe(3)
     expect(
       specialCooldown(characterWithSpecial(characterByName('Helperbot')!, 'Pulse').special),
     ).toBe(3)
     expect(
       specialCooldown(characterWithSpecial(characterByName('Nosferatu')!, 'Ascension').special),
-    ).toBe(2)
+    ).toBe(4)
     expect(
       specialCooldown(
         characterWithSpecial(characterByName('1x1x1x1')!, 'Rejuvenate the Rotten').special,
@@ -998,7 +1000,7 @@ describe('balance cooldowns', () => {
     ).toBe(3)
   })
 
-  test('Gashing Wound hits for 12 and applies bleeding', () => {
+  test('Gashing Wound hits for 14 and applies bleeding', () => {
     const jason = characterWithSpecial(characterByName('Jason')!, 'Gashing Wound')
     let battle = createBattle(
       { userId: 'a', name: 'Jason', character: jason },
@@ -1007,13 +1009,13 @@ describe('balance cooldowns', () => {
 
     battle = takeTurn(battle, 'special', () => 0).battle
     expect(battle.sides[0].cooldown).toBe(3)
-    expect(battle.sides[1].hp).toBe(88)
+    expect(battle.sides[1].hp).toBe(86)
     expect(battle.sides[1].dotKind).toBe('bleeding')
     expect(battle.sides[1].dotTurns).toBe(2)
     expect(battle.sides[1].dotDamage).toBe(4)
 
     const tick = takeTurn(battle, 'attack', () => 0).battle
-    expect(tick.sides[1].hp).toBe(84)
+    expect(tick.sides[1].hp).toBe(82)
     expect(tick.sides[1].dotTurns).toBe(1)
   })
 })
@@ -1035,7 +1037,7 @@ describe('special states', () => {
 
     battle = takeTurn(battle, 'rest', () => 0).battle
     const result = takeTurn(battle, 'special', () => 0)
-    expect(result.battle.sides[1].hp).toBe(92)
+    expect(result.battle.sides[1].hp).toBe(90)
     expect(result.battle.sides[0].bloodHuntCharges).toBe(3)
     expect(specialLabel(result.battle.sides[0])).toBe('Infernal Cry (0/2)')
   })
@@ -1062,7 +1064,7 @@ describe('special states', () => {
 
     battle = takeTurn(battle, 'rest', () => 0).battle
     const blood = takeTurn(battle, 'special', () => 0).battle
-    expect(blood.sides[1].hp).toBe(82)
+    expect(blood.sides[1].hp).toBe(72)
     expect(blood.sides[0].bloodHuntCharges).toBe(3)
     expect(blood.sides[0].charge).toBe(0)
     expect(specialLabel(blood.sides[0])).toBe('Eviscerate (0/2)')
@@ -1119,7 +1121,7 @@ describe('special states', () => {
     expect(jukeBonusOf(result.battle.sides[0])).toBe(0)
   })
 
-  test('Oblation grants a single second life at 40 HP', () => {
+  test('Oblation grants a single second life at 50 HP', () => {
     let battle = battleWith(twoTime, heavy)
     for (let attack = 0; attack < 4; attack++) {
       battle = takeTurn(battle, 'attack', () => 0).battle
@@ -1129,13 +1131,13 @@ describe('special states', () => {
     battle.sides[0].hp = 5
 
     const revived = takeTurn(battle, 'attack', () => 0)
-    expect(revived.battle.sides[0].hp).toBe(40)
+    expect(revived.battle.sides[0].hp).toBe(50)
     expect(revived.finished).toBe(false)
     expect(specialLabel(revived.battle.sides[0])).toBe('Oblation (потрачена)')
 
-    const afterAttack = takeTurn(revived.battle, 'attack', () => 0)
-    afterAttack.battle.sides[0].hp = 5
-    const final = takeTurn(afterAttack.battle, 'attack', () => 0)
+    const afterExtraTurn = takeTurn(revived.battle, 'rest', () => 0)
+    afterExtraTurn.battle.sides[0].hp = 5
+    const final = takeTurn(afterExtraTurn.battle, 'attack', () => 0)
     expect(final.finished).toBe(true)
     expect(final.winner).toBe(1)
   })
@@ -1233,12 +1235,14 @@ describe('takeTurn', () => {
     expect(battle.sides[0].hp).toBe(95)
   })
 
-  test('gamble special doubles damage on a lucky roll and does nothing otherwise', () => {
+  test('gamble special hits hard on heads and chips on tails', () => {
     const hit = takeTurn(battleWith(gambler, healer), 'special', () => 0)
     expect(hit.battle.sides[1].hp).toBe(80)
+    expect(jukeBonusOf(hit.battle.sides[0])).toBeCloseTo(0.2)
 
     const miss = takeTurn(battleWith(gambler, healer), 'special', () => 0.9)
-    expect(miss.battle.sides[1].hp).toBe(100)
+    expect(miss.battle.sides[1].hp).toBe(92)
+    expect(miss.battle.sides[0].effects.weakness).toBe(2)
   })
 
   test('finishes the battle when a side reaches zero HP', () => {
@@ -1303,14 +1307,14 @@ describe('takeTurn', () => {
 
   test('Bloxy Cola adds evasion chance for two turns', () => {
     const result = takeTurn(battleWith(cola, heavy), 'special', () => 0)
-    expect(jukeBonusOf(result.battle.sides[0])).toBeCloseTo(0.2)
+    expect(jukeBonusOf(result.battle.sides[0])).toBeCloseTo(0.25)
     expect(result.battle.sides[0].jukeMods[0].turns).toBe(2)
   })
 
   test('the Bloxy Cola bonus raises the effective juke chance', () => {
     const result = takeTurn(battleWith(cola, heavy), 'special', () => 0).battle
-    expect(result.sides[0].juking).toBe(true)
-    expect(jukeChanceOf(result.sides[0])).toBeCloseTo(0.8)
+    expect(result.sides[0].juking).toBe(false)
+    expect(jukeChanceOf(result.sides[0])).toBeCloseTo(0.25)
   })
 
   test('Void Rush hits and lowers the opponent evasion chance', () => {
@@ -1333,7 +1337,44 @@ describe('takeTurn', () => {
     battle.sides[0].hp = 50
     const result = takeTurn(battle, 'special', () => 0)
     expect(result.battle.sides[0].hp).toBe(50)
-    expect(jukeBonusOf(result.battle.sides[0])).toBeCloseTo(0.2)
+    expect(jukeBonusOf(result.battle.sides[0])).toBeCloseTo(0.25)
+  })
+
+  test('speed abilities grant an extra turn immediately', () => {
+    const first = takeTurn(battleWith(cola, heavy), 'special', () => 0)
+    expect(first.battle.turn).toBe(0)
+    expect(first.events.join(' ')).toContain('приоритет хода')
+    expect(first.events.join(' ')).toContain('действует ещё раз')
+
+    const extra = takeTurn(first.battle, 'rest', () => 0).battle
+    expect(extra.turn).toBe(1)
+  })
+
+  test('Raging Pace blocks the next stun', () => {
+    const jason = characterWithSpecial(characterByName('Jason')!, 'Raging Pace')
+    let battle = battleWith(jason, stunner)
+    battle = takeTurn(battle, 'special', () => 0).battle
+    battle = takeTurn(battle, 'rest', () => 0).battle
+    const result = takeTurn(battle, 'special', () => 0)
+    expect(result.battle.sides[0].stunned).toBe(false)
+    expect(result.events.join(' ')).toContain('иммунитет')
+  })
+
+  test('Oblivious blocks healing from an ally', () => {
+    const battle = createTeamBattle(
+      [
+        { userId: 'a', name: 'Elliot', character: characterByName('Elliot')! },
+        { userId: 'a2', name: 'Target', character: heavy },
+      ],
+      [
+        { userId: 'b', name: 'Enemy', character: heavy },
+        { userId: 'b2', name: 'Enemy 2', character: heavy },
+      ],
+    )
+    battle.sides[1].hp = 50
+    battle.sides[1].effects.oblivious = 2
+    const result = takeTurn(battle, 'special', () => 0).battle
+    expect(result.sides[1].hp).toBe(50)
   })
 
   test('turret and mines use their own damage wording', () => {
@@ -1348,9 +1389,9 @@ describe('takeTurn', () => {
     expect(trapTick.events.join(' ')).toContain('мин')
   })
 
-  test('fried chicken lowers the evasion chance while eating', () => {
+  test('fried chicken heals without lowering evasion', () => {
     const result = takeTurn(battleWith(chicken, heavy), 'special', () => 0)
-    expect(jukeBonusOf(result.battle.sides[0])).toBeCloseTo(-0.1)
+    expect(jukeBonusOf(result.battle.sides[0])).toBeCloseTo(0)
   })
 
   test('Pizza Delivery slows the opponent', () => {
@@ -1369,8 +1410,9 @@ describe('takeTurn', () => {
   test('a debuff stacks with an existing buff instead of replacing it', () => {
     let battle = battleWith(cola, noli)
     battle = takeTurn(battle, 'special', () => 0).battle
+    battle = takeTurn(battle, 'rest', () => 0).battle
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(jukeBonusOf(battle.sides[0])).toBeCloseTo(0)
+    expect(jukeBonusOf(battle.sides[0])).toBeCloseTo(0.05)
   })
 
   test('juke bonuses expire when their turns run out', () => {
@@ -1589,34 +1631,26 @@ describe('character passives and new survivors', () => {
     expect(jukeBonusOf(infected.sides[1])).toBeCloseTo(-0.15)
   })
 
-  test('Ascension gives a 75% chance to evade the next hit and adds dodge', () => {
+  test('Ascension guarantees the next enemy hit misses', () => {
     const battle = duel(characterByName('Nosferatu')!, heavy)
-    const ascended = takeTurn(battle, 'special', () => 0).battle
-    expect(ascended.sides[0].cooldown).toBe(2)
-    expect(ascended.sides[0].evasionChance).toBeCloseTo(0.75)
-    expect(jukeBonusOf(ascended.sides[0])).toBeCloseTo(0.1)
+    const turn = takeTurn(battle, 'special', () => 0)
+    const ascended = turn.battle
+    expect(ascended.sides[0].cooldown).toBe(4)
+    expect(ascended.sides[0].dodging).toBe(true)
 
-    const dodged = takeTurn(ascended, 'attack', () => 0).battle
+    const dodged = takeTurn(ascended, 'attack', () => 0.99).battle
     expect(dodged.sides[0].hp).toBe(100)
-    expect(dodged.sides[0].evasionChance).toBe(0)
+    expect(dodged.sides[0].dodging).toBe(false)
   })
 
-  test('Ascension can fail its evasion roll', () => {
-    const battle = duel(characterByName('Nosferatu')!, heavy)
-    const ascended = takeTurn(battle, 'special', () => 0).battle
-    const hit = takeTurn(ascended, 'attack', () => 0.99).battle
-    expect(hit.sides[0].hp).toBe(86)
-    expect(hit.sides[0].evasionChance).toBe(0)
-  })
-
-  test('c00lkidd Pizza Delivery summons two 5 HP pizza minions without immediate damage', () => {
+  test('c00lkidd Pizza Delivery summons two 8 HP pizza minions without immediate damage', () => {
     const battle = duel(characterByName('c00lkidd')!, heavy)
     expect(specialNeedsEnemyTarget(battle.sides[0])).toBe(false)
 
     const result = takeTurn(battle, 'special', () => 0)
     const minions = result.battle.sides.filter(side => side.pizzaMinion)
     expect(minions).toHaveLength(2)
-    expect(minions.map(side => side.maxHp)).toEqual([5, 5])
+    expect(minions.map(side => side.maxHp)).toEqual([8, 8])
     expect(minions.every(side => side.minion)).toBe(true)
     expect(minions.every(side => side.character.attack === 0)).toBe(true)
     expect(result.battle.sides[1].hp).toBe(100)
@@ -1650,7 +1684,7 @@ describe('character passives and new survivors', () => {
     summoned.sides[1].jukingTurns = 2
 
     const delivery = takeTurn(summoned, 'attack', () => 0)
-    expect(delivery.battle.sides[minion.id].hp).toBe(5)
+    expect(delivery.battle.sides[minion.id].hp).toBe(8)
     expect(delivery.battle.sides[1].dotTurns).toBe(0)
     expect(delivery.events.join(' ')).toContain('уворачивается')
   })
@@ -1664,7 +1698,7 @@ describe('character passives and new survivors', () => {
     const delivery = takeTurn(summoned, 'attack', () => 0.999)
     expect(delivery.battle.sides[1].hallucinationReady).toBe(false)
     expect(delivery.battle.sides[1].dotTurns).toBe(0)
-    expect(delivery.battle.sides[minion.id].hp).toBe(5)
+    expect(delivery.battle.sides[minion.id].hp).toBe(8)
     expect(delivery.events.join(' ')).toContain('галлюцинация')
   })
 
@@ -1680,7 +1714,7 @@ describe('character passives and new survivors', () => {
     expect(delivery.battle.sides[1].blocking).toBe(false)
     expect(delivery.battle.sides[1].counterReady).toBe(true)
     expect(delivery.battle.sides[1].dotTurns).toBe(0)
-    expect(delivery.battle.sides[minion.id].hp).toBe(5)
+    expect(delivery.battle.sides[minion.id].hp).toBe(8)
     expect(delivery.events.join(' ')).toContain('эффект не срабатывает')
   })
 
@@ -1698,17 +1732,17 @@ describe('character passives and new survivors', () => {
     )
   })
 
-  test('Noli Nova deals 8 damage and lowers dodge by 25%', () => {
+  test('Noli Nova deals 12 damage and lowers dodge by 20%', () => {
     const noli = characterWithSpecial(characterByName('Noli')!, 'Nova')
     let battle = duel(noli, heavy)
     const nova = takeTurn(battle, 'special', () => 0)
-    expect(nova.battle.sides[1].hp).toBe(92)
-    expect(jukeBonusOf(nova.battle.sides[1])).toBeCloseTo(-0.25)
+    expect(nova.battle.sides[1].hp).toBe(88)
+    expect(jukeBonusOf(nova.battle.sides[1])).toBeCloseTo(-0.2)
     expect(nova.battle.sides[1].effects.vulnerable).toBeUndefined()
 
     battle = takeTurn(nova.battle, 'attack', () => 0).battle
     const result = takeTurn(battle, 'attack', () => 0)
-    expect(result.battle.sides[1].hp).toBe(79)
+    expect(result.battle.sides[1].hp).toBe(75)
     expect(result.events.join(' ')).not.toContain('Hallucinations: +2')
   })
 
@@ -1729,7 +1763,7 @@ describe('character passives and new survivors', () => {
     const rest = takeTurn(spawned.battle, 'rest', () => 0).battle
     expect(rest.turn).toBe(0)
     const noliTurn = takeTurn(rest, 'rest', () => 0)
-    expect(noliTurn.battle.sides[1].hp).toBe(99)
+    expect(noliTurn.battle.sides[1].hp).toBe(98)
 
     const hit = takeTurn(spawned.battle, 'attack', () => 0, 2)
     expect(hit.battle.sides[2].hp).toBe(0)
@@ -1881,7 +1915,7 @@ describe('character passives and new survivors', () => {
     battle.sides[0].hp = 50
     const result = takeTurn(battle, 'special', () => 0).battle
     expect(result.sides[0].charge).toBe(50)
-    expect(result.sides[0].hp).toBe(68)
+    expect(result.sides[0].hp).toBe(70)
   })
 
   test('Veeronica battery thresholds change dodge chance', () => {
@@ -1911,7 +1945,7 @@ describe('character passives and new survivors', () => {
     const batteryBattle = duel(veeronica, heavy)
     batteryBattle.sides[0].hp = 50
     const batteryResult = takeTurn(batteryBattle, 'special', () => 0).battle
-    expect(batteryResult.sides[0].hp).toBe(63)
+    expect(batteryResult.sides[0].hp).toBe(65)
     expect(batteryResult.sides[0].charge).toBe(5)
 
     const healerBattle = createTeamBattle(allies(healer, characterByName('Veeronica')!), enemies())
@@ -1942,9 +1976,9 @@ describe('character passives and new survivors', () => {
     crystalBattle.sides[0].shatterpoint = 10
     const crystal = takeTurn(crystalBattle, 'special', () => 0).battle
     expect(crystal.sides[1].resonance).toBe(2)
-    expect(crystal.sides[1].hp).toBe(95)
+    expect(crystal.sides[1].hp).toBe(94)
     expect(crystal.sides[0].shatterpoint).toBe(14)
-    expect(crystal.sides[0].cooldown).toBe(4)
+    expect(crystal.sides[0].cooldown).toBe(3)
 
     const purified = characterWithSpecial(jane, 'Purified')
     const support = createTeamBattle(allies(purified, heavy), enemies())
@@ -1952,11 +1986,11 @@ describe('character passives and new survivors', () => {
     const buffed = takeTurn(support, 'special', () => 0).battle
     expect(buffed.sides[0].purified).toBe(true)
     expect(buffed.sides[2].purified).toBe(true)
-    expect(buffed.sides[2].hp).toBe(50)
+    expect(buffed.sides[2].hp).toBe(58)
     expect(jukeBonusOf(buffed.sides[2])).toBe(0)
 
     const hit = takeTurn(buffed, 'attack', () => 0, 2)
-    expect(hit.battle.sides[2].hp).toBe(44)
+    expect(hit.battle.sides[2].hp).toBe(53)
     expect(hit.battle.sides[2].purified).toBe(false)
     expect(hit.events.join(' ')).toContain('Purified снижает урон на 40%')
   })
@@ -1969,11 +2003,11 @@ describe('character passives and new survivors', () => {
     battle = takeTurn(battle, 'special', () => 0).battle
 
     const first = takeTurn(battle, 'attack', () => 0).battle
-    expect(first.sides[0].hp).toBe(18)
+    expect(first.sides[0].hp).toBe(24)
     expect(first.sides[0].purified).toBe(false)
 
     const second = takeTurn(takeTurn(first, 'attack', () => 0).battle, 'attack', () => 0).battle
-    expect(second.sides[0].hp).toBe(8)
+    expect(second.sides[0].hp).toBe(14)
   })
 })
 

@@ -438,6 +438,89 @@ const EXACT: Record<string, string> = {
 }
 
 const PATTERNS: Array<[RegExp, string]> = [
+  [/^(.+) получает приоритет хода\.$/, '$1 gains turn priority.'],
+  [/^(.+) действует ещё раз \(приоритет хода\)\.$/, '$1 acts again (turn priority).'],
+  [/^(.+) получает иммунитет к стану на (\d+) хода?\.$/, '$1 gains stun immunity for $2 turns.'],
+  [
+    /^(.+) получает иммунитет к стану на (\d+) хода? и (\d+) временных HP\.$/,
+    '$1 gains stun immunity for $2 turns and $3 temporary HP.',
+  ],
+  [/^(.+) игнорирует оглушение \(иммунитет\)\.$/, '$1 ignores the stun (immunity).'],
+  [/^(.+) сопротивляется\.$/, '$1 resists.'],
+  [/^(.+) получает Resistance на (\d+) ход\.$/, '$1 gains Resistance for $2 turn.'],
+  [/^(.+) получает Weakness на (\d+) хода?\.$/, '$1 gains Weakness for $2 turns.'],
+  [/^(.+) получает Strength на (\d+) хода?\.$/, '$1 gains Strength for $2 turns.'],
+  [/^(.+) получает Oblivious на (\d+) хода?\.$/, '$1 gains Oblivious for $2 turns.'],
+  [/^(.+) получает Regeneration на (\d+) ход\.$/, '$1 gains Regeneration for $2 turn.'],
+  [/^(.+): \+(\d+) урона \(dive\)\.$/, '$1: +$2 damage (dive).'],
+  [
+    /^Block: (.+) \+(\d+) временных HP и Resistance на (\d+) ход\.$/,
+    'Block: $1 +$2 temporary HP and Resistance for $3 turn.',
+  ],
+  [
+    /^(.+) применяет «Ascension»: следующий удар врага промахнётся\.$/,
+    '$1 uses “Ascension”: the next enemy hit will miss.',
+  ],
+  [
+    /^(.+) применяет «Ascension»: следующий удар врага промахнётся, следующий удар \+(\d+) урона \(dive\)\.$/,
+    '$1 uses “Ascension”: the next enemy hit misses, the next hit deals +$2 damage (dive).',
+  ],
+  [
+    /^(.+) применяет «Sk8»: \+25% уворота, −(\d+)% батареи \((\d+)%\)\.$/,
+    '$1 uses “Sk8”: +25% dodge, −$2% battery ($3%).',
+  ],
+  [
+    /^(.+) применяет «Sk8»: Overcharge! \+35% уворота, батарея разряжена до 50%\.$/,
+    '$1 uses “Sk8”: Overcharge! +35% dodge, battery discharged to 50%.',
+  ],
+  [
+    /^(.+) применяет «Rush Hour»: оба союзника получают \+20% уворота и приоритет хода\.$/,
+    '$1 uses “Rush Hour”: both allies gain +20% dodge and turn priority.',
+  ],
+  [
+    /^(.+) применяет «Rush Hour»: скорость \+20% уворота и приоритет хода\.$/,
+    '$1 uses “Rush Hour”: speed grants +20% dodge and turn priority.',
+  ],
+  [
+    /^(.+) применяет «Charge»: (.+) пропустит ход\.$/,
+    '$1 uses “Charge”: $2 will skip a turn.',
+  ],
+  [
+    /^(.+) применяет «Subspace Tripmine»: (.+) пропустит ход\.$/,
+    '$1 uses “Subspace Tripmine”: $2 will skip a turn.',
+  ],
+  [
+    /^(.+) играет в «Coin Flip», но монетка не в его пользу: Weakness на (\d+) хода?\.$/,
+    '$1 plays “Coin Flip”, but the coin isn\'t in their favor: Weakness for $2 turns.',
+  ],
+  [
+    /^(.+) применяет «Inspiration»:\s+(?:обоим союзникам\s+)?перезарядка ускорена на (\d+) хода?, Regeneration и Resistance на (\d+) ход, щит (\d+)%\.$/,
+    '$1 uses “Inspiration”: cooldowns tick faster for $2 turns, Regeneration and Resistance for $3 turn, and a $4% shield.',
+  ],
+  [
+    /^(.+) применяет «Inspiration»:\s+(?:обоим союзникам\s+)?перезарядка ускорена на (\d+) хода?\.$/,
+    '$1 uses “Inspiration”: cooldowns tick faster for $2 turns.',
+  ],
+  [
+    /^(.+) применяет «Slateskin Potion»: \+(\d+) HP сверх максимума и иммунитет к DoT\.$/,
+    '$1 uses “Slateskin Potion”: +$2 overheal and DoT immunity.',
+  ],
+  [
+    /^(.+) применяет «Slateskin Potion»: \+(\d+) HP сверх максимума, иммунитет к DoT и Resistance на (\d+) ход\.$/,
+    '$1 uses “Slateskin Potion”: +$2 overheal, DoT immunity and Resistance for $3 turn.',
+  ],
+  [
+    /^(.+) применяет «Pulse»:\s+(?:обоим союзникам\s+)?Regeneration и Resistance на (\d+) хода?, щит (\d+)%\.$/,
+    '$1 uses “Pulse”: Regeneration and Resistance for $2 turns and a $3% shield.',
+  ],
+  [
+    /^(.+) применяет «Pulse»:\s+(?:обоим союзникам\s+)?Regeneration и Resistance на (\d+) хода?\.$/,
+    '$1 uses “Pulse”: Regeneration and Resistance for $2 turns.',
+  ],
+  [
+    /^(.+) направляет плазменный луч: (.+) замедлен; \+15% уворота и \+10 временных HP получают (.+)\.$/,
+    '$1 fires a plasma beam: $2 is slowed; $3 gain +15% dodge and +10 temporary HP.',
+  ],
   [
     /^(.+) применяет «Bloxy Cola»: (\d+) урона?, \+20% уворота, стойка уворота, \+20% урона и 50% щита на 2 хода\.$/,
     '$1 uses “Bloxy Cola”: $2 damage, +20% dodge, a dodge stance, +20% damage and a 50% shield for 2 turns.',
@@ -560,7 +643,7 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^(.+) молится и восстанавливает HP — (.+)$/, '$1 prays and restores HP — $2'],
   [/^(.+) ставит диспенсер: (.+) лечатся (\d+) HP в начале хода два хода\.$/, '$1 places a dispenser: $2 heals $3 HP at the start of their turn for 2 turns.'],
   [/^(.+) применяет «(.+)»: щит \((\d+)%\) получают (.+)\.$/, '$1 uses "$2": shield ($3%) goes to $4.'],
-  [/^(.+) направляет плазменный луч: (.+) замедлен; \+15% уворота и \+10 временных HP получают (.+)\.$/, '$1 fires a plasma beam: $2 is slowed; $3 gain +15% dodge and +10 temporary HP.'],
+  [/^(.+) направляет плазменный луч: (.+) замедлен; \+15% уворота, \+15 временных HP и приоритет хода получают (.+)\.$/, '$1 fires a plasma beam: $2 is slowed; $3 gain +15% dodge, +15 temporary HP and turn priority.'],
   [/^Щит (.+) разбивается и спасает от смертельного удара\.$/, "$1's shield shatters and saves them from a lethal hit."],
   [/^Щит (.+) снижает урон\.$/, "$1's shield reduces damage."],
   [/^Блок не сработал: (.+) \((.+)\) не поймал атаку\. Штраф — −30% к увороту\.$/, "Block failed: $1 ($2) didn't catch the attack. Penalty: −30% dodge."],
@@ -587,6 +670,10 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^Swordmaster: \+2 урона мечом\.$/, 'Swordmaster: +2 sword damage.'],
   [/^(.+) переключается на «(.+)»: (.+)\.$/, '$1 switches to "$2": $3.'],
   [/^(.+) меняет меч SFOTH: следующая атака усилена\.$/, '$1 switches to the SFOTH sword: next attack is empowered.'],
+  [
+    /^(.+): следующая атака усилена, \+20% урона на 2 хода\.$/,
+    '$1: the next attack is empowered, +20% damage for 2 turns.',
+  ],
   [/^(.+) промахивается и получает Weakness на 2 хода\.$/, '$1 misses and gains Weakness for 2 turns.'],
   [/^(.+) получает Vulnerable на 2 хода\.$/, '$1 gains Vulnerable for 2 turns.'],
   [/^(.+) истекает кровью\.$/, '$1 is bleeding.'],
@@ -646,7 +733,10 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^(.+) — (\d+) побед(.*)$/, '$1 — $2 wins$3'],
   [/^(.+) — (\d+) поражени(?:е|я|й)(.*)$/, '$1 — $2 losses$3'],
   [/^(.+) — (\d+) бой(?:а|ов)?(.*)$/, '$1 — $2 battles$3'],
-  [/^(.+) применяет «Purified»: (.+) — одноразовое сопротивление \(20% за каждые 20 потерянных HP, до 80%\)\.$/, '$1 uses "Purified": $2 gain one-hit resistance (20% per 20 HP lost, up to 80%).'],
+  [
+    /^(.+) применяет «Purified»: (.+) — одноразовое сопротивление \(20% за каждые 20 потерянных HP, до 80%\), \+8 HP и Resistance на 1 ход\.$/,
+    '$1 uses "Purified": $2 gain +8 HP, Resistance for 1 turn, and one-hit resistance (20% per 20 HP lost, up to 80%).',
+  ],
   [/^(.+): Purified снижает урон на (\d+)%\.$/, '$1: Purified reduces damage by $2%.'],
   [/^Atropic: Azure восстанавливает (\d+) HP\.$/, 'Atropic: Azure restores $1 HP.'],
   [/^(.+) создаёт фейкового Ноли\.$/, '$1 creates a fake Noli.'],

@@ -30,7 +30,7 @@ describe('balance', () => {
   })
 
   test('healers stay within the healing budget', () => {
-    expect(characterByName('Elliot')?.special.power).toBe(14)
+    expect(characterByName('Elliot')?.special.power).toBe(16)
     expect(characterByName('Elliot')?.special.cooldown).toBe(3)
     expect(characterByName('Shedletsky')?.special.power).toBe(18)
     expect(characterByName('Two Time')?.special.kind).toBe('revive')
@@ -44,8 +44,8 @@ describe('balance', () => {
     expect(characterByName('c00lkidd')?.special.power).toBe(7)
   })
 
-  test('Dusekkar shield is capped at 65%', () => {
-    expect(characterByName('Dusekkar')?.special.power).toBe(65)
+  test('Dusekkar shield is capped at 60%', () => {
+    expect(characterByName('Dusekkar')?.special.power).toBe(60)
   })
 
   test('Pizza Delivery describes the implemented burn and slow', () => {

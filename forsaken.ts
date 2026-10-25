@@ -179,9 +179,9 @@ export const KILLERS: readonly Character[] = [
     price: 0,
     hp: 100,
     attack: 11,
-    special: { name: 'Gashing Wound', kind: 'heavy', power: 12, description: 'Серия ударов мачете: 12 урона и кровотечение 4 урона два хода.', cooldown: 3 },
+    special: { name: 'Gashing Wound', kind: 'heavy', power: 14, description: 'Серия ударов мачете: 14 урона и кровотечение 4 урона два хода.', cooldown: 3 },
     alternates: [
-      { name: 'Raging Pace', kind: 'strength', power: 0, description: '15 урона и ярость: +20% урона на 2 хода.' },
+      { name: 'Raging Pace', kind: 'strength', power: 0, description: 'Ярость: +20% урона и иммунитет к стану на 2 хода, приоритет хода.' },
     ],
   },
   {
@@ -199,11 +199,11 @@ export const KILLERS: readonly Character[] = [
       power: 7,
       cooldown: 3,
       description:
-        'Призывает двух пицца-миньонов по 5 HP. При попадании миньон поджигает врага: ' +
+        'Призывает двух пицца-миньонов по 8 HP. При попадании миньон поджигает врага: ' +
         '7 урона в начале хода врага 2 хода и −10% уворота, после чего исчезает.',
     },
     alternates: [
-      { name: 'Corrupt Nature', kind: 'corrupt', power: 0, description: 'Порча: снижает уворот соперника на 60% на 2 хода.', cooldown: 3 },
+      { name: 'Corrupt Nature', kind: 'corrupt', power: 0, description: 'Порча: 10 урона, −25% уворота и Weakness на 2 хода.', cooldown: 3 },
     ],
   },
   {
@@ -217,7 +217,7 @@ export const KILLERS: readonly Character[] = [
     attack: 13,
     special: { name: 'Corrupt Energy', kind: 'heavy', power: 14, description: '14 урона и −10% уворота соперника на 2 хода.' },
     alternates: [
-      { name: 'Digital Footprint', kind: 'weakness', power: 10, description: '10 урона и Weakness: −20% урона и −15% уворота соперника на 3 хода.' },
+      { name: 'Digital Footprint', kind: 'weakness', power: 10, description: '10 урона, Weakness (−20% урона, −15% уворота) на 3 хода и яд 2 урона 2 хода.' },
     ],
   },
   {
@@ -229,14 +229,14 @@ export const KILLERS: readonly Character[] = [
     price: 1100,
     hp: 100,
     attack: 13,
-    special: { name: 'Nova', kind: 'heavy', power: 8, cooldown: 2, description: 'Галлюцинации: 8 урона и −25% уворота соперника на 2 хода.' },
+    special: { name: 'Nova', kind: 'heavy', power: 12, cooldown: 2, description: 'Галлюцинации: 12 урона и −20% уворота соперника на 2 хода.' },
     alternates: [
       {
         name: 'Observant',
         kind: 'decoy',
         power: 0,
         cooldown: 3,
-        description: 'Фейковый Ноли с теми же HP и эффектами; исчезает от удара. КД: 3 хода.',
+        description: 'Фейковый Ноли с теми же HP и эффектами; бьёт на 2 и даёт Ноли +10% уворота, исчезает от удара. Враг получает −10% уворота (Hallucination). КД: 3 хода.',
       },
     ],
   },
@@ -260,7 +260,7 @@ export const KILLERS: readonly Character[] = [
         'Удары миньонов вешают глитч на 1 ход. КД: 3 хода.',
     },
     alternates: [
-      { name: 'Mass Infection', kind: 'poison', power: 6, description: 'Яд: 6 урона в начале хода соперника 2 хода и −15% уворота.' },
+      { name: 'Mass Infection', kind: 'poison', power: 6, description: '4 урона, яд 6 урона в начале хода соперника 2 хода и −15% уворота.' },
     ],
   },
   {
@@ -272,9 +272,9 @@ export const KILLERS: readonly Character[] = [
     price: 1666,
     hp: 100,
     attack: 14,
-    special: { name: 'Infernal Cry', kind: 'cry', power: 10, description: 'Крик: 10 урона, −10% уворота врагу, +1 Blood. 2 Blood заменяют способность на Blood Hunt.' },
+    special: { name: 'Infernal Cry', kind: 'cry', power: 5, description: 'Крик: 5 урона, −20% уворота и Weakness на 2 хода, +1 Blood и Strength на 2 хода. 2 Blood заменяют способность на Blood Hunt.' },
     alternates: [
-      { name: 'Eviscerate', kind: 'hemorrhage', power: 0, description: 'Потрошение: 5 урона, соперник не может лечиться 2 хода; передышка снимает эффект, но не лечит HP. Накапливает Blood (2 заряда → Blood Hunt).' },
+      { name: 'Eviscerate', kind: 'hemorrhage', power: 0, description: 'Потрошение: 10 урона, соперник не может лечиться 2 хода; передышка снимает эффект, но не лечит HP. Накапливает Blood (2 заряда → Blood Hunt).' },
     ],
   },
   {
@@ -286,9 +286,9 @@ export const KILLERS: readonly Character[] = [
     price: 1922,
     hp: 100,
     attack: 13,
-    special: { name: 'Ascension', kind: 'dodge', power: 0, cooldown: 2, description: 'Следующая атака с 75% шансом промахнётся; +10% уворота на 2 хода.' },
+    special: { name: 'Ascension', kind: 'dodge', power: 0, cooldown: 4, description: 'Следующий удар врага промахнётся.' },
     alternates: [
-      { name: "Hunter's Feast", kind: 'creatures', power: 0, description: '6 урона и Creatures: соперник получает +25% урона 2 хода.' },
+      { name: "Hunter's Feast", kind: 'creatures', power: 0, description: '8 урона, Creatures (+25% урона) и Oblivious на 2 хода, Nosferatu получает +15% уворота на 2 хода.' },
     ],
   },
   {
@@ -300,7 +300,7 @@ export const KILLERS: readonly Character[] = [
     price: 2000,
     hp: 100,
     attack: 12,
-    special: { name: 'Seeker Bulb', kind: 'seeker', power: 3, damage: 8, description: 'Стреляет (8 урона) и накладывает 3 стака Atropa.' },
+    special: { name: 'Seeker Bulb', kind: 'seeker', power: 3, damage: 8, description: 'Стреляет (8 урона), накладывает 3 стака Atropa и кровотечение 3 урона 2 хода.' },
     alternates: [
       { name: 'Stigmatize', kind: 'stigmatize', power: 3, description: 'Опутывает: соперник пропускает ход и получает 3 стака Atropa.', cooldown: 3 },
     ],
@@ -317,9 +317,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 0,
     hp: 100,
     attack: 11,
-    special: { name: 'Bloxy Cola', kind: 'speed', power: 0, description: '2 урона, +20% уворота, стойка уворота, +20% урона и 50% щита на 2 хода.' },
+    special: { name: 'Bloxy Cola', kind: 'speed', power: 0, description: 'Скорость: +25% уворота и Strength (+20% урона) на 2 хода, снятие дебаффа уворота и приоритет хода.' },
     alternates: [
-      { name: 'Slateskin Potion', kind: 'slateskin', power: 0, description: 'Слейтскин: +18 HP сверх максимума, иммунитет к DoT и −10% уворота на 2 хода.', cooldown: 4 },
+      { name: 'Slateskin Potion', kind: 'slateskin', power: 0, description: 'Слейтскин: +22 HP сверх максимума, иммунитет к DoT и −10% уворота на 2 хода.', cooldown: 4 },
     ],
   },
   {
@@ -331,9 +331,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 0,
     hp: 100,
     attack: 11,
-    special: { name: 'Fried Chicken', kind: 'heal', power: 18, cooldown: 3, description: 'Лечит 18 HP себе и напарнику; Shedletsky получает −10% уворота на 2 хода.' },
+    special: { name: 'Fried Chicken', kind: 'heal', power: 18, cooldown: 3, description: 'Лечит 18 HP себе и напарнику.' },
     alternates: [
-      { name: 'Sword Switch', kind: 'swords', power: 0, description: 'Случайный меч SFOTH: SFOTH — Strength, Firebrand — Burning, Venomshank — Poison, Ice Dagger — Stun, Darkheart — Lifesteal, Illumina — Regeneration, Ghostwalker — уворот, Windforce — Weakness.' },
+      { name: 'Sword Switch', kind: 'swords', power: 0, description: 'Случайный меч SFOTH: SFOTH — Strength, Firebrand — Burning, Venomshank — Poison, Ice Dagger — Stun, Darkheart — Lifesteal, Illumina — Regeneration, Ghostwalker — уворот, Windforce — Weakness. Следующая атака усилена, +20% урона на 2 хода.' },
     ],
   },
   {
@@ -345,9 +345,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 0,
     hp: 100,
     attack: 11,
-    special: { name: 'Pizza Throw', kind: 'heal', power: 14, description: 'Восстанавливает 14 HP напарнику; в соло — себе.', cooldown: 3 },
+    special: { name: 'Pizza Throw', kind: 'heal', power: 16, description: 'Восстанавливает 16 HP напарнику; в соло — себе.', cooldown: 3 },
     alternates: [
-      { name: 'Rush Hour', kind: 'rush', power: 0, description: 'Скорость: 1 урон, +20% уворота, стойка уворота, +20% урона и 50% щита обоим союзникам на 2 хода.' },
+      { name: 'Rush Hour', kind: 'rush', power: 0, description: 'Скорость: обоим союзникам +20% уворота, Strength (+20% урона) на 2 хода и приоритет хода.' },
     ],
   },
   {
@@ -373,9 +373,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 500,
     hp: 110,
     attack: 12,
-    special: { name: 'Block', kind: 'block', power: 0, description: 'Защищает выбранного союзника или себя от следующего удара; после блока следующая атака +50%. При промахе — −30% уворота на 2 хода.' },
+    special: { name: 'Block', kind: 'block', power: 0, description: 'Защищает выбранного союзника или себя от следующего удара; после блока +5 временных HP и следующая атака +50%. При промахе — −30% уворота на 2 хода.', cooldown: 3 },
     alternates: [
-      { name: 'Charge', kind: 'stun', power: 0, description: 'Рывок: соперник пропускает ход.' },
+      { name: 'Charge', kind: 'stun', power: 0, description: 'Рывок: 3 урона и пропуск хода соперника.', cooldown: 4 },
     ],
   },
   {
@@ -387,7 +387,7 @@ export const SURVIVORS: readonly Character[] = [
     price: 500,
     hp: 100,
     attack: 11,
-    special: { name: 'Oblation', kind: 'revive', power: 0, description: 'Копится на 25% за каждый удар; при 100% даёт вторую жизнь с 40 HP (один раз).' },
+    special: { name: 'Oblation', kind: 'revive', power: 0, description: 'Копится на 34% за каждый удар; при 100% даёт вторую жизнь с 50 HP и приоритет хода (один раз).' },
     alternates: [
       { name: 'Pray', kind: 'pray', power: 50, description: 'Тратит заряд Oblation на лечение только самого Two Time: 1 HP за 2% (до 50). Вторую жизнь не даёт.' },
     ],
@@ -401,9 +401,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 500,
     hp: 100,
     attack: 10,
-    special: { name: 'Sentry', kind: 'turret', power: 6, description: 'Турель: 6 урона в начале хода соперника 2 хода; Builderman получает −10% уворота на 2 хода.' },
+    special: { name: 'Sentry', kind: 'turret', power: 6, description: 'Турель: 5 урона сразу и 6 урона в начале хода соперника 2 хода; Builderman получает −10% уворота на 2 хода.' },
     alternates: [
-      { name: 'Dispenser', kind: 'dispenser', power: 0, description: 'Диспенсер: оба союзника лечатся на 8 HP в начале своего хода 2 хода. Builderman получает −10% уворота.', cooldown: 3 },
+      { name: 'Dispenser', kind: 'dispenser', power: 0, description: 'Диспенсер: оба союзника лечатся на 10 HP в начале своего хода 2 хода. Builderman получает −10% уворота.', cooldown: 3 },
     ],
   },
   {
@@ -415,9 +415,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 600,
     hp: 100,
     attack: 14,
-    special: { name: 'Spawn Protection', kind: 'shield', power: 65, cooldown: 3, description: 'Щит себе и напарнику: следующий урон −65%, смертельный удар оставляет 1 HP; +3 временных HP и +10% уворота на 2 хода.', lethalSave: true },
+    special: { name: 'Spawn Protection', kind: 'shield', power: 60, cooldown: 3, description: 'Щит себе и напарнику: следующий урон −60%, смертельный удар оставляет 1 HP, +5 временных HP и иммунитет к стану на 2 хода.', lethalSave: true },
     alternates: [
-      { name: 'Plasma Beam', kind: 'beam', power: 0, description: 'Луч: замедляет соперника (−15% уворота), ускоряет себя и напарника (+15%) на 2 хода и даёт им 10 временных HP на 1 ход. Урона не наносит.' },
+      { name: 'Plasma Beam', kind: 'beam', power: 0, description: 'Луч: замедляет соперника (−15% уворота), даёт себе и напарнику +15% уворота и 10 временных HP на 1 ход. Урона не наносит.' },
     ],
   },
   {
@@ -429,9 +429,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 600,
     hp: 100,
     attack: 11,
-    special: { name: 'Subspace Tripmine', kind: 'stun', power: 0, description: 'Пропуск хода соперника и −15% его уворота на 2 хода.', cooldown: 3 },
+    special: { name: 'Subspace Tripmine', kind: 'stun', power: 0, description: '5 урона, пропуск хода соперника, −15% его уворота и Weakness на 2 хода.', cooldown: 3 },
     alternates: [
-      { name: 'Tripwire', kind: 'bleed', power: 7, description: 'Кровотечение: 7 урона в начале хода соперника 2 хода и −10% уворота.' },
+      { name: 'Tripwire', kind: 'bleed', power: 7, description: '4 урона и кровотечение 7 урона в начале хода соперника 2 хода, −10% уворота.' },
     ],
   },
   {
@@ -443,9 +443,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 777,
     hp: 100,
     attack: 12,
-    special: { name: 'Coin Flip', kind: 'gamble', power: 0, description: '50%: двойной урон и +20% уворота на 2 хода; 50%: ничего.' },
+    special: { name: 'Coin Flip', kind: 'gamble', power: 0, description: '50%: двойной урон и +20% уворота на 2 хода; 50%: 75% урона и Weakness на 2 хода.' },
     alternates: [
-      { name: 'One Shot', kind: 'oneshot', power: 24, description: '50%: выстрел на 24 урона и Vulnerable на 2 хода; иначе Chance получает Weakness на 2 хода.' },
+      { name: 'One Shot', kind: 'oneshot', power: 28, description: '50%: выстрел на 28 урона и Vulnerable на 2 хода; иначе Chance получает Weakness на 2 хода.' },
     ],
   },
   {
@@ -461,7 +461,7 @@ export const SURVIVORS: readonly Character[] = [
       name: 'Sk8',
       kind: 'sk8',
       power: 0,
-      description: 'Скейт: 1 урон, +25% уворота и стойка уворота на 2 хода, тратит до 15% батареи. При 100% — Overcharge: +35% уворота и разряд до 50%. Батарея: старт 30%, +15% в начале хода и +15% за передышку.',
+      description: 'Скейт: +25% уворота на 2 хода и приоритет хода, тратит до 15% батареи. При 100% — Overcharge: +35% уворота и разряд до 50%. Батарея: старт 30%, +15% в начале хода и +15% за передышку.',
     },
     alternates: [
       {
@@ -469,7 +469,7 @@ export const SURVIVORS: readonly Character[] = [
         kind: 'battery',
         power: 20,
         cooldown: 3,
-        description: 'Тратит до 40% батареи и лечит 1 HP за каждые 3% (до 13 HP). При 100% — Overcharge: 18 HP и разряд до 50%. Батарея: старт 30%, +15% в начале хода и +15% за передышку.',
+        description: 'Тратит до 40% батареи и лечит 1 HP за каждые 2% (до 15 HP). При 100% — Overcharge: 20 HP и разряд до 50%. Батарея: старт 30%, +15% в начале хода и +15% за передышку.',
       },
     ],
   },
@@ -485,16 +485,16 @@ export const SURVIVORS: readonly Character[] = [
     special: {
       name: 'Crystal Pitch',
       kind: 'crystal',
-      power: 5,
-      cooldown: 4,
-      description: '5 урона, 2 стака Resonance и +4 Shatterpoint. Resonance: Hatchet тратит стаки, +4 урона за стак; 3 стака оглушают.',
+      power: 6,
+      cooldown: 3,
+      description: '6 урона, 2 стака Resonance и +4 Shatterpoint. Resonance: Hatchet тратит стаки, +4 урона за стак; 3 стака оглушают.',
     },
     alternates: [
       {
         name: 'Purified',
         kind: 'purified',
         power: 0,
-        description: 'Даёт себе и напарнику одноразовое сопротивление: следующий удар ослабляется на 20% за каждые 20 потерянных HP (до 80%).',
+        description: 'Даёт себе и напарнику +8 HP, Resistance на 1 ход и одноразовое сопротивление: следующий удар ослабляется на 20% за каждые 20 потерянных HP (до 80%).',
       },
     ],
   },
@@ -507,9 +507,9 @@ export const SURVIVORS: readonly Character[] = [
     price: 650,
     hp: 100,
     attack: 12,
-    special: { name: 'Pulse', kind: 'pulse', power: 0, cooldown: 3, description: 'Regeneration (+8 HP в начале хода на 1 ход) и Resistance (−20% получаемого урона на 1 ход) обоим союзникам.' },
+    special: { name: 'Pulse', kind: 'pulse', power: 0, cooldown: 3, description: 'Regeneration (+8 HP в начале хода на 1 ход), Resistance (−20% получаемого урона на 1 ход) и щит 20% обоим союзникам.' },
     alternates: [
-      { name: 'Inspiration', kind: 'haste', power: 0, description: 'Haste: КД способностей тикает вдвое быстрее у обоих союзников 3 хода, +10% уворота на 2 хода и лечение на 10 HP.' },
+      { name: 'Inspiration', kind: 'haste', power: 0, cooldown: 5, description: 'Haste: КД способностей тикает вдвое быстрее у обоих союзников 2 хода, Regeneration и Resistance на 1 ход, щит 20%.' },
     ],
   },
 ]
@@ -524,19 +524,18 @@ export type JukeModifier = { amount: number; turns: number; target: 'self' | 'op
 
 export const JUKE_MODIFIERS: Record<string, JukeModifier> = {
   'Bloxy Cola': { amount: 0.2, turns: 2, target: 'self' },
-  'Fried Chicken': { amount: -0.1, turns: 2, target: 'self' },
   Clone: { amount: 0.15, turns: 2, target: 'self' },
   Sentry: { amount: -0.1, turns: 2, target: 'self' },
   Dispenser: { amount: -0.1, turns: 2, target: 'self' },
   'Coin Flip': { amount: 0.2, turns: 2, target: 'self' },
   'Pizza Delivery': { amount: -0.1, turns: 2, target: 'opponent' },
-  'Infernal Cry': { amount: -0.1, turns: 2, target: 'opponent' },
+  'Infernal Cry': { amount: -0.2, turns: 2, target: 'opponent' },
   'Corrupt Energy': { amount: -0.1, turns: 2, target: 'opponent' },
+  'Corrupt Nature': { amount: -0.25, turns: 2, target: 'opponent' },
   'Void Rush': { amount: -0.2, turns: 2, target: 'opponent' },
-  Nova: { amount: -0.25, turns: 2, target: 'opponent' },
+  Nova: { amount: -0.2, turns: 2, target: 'opponent' },
   'Mass Infection': { amount: -0.15, turns: 2, target: 'opponent' },
   'Blood Hunt': { amount: 0.15, turns: 2, target: 'self' },
-  Ascension: { amount: 0.1, turns: 2, target: 'self' },
   'Subspace Tripmine': { amount: -0.15, turns: 2, target: 'opponent' },
   'Slateskin Potion': { amount: -0.1, turns: 2, target: 'self' },
   Tripwire: { amount: -0.1, turns: 2, target: 'opponent' },

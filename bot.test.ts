@@ -800,7 +800,7 @@ describe('embeds', () => {
     expect(buttons[1].label).toContain('Elliot')
   })
 
-  test('Haste makes the special button available a turn earlier', () => {
+  test('Haste speeds up the special cooldown', () => {
     const helper = characterWithSpecial(characterByName('Helperbot')!, 'Inspiration')
     let battle = createBattle(
       { userId: 'a', name: 'A', character: helper },
@@ -812,7 +812,7 @@ describe('embeds', () => {
     const button = battleComponents(battle)[0]
       .toJSON()
       .components.find(component => component.custom_id === 'pvp:special')
-    expect(button?.disabled).toBe(false)
+    expect(button?.disabled).toBe(true)
   })
 
   test('counter status uses the yellow Guestpunch icon and hides the block', () => {
