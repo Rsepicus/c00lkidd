@@ -373,6 +373,21 @@ describe('embeds', () => {
     expect(target.custom_id).toBe('pvp:target:minions')
   })
 
+  test('groups pizza minions separately in the battle panel', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'Alice', character: characterByName('c00lkidd')! },
+      { userId: 'b', name: 'Bob', character: characterByName('Noob')! },
+    )
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const embed = battleEmbed(summoned).toJSON()
+    expect(String(embed.description)).toContain('Пицца-миньоны')
+    expect(battleStatsText(summoned)).toContain('Пицца-миньоны')
+
+    const minion = summoned.sides.find(side => side.pizzaMinion)!
+    const target = targetComponents(summoned, [minion.id])[0].toJSON().components[0]
+    expect(target.custom_id).toBe('pvp:target:minions')
+  })
+
   test('character card shows the mastery milestone badge', () => {
     const user = {
       ...defaultUser(),
@@ -907,10 +922,12 @@ describe('embeds', () => {
       mode: '1x1' as const,
       character: 'Jason',
       special: 'Gashing Wound',
+      battlesPerPair: 50,
     }
     const description = String(debugTestEmbed(setup).toJSON().description)
     expect(description).toContain('Jason')
     expect(description).toContain('Gashing Wound')
+    expect(description).toContain('50 боёв на пару')
     const rows = debugTestComponents(setup).map(row =>
       row.toJSON().components.map(component => component.custom_id),
     )
@@ -918,8 +935,21 @@ describe('embeds', () => {
       ['debug:test:mode'],
       ['debug:test:character'],
       ['debug:test:special'],
+      ['debug:test:battles'],
       ['debug:test:start', 'debug:menu'],
     ])
+    const battlesMenu = debugTestComponents(setup)[3].toJSON().components[0] as {
+      options: Array<{ value: string; default?: boolean }>
+    }
+    expect(battlesMenu.options.map(option => option.value)).toEqual([
+      '5',
+      '10',
+      '30',
+      '50',
+      '100',
+      '200',
+    ])
+    expect(battlesMenu.options.find(option => option.value === '50')?.default).toBe(true)
   })
 
   test('training setup offers a bot character and a format', () => {

@@ -130,6 +130,26 @@ describe('i18n', () => {
     ]) {
       expectNoCyrillic(translateText(message, 'en'))
     }
+    expect(
+      translateText(
+        'Alice применяет «Pizza Delivery»: призывает двух пицца-миньонов.',
+        'en',
+      ),
+    ).toBe('Alice uses “Pizza Delivery”: summons two pizza minions.')
+    expect(
+      translateText(
+        'Pizza Minion доставляет пиццу Bob: горение 7×2 и −10% уворота; миньон исчезает.',
+        'en',
+      ),
+    ).toBe(
+      'Pizza Minion delivers pizza to Bob: burn 7×2 and −10% dodge; the minion disappears.',
+    )
+    expect(translateText('Bob уворачивается от доставки пиццы.', 'en')).toBe(
+      'Bob evades the pizza delivery.',
+    )
+    expect(
+      translateText('Pizza Minion доставляет пиццу Bob, но эффект не срабатывает.', 'en'),
+    ).toBe('Pizza Minion delivers pizza to Bob, but the effect fails.')
     const commands = translateText('Открой /пве и /пвп.', 'en')
     expect(commands).toContain('/pve')
     expect(commands).toContain('/pvp')

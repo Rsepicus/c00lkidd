@@ -113,6 +113,7 @@ export type Side = {
   basicAttacks: number
   rottenCorpses?: RottenCorpse[]
   minion?: boolean
+  pizzaMinion?: boolean
   minionOwnerId?: string | null
   minionOwnerSideId?: number | null
 }
@@ -204,6 +205,7 @@ function makeSide(entry: FighterEntry, team: 0 | 1): Side {
         ? [{ attack: 3, source: 'fresh' }]
         : [],
     minion: false,
+    pizzaMinion: false,
     minionOwnerId: null,
     minionOwnerSideId: null,
   }
@@ -724,6 +726,129 @@ export function addRottenMinion(
   return minion
 }
 
+function pizzaMinionCharacter(): Character {
+  return {
+    name: 'Pizza Minion',
+    role: 'killer',
+    class: 'Minion',
+    ability: 'Доставляет пиццу и исчезает после попадания.',
+    power: 0,
+    price: 0,
+    hp: 5,
+    attack: 0,
+    special: {
+      name: 'Pizza Delivery',
+      kind: 'pizza',
+      power: 7,
+      cooldown: 0,
+      description: 'Доставка: 7 урона в начале хода врага 2 хода и −10% уворота.',
+    },
+  }
+}
+
+function addPizzaMinion(battle: Battle, owner: Side): Side {
+  const minion = makeSide(
+    {
+      userId: `minion:${owner.userId}:${battle.clock}:${battle.sides.length}:pizza`,
+      name: 'Pizza Minion',
+      character: pizzaMinionCharacter(),
+    },
+    owner.team,
+  )
+  minion.id = battle.sides.length
+  minion.hp = 5
+  minion.maxHp = 5
+  minion.lastActed = battle.clock
+  minion.minion = true
+  minion.pizzaMinion = true
+  minion.minionOwnerId = owner.userId
+  minion.minionOwnerSideId = owner.id
+  minion.rottenCorpses = []
+  battle.sides.push(minion)
+  return minion
+}
+
+function pickPizzaTarget(enemies: Side[]): Side {
+  const realEnemies = enemies.filter(enemy => !enemy.minion && !enemy.fake)
+  return pickTarget(realEnemies.length > 0 ? realEnemies : enemies)
+}
+
+function pizzaDeliveryMisses(
+  battle: Battle,
+  minion: Side,
+  target: Side,
+  rng: Rng,
+  events: string[],
+): boolean {
+  if (target.fake) {
+    target.hp = 0
+    target.tempHp = 0
+    minion.hp = 0
+    minion.tempHp = 0
+    events.push('Фейковый Ноли исчезает.')
+    events.push(`${minion.name} доставляет пиццу в пустоту и исчезает.`)
+    return true
+  }
+  if (target.character.name === 'Noli' && target.hallucinationReady) {
+    target.hallucinationReady = false
+    events.push(`${target.name}: галлюцинация принимает удар.`)
+    return true
+  }
+  if (target.dodging) {
+    target.dodging = false
+    events.push(`${target.name} уклоняется от доставки пиццы.`)
+    return true
+  }
+  if (target.juking) {
+    const chance = jukeChance(target)
+    target.juking = false
+    target.jukingTurns = 0
+    if (rng() < chance) {
+      events.push(`${target.name} уворачивается от доставки пиццы.`)
+      return true
+    }
+  }
+  const blocker = battle.sides.find(
+    candidate =>
+      candidate.blocking &&
+      candidate.blockTargetId === target.id &&
+      candidate.hp > 0 &&
+      candidate.team !== minion.team,
+  )
+  if (blocker) {
+    blocker.blocking = false
+    blocker.blockTargetId = null
+    blocker.counterReady = true
+    if (blocker.synergy?.id === 'fittest') {
+      const ally = synergyAlly(blocker, battle)
+      if (ally) {
+        addSynergyDodge(blocker, 'Survival for the Fittest', 0.1, 2)
+        addSynergyDodge(ally, 'Survival for the Fittest', 0.1, 2)
+        events.push(
+          `Survival for the Fittest: ${blocker.name} и ${ally.name} +10% уворота на 2 хода.`,
+        )
+      }
+    }
+    events.push(`${minion.name} доставляет пиццу ${target.name}, но эффект не срабатывает.`)
+    return true
+  }
+  return false
+}
+
+function deliverPizza(minion: Side, target: Side, events: string[]): void {
+  target.dotDamage = 7
+  target.dotTurns = 2
+  target.dotKind = 'burn'
+  target.dotSourceId = minion.minionOwnerSideId ?? minion.id
+  target.jukeMods = target.jukeMods.filter(mod => mod.source !== 'Pizza Delivery')
+  target.jukeMods.push({ source: 'Pizza Delivery', amount: -0.1, turns: 2 })
+  events.push(
+    `${minion.name} доставляет пиццу ${target.name}: горение 7×2 и −10% уворота; миньон исчезает.`,
+  )
+  minion.hp = 0
+  minion.tempHp = 0
+}
+
 function isRottenOwnerSide(side: Side): boolean {
   return (
     side.character.name === '1x1x1x1' &&
@@ -846,6 +971,14 @@ function applySpecial(
       applyJuke = false
       break
     }
+    case 'pizza':
+      addPizzaMinion(battle, side)
+      addPizzaMinion(battle, side)
+      events.push(
+        `${side.name} применяет «${special.name}»: призывает двух пицца-миньонов.`,
+      )
+      applyJuke = false
+      break
     case 'copy': {
       const copied = other.character.special
       side.character = { ...side.character, special: copied }
@@ -1520,7 +1653,11 @@ export function takeTurn(
   const blockAction =
     action === 'special' && specialOf(side, specialIndex).kind === 'block'
   let blockTarget: Side | undefined = blockAction ? side : undefined
-  let target = side.boss ? pickBossTarget(enemies) : pickTarget(enemies)
+  let target = side.pizzaMinion
+    ? pickPizzaTarget(enemies)
+    : side.boss
+      ? pickBossTarget(enemies)
+      : pickTarget(enemies)
   if (targetIndex !== undefined) {
     const candidate = Number.isInteger(targetIndex) ? battle.sides[targetIndex] : undefined
     if (blockAction) {
@@ -1539,6 +1676,12 @@ export function takeTurn(
 
   switch (action) {
     case 'attack': {
+      if (side.pizzaMinion) {
+        if (!pizzaDeliveryMisses(battle, side, target, rng, events)) {
+          deliverPizza(side, target, events)
+        }
+        break
+      }
       side.basicAttacks += 1
       const boosted = side.bloodHuntCharges > 0
       let raw = side.character.attack + Math.floor(rng() * 5) + (boosted ? BLOOD_HUNT_BONUS : 0)

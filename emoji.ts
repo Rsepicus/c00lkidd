@@ -25,6 +25,7 @@ const SLUGS: Record<string, string> = {
   Veeronica: 'veeronica',
   'Jane Doe': 'janedoe',
   'Rotten Minion': 'rottenminion',
+  'Pizza Minion': 'pizzadelivery',
 }
 
 const ABILITY_SLUGS: Record<string, string> = {

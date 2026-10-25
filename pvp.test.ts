@@ -945,6 +945,7 @@ describe('balance cooldowns', () => {
     const tuned = [
       ['Azure', 'Stigmatize'],
       ['Jason', 'Gashing Wound'],
+      ['c00lkidd', 'Pizza Delivery'],
       ['c00lkidd', 'Corrupt Nature'],
       ['Noob', 'Slateskin Potion'],
       ['Builderman', 'Dispenser'],
@@ -1550,6 +1551,95 @@ describe('character passives and new survivors', () => {
     const infected = takeTurn(duel(infection, heavy), 'special', () => 0).battle
     expect(infected.sides[1].dotKind).toBe('poison')
     expect(jukeBonusOf(infected.sides[1])).toBeCloseTo(-0.15)
+  })
+
+  test('c00lkidd Pizza Delivery summons two 5 HP pizza minions without immediate damage', () => {
+    const battle = duel(characterByName('c00lkidd')!, heavy)
+    expect(specialNeedsEnemyTarget(battle.sides[0])).toBe(false)
+
+    const result = takeTurn(battle, 'special', () => 0)
+    const minions = result.battle.sides.filter(side => side.pizzaMinion)
+    expect(minions).toHaveLength(2)
+    expect(minions.map(side => side.maxHp)).toEqual([5, 5])
+    expect(minions.every(side => side.minion)).toBe(true)
+    expect(minions.every(side => side.character.attack === 0)).toBe(true)
+    expect(result.battle.sides[1].hp).toBe(100)
+    expect(result.battle.sides[1].dotTurns).toBe(0)
+    expect(result.battle.sides[0].cooldown).toBe(3)
+    expect(result.events.join(' ')).toContain('двух пицца-миньонов')
+  })
+
+  test('a pizza minion burns and slows on delivery, then disappears', () => {
+    const battle = duel(characterByName('c00lkidd')!, heavy)
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minion = summoned.sides.find(side => side.pizzaMinion)!
+    summoned.turn = minion.id
+
+    const delivery = takeTurn(summoned, 'attack', () => 0.999)
+    const target = delivery.battle.sides[1]
+    expect(target.dotKind).toBe('burn')
+    expect(target.dotDamage).toBe(7)
+    expect(target.dotTurns).toBe(2)
+    expect(jukeBonusOf(target)).toBeCloseTo(-0.1)
+    expect(delivery.battle.sides[minion.id].hp).toBe(0)
+    expect(delivery.events.join(' ')).toContain('доставляет пиццу')
+  })
+
+  test('a pizza minion that misses stays on the field', () => {
+    const battle = duel(characterByName('c00lkidd')!, heavy)
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minion = summoned.sides.find(side => side.pizzaMinion)!
+    summoned.turn = minion.id
+    summoned.sides[1].juking = true
+    summoned.sides[1].jukingTurns = 2
+
+    const delivery = takeTurn(summoned, 'attack', () => 0)
+    expect(delivery.battle.sides[minion.id].hp).toBe(5)
+    expect(delivery.battle.sides[1].dotTurns).toBe(0)
+    expect(delivery.events.join(' ')).toContain('уворачивается')
+  })
+
+  test('a pizza minion is stopped by Noli Hallucinations', () => {
+    const battle = duel(characterByName('c00lkidd')!, noli)
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minion = summoned.sides.find(side => side.pizzaMinion)!
+    summoned.turn = minion.id
+
+    const delivery = takeTurn(summoned, 'attack', () => 0.999)
+    expect(delivery.battle.sides[1].hallucinationReady).toBe(false)
+    expect(delivery.battle.sides[1].dotTurns).toBe(0)
+    expect(delivery.battle.sides[minion.id].hp).toBe(5)
+    expect(delivery.events.join(' ')).toContain('галлюцинация')
+  })
+
+  test('a pizza minion is stopped by Guest 1337 Block', () => {
+    const battle = duel(characterByName('c00lkidd')!, characterByName('Guest 1337')!)
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minion = summoned.sides.find(side => side.pizzaMinion)!
+    summoned.turn = minion.id
+    summoned.sides[1].blocking = true
+    summoned.sides[1].blockTargetId = summoned.sides[1].id
+
+    const delivery = takeTurn(summoned, 'attack', () => 0.999)
+    expect(delivery.battle.sides[1].blocking).toBe(false)
+    expect(delivery.battle.sides[1].counterReady).toBe(true)
+    expect(delivery.battle.sides[1].dotTurns).toBe(0)
+    expect(delivery.battle.sides[minion.id].hp).toBe(5)
+    expect(delivery.events.join(' ')).toContain('эффект не срабатывает')
+  })
+
+  test('pizza minions crumble when c00lkidd dies', () => {
+    const battle = duel(characterByName('c00lkidd')!, heavy)
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const minions = summoned.sides.filter(side => side.pizzaMinion)
+    expect(minions).toHaveLength(2)
+    summoned.sides[0].hp = 1
+    summoned.turn = 1
+
+    const result = takeTurn(summoned, 'attack', () => 0.5).battle
+    expect(result.sides.filter(side => side.pizzaMinion).every(side => side.hp === 0)).toBe(
+      true,
+    )
   })
 
   test('Noli Nova deals 8 damage and lowers dodge by 25%', () => {

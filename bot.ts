@@ -279,7 +279,11 @@ type DebugTestSetup = {
   mode: BattleMode
   character?: string
   special?: string
+  battlesPerPair?: number
 }
+
+const DEBUG_BATTLES_OPTIONS = [5, 10, 30, 50, 100, 200] as const
+const DEBUG_BATTLES_DEFAULT = 30
 
 type SurvivalRun = {
   messageId: string
@@ -1822,6 +1826,7 @@ export function debugCoinsModal(): ModalBuilder {
 
 export function debugTestEmbed(setup: DebugTestSetup): EmbedBuilder {
   const special = setup.special ? ` · способность **${setup.special}**` : ''
+  const battlesPerPair = setup.battlesPerPair ?? DEBUG_BATTLES_DEFAULT
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.choose)
     .setTitle(`${emojiText('settings', '⚙️')} Тест баланса`)
@@ -1830,7 +1835,7 @@ export function debugTestEmbed(setup: DebugTestSetup): EmbedBuilder {
         `Формат: **${setup.mode === '2x2' ? '2 на 2' : '1 на 1'}**`,
         `Персонаж: **${setup.character ?? 'все'}**${special}`,
         '',
-        'Будет сыграно 30 боёв на пару.',
+        `Будет сыграно ${battlesPerPair} боёв на пару.`,
       ].join('\n'),
     )
     .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
@@ -1896,10 +1901,22 @@ export function debugTestComponents(
         }
       }),
     ])
+  const battlesPerPair = setup.battlesPerPair ?? DEBUG_BATTLES_DEFAULT
+  const battlesMenu = new StringSelectMenuBuilder()
+    .setCustomId('debug:test:battles')
+    .setPlaceholder('Боёв на пару')
+    .addOptions(
+      DEBUG_BATTLES_OPTIONS.map(count => ({
+        label: `${count} боёв`,
+        value: String(count),
+        default: battlesPerPair === count,
+      })),
+    )
   return [
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(modeMenu),
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(characterMenu),
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(specialMenu),
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(battlesMenu),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       (() => {
         const button = new ButtonBuilder()
@@ -2549,6 +2566,29 @@ function sideCharacterLabel(side: Side): string {
   return userCharacterLabel(userOf(side.userId), side.character.name)
 }
 
+function minionSummaryLines(minions: Side[]): string[] {
+  const rotten = minions.filter(side => !side.pizzaMinion)
+  const pizza = minions.filter(side => side.pizzaMinion)
+  const hp = (group: Side[]) =>
+    `**${group.reduce((sum, side) => sum + side.hp, 0)}/${group.reduce(
+      (sum, side) => sum + side.maxHp,
+      0,
+    )}**`
+  const lines: string[] = []
+  if (rotten.length > 0) {
+    lines.push(
+      `${emojiText('rottenminion', '🧟')} Миньоны: **${rotten.length}** · HP ${hp(rotten)} · ` +
+        `атака **${rotten.reduce((sum, side) => sum + side.character.attack, 0)}**`,
+    )
+  }
+  if (pizza.length > 0) {
+    lines.push(
+      `${emojiText('pizzadelivery', '🍕')} Пицца-миньоны: **${pizza.length}** · HP ${hp(pizza)}`,
+    )
+  }
+  return lines
+}
+
 export function battleStatsText(battle: Battle): string {
   const lines = battle.sides
     .filter(side => !side.fake && !side.minion)
@@ -2560,9 +2600,7 @@ export function battleStatsText(battle: Battle): string {
     })
 
   const minions = battle.sides.filter(side => side.minion && side.hp > 0)
-  if (minions.length > 0) {
-    lines.push(`${emojiText('rottenminion', '🧟')} Миньоны: **${minions.length}**`)
-  }
+  lines.push(...minionSummaryLines(minions))
 
   const mvp = [...battle.sides]
     .filter(
@@ -2624,14 +2662,7 @@ export function forecastEmbed(
       enemy =>
         `${sideCharacterLabel(enemy)} ${enemy.name} — HP ${enemy.hp}/${enemy.maxHp} · уворот ${Math.round(jukeChanceOf(enemy) * 100)}%${dodgePenalty(enemy)}`,
     ),
-    ...(minionEnemies.length > 0
-      ? [
-          `${emojiText('rottenminion', '🧟')} Миньоны: **${minionEnemies.length}** · HP **${minionEnemies.reduce(
-            (sum, enemy) => sum + enemy.hp,
-            0,
-          )}/${minionEnemies.reduce((sum, enemy) => sum + enemy.maxHp, 0)}**`,
-        ]
-      : []),
+    ...minionSummaryLines(minionEnemies),
     '',
     '**Статусы:**',
     ...statusLines(battle),
@@ -2679,14 +2710,7 @@ export function statusEmbed(battle: Battle): EmbedBuilder {
   const help = statusHelpLines(battle)
   const body = [...statusLines(battle)]
   const minions = battle.sides.filter(side => side.minion && side.hp > 0)
-  if (minions.length > 0) {
-    body.push(
-      `${emojiText('rottenminion', '🧟')} Миньоны: **${minions.length}** · HP **${minions.reduce(
-        (sum, side) => sum + side.hp,
-        0,
-      )}/${minions.reduce((sum, side) => sum + side.maxHp, 0)}**`,
-    )
-  }
+  body.push(...minionSummaryLines(minions))
   if (help.length > 0) body.push(['**Расшифровка эффектов:**', ...help].join('\n'))
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.choose)
@@ -2781,16 +2805,6 @@ export function battleEmbed(
     const minions = battle.sides.filter(
       side => side.team === team && side.minion && side.hp > 0,
     )
-    const minionLine =
-      minions.length > 0
-        ? `${emojiText('rottenminion', '🧟')} Миньоны: **${minions.length}** · HP **${minions.reduce(
-            (sum, side) => sum + side.hp,
-            0,
-          )}/${minions.reduce((sum, side) => sum + side.maxHp, 0)}** · атака **${minions.reduce(
-            (sum, side) => sum + side.character.attack,
-            0,
-          )}**`
-        : ''
     return [
       `**${teamLabel(battle, team)}**`,
       synergy
@@ -2804,7 +2818,7 @@ export function battleEmbed(
             (!side.fake || (side.hp > 0 && !battle.finished)),
         )
         .map(line),
-      minionLine,
+      ...minionSummaryLines(minions),
     ]
       .filter(Boolean)
       .join('\n')
@@ -2970,10 +2984,14 @@ export function targetComponents(
     row.addComponents(button)
   }
   if (minionTargets.length > 0) {
-    const minionEmoji = emojiData('rottenminion')
+    const pizzaOnly = minionTargets.every(side => side.pizzaMinion)
+    const minionEmoji = emojiData(pizzaOnly ? 'pizzadelivery' : 'rottenminion')
+    const label = pizzaOnly
+      ? `Пицца-миньоны (${minionTargets.length})`
+      : `Миньоны (${minionTargets.length})`
     const button = new ButtonBuilder()
       .setCustomId('pvp:target:minions')
-      .setLabel(minionEmoji ? `Миньоны (${minionTargets.length})` : `🧟 Миньоны (${minionTargets.length})`)
+      .setLabel(minionEmoji ? label : `${pizzaOnly ? '🍕' : '🧟'} ${label}`)
       .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
     if (minionEmoji) button.setEmoji(minionEmoji)
     row.addComponents(button)
@@ -6100,7 +6118,11 @@ async function handleDebugButton(interaction: ButtonInteraction): Promise<void> 
     return
   }
   if (interaction.customId === 'debug:test') {
-    const setup: DebugTestSetup = { ownerId: interaction.user.id, mode: '1x1' }
+    const setup: DebugTestSetup = {
+      ownerId: interaction.user.id,
+      mode: '1x1',
+      battlesPerPair: DEBUG_BATTLES_DEFAULT,
+    }
     debugTests.set(interaction.message.id, setup)
     await interaction.update({
       embeds: [debugTestEmbed(setup)],
@@ -6132,7 +6154,7 @@ async function handleDebugButton(interaction: ButtonInteraction): Promise<void> 
     await interaction.deferUpdate()
     try {
       const simulation = await simulateBalance({
-        battlesPerPair: 30,
+        battlesPerPair: setup.battlesPerPair ?? DEBUG_BATTLES_DEFAULT,
         mode: setup.mode,
         character: setup.character,
         special: setup.special,
@@ -6192,6 +6214,11 @@ async function handleDebugTestSelect(
     setup.special = undefined
   } else if (interaction.customId === 'debug:test:special') {
     setup.special = value === 'all' ? undefined : value
+  } else if (interaction.customId === 'debug:test:battles') {
+    const battles = Number.parseInt(value, 10)
+    if (Number.isFinite(battles)) {
+      setup.battlesPerPair = Math.max(1, Math.min(200, battles))
+    }
   }
   debugTests.set(interaction.message.id, setup)
   await interaction.update({

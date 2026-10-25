@@ -416,6 +416,7 @@ const EXACT: Record<string, string> = {
     '**Survival** — a wave run. Each wave is stronger: the enemy gets +25 HP and +2 attack. Between waves you restore 25% HP, and the reward grows for every cleared wave. The run ends after a loss or when you press “Claim reward”.',
   'Выживание': 'Survival',
   'Миньоны': 'Minions',
+  'Пицца-миньоны': 'Pizza Minions',
   'Забрать награду': 'Claim reward',
   'Следующая волна': 'Next wave',
   'Следующий раунд': 'Next round',
@@ -442,6 +443,24 @@ const PATTERNS: Array<[RegExp, string]> = [
     'Rejuvenate the Rotten: $1 gains a charge ($2).',
   ],
   [/^(.+) получает Glitch на 1 ход\.$/, '$1 gains Glitch for 1 turn.'],
+  [
+    /^(.+) применяет «Pizza Delivery»: призывает двух пицца-миньонов\.$/,
+    '$1 uses “Pizza Delivery”: summons two pizza minions.',
+  ],
+  [
+    /^(.+) доставляет пиццу (.+): горение 7×2 и −10% уворота; миньон исчезает\.$/,
+    '$1 delivers pizza to $2: burn 7×2 and −10% dodge; the minion disappears.',
+  ],
+  [/^(.+) уклоняется от доставки пиццы\.$/, '$1 dodges the pizza delivery.'],
+  [/^(.+) уворачивается от доставки пиццы\.$/, '$1 evades the pizza delivery.'],
+  [
+    /^(.+) доставляет пиццу в пустоту и исчезает\.$/,
+    '$1 delivers pizza into the void and disappears.',
+  ],
+  [
+    /^(.+) доставляет пиццу (.+), но эффект не срабатывает\.$/,
+    '$1 delivers pizza to $2, but the effect fails.',
+  ],
   [/^(.+): миньоны рассыпаются\.$/, '$1: the minions crumble.'],
   [
     /^(.+) не может призвать миньонов: нет зарядов\.$/,

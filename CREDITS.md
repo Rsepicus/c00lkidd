@@ -20,8 +20,9 @@ transparent 128px PNGs (stored in `emojis-ui/`).
 The Veeronica and Jane Doe character icons use the Damnation Wiki NavIcons
 (wikitide.net). The Sk8, Activate
 Battery, Crystal Pitch, Purified and Hatchet ability icons are from the
-[Forsaken Wiki](https://forsaken.wiki). The Noli Observant ability icon is from
-the [Forsaken Wiki on Fandom](https://forsaken2024.fandom.com/wiki/Noli).
+[Forsaken Wiki](https://forsaken.wiki). The Noli Observant ability icon, the
+Rejuvenate the Rotten ability icon and the rotten minion render are from the
+[Forsaken Wiki on Fandom](https://forsaken2024.fandom.com/wiki/Noli).
 
 ### MIT License
 

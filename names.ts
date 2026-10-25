@@ -5,7 +5,8 @@ export type Language = 'ru' | 'en'
 const EN: Record<string, string> = {
   'Gashing Wound': 'A series of machete strikes: 18 damage and 6 bleeding damage for 2 turns.',
   'Raging Pace': 'Rage: +20% damage for 2 turns.',
-  'Pizza Delivery': 'Burns the opponent for 7 damage at the start of their turn for 2 turns and lowers their dodge by 10%.',
+  'Pizza Delivery':
+    'Summons two 5 HP pizza minions. On a hit, a minion burns the enemy for 7 damage at the start of their turn for 2 turns, lowers their dodge by 10%, and disappears. CD: 3 turns.',
   'Corrupt Nature': "Corruption: lowers the opponent's dodge by 60% for 2 turns.",
   'Corrupt Energy': '14 damage and −10% enemy dodge for 2 turns.',
   'Digital Footprint': '6 damage and Weakness: −20% enemy damage and −15% dodge for 2 turns.',

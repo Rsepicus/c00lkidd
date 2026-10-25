@@ -46,6 +46,7 @@ export type SpecialKind =
   | 'oneshot'
   | 'decoy'
   | 'rejuvenate'
+  | 'pizza'
 
 export type Special = {
   name: string
@@ -192,7 +193,15 @@ export const KILLERS: readonly Character[] = [
     price: 900,
     hp: 100,
     attack: 14,
-    special: { name: 'Pizza Delivery', kind: 'burn', power: 7, description: 'Поджигает соперника: 7 урона в начале его хода 2 хода и −10% уворота.' },
+    special: {
+      name: 'Pizza Delivery',
+      kind: 'pizza',
+      power: 7,
+      cooldown: 3,
+      description:
+        'Призывает двух пицца-миньонов по 5 HP. При попадании миньон поджигает врага: ' +
+        '7 урона в начале хода врага 2 хода и −10% уворота, после чего исчезает.',
+    },
     alternates: [
       { name: 'Corrupt Nature', kind: 'corrupt', power: 0, description: 'Порча: снижает уворот соперника на 60% на 2 хода.', cooldown: 3 },
     ],
