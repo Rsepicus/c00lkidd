@@ -1384,11 +1384,8 @@ function applySpecial(
     case 'block': {
       side.blocking = true
       side.blockTargetId = (blockTarget ?? side).id
-      // A real basic attack keeps the action indistinguishable from an attack
-      // in the battle log; the block itself only reveals itself when it saves.
-      side.basicAttacks += 1
-      const raw = side.character.attack + Math.floor(rng() * 5)
-      dealDamage(side, other, raw, events, rng, battle)
+      // No event here: the block should only become visible in the log when
+      // it actually saves someone, not as a unique "uses Block" line.
       break
     }
     case 'empower':

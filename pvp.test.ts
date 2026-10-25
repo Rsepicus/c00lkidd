@@ -479,8 +479,8 @@ describe('Guest 1337 block', () => {
     const blockResult = takeTurn(battle, 'special', () => 0)
     expect(blockResult.battle.sides[0].blocking).toBe(true)
     expect(blockResult.events.join(' ')).not.toContain('блок')
-    expect(blockResult.events.join(' ')).toContain('наносит 12 урона')
-    expect(blockResult.battle.sides[1].hp).toBe(88)
+    expect(blockResult.events.join(' ')).not.toContain('урона')
+    expect(blockResult.battle.sides[1].hp).toBe(100)
 
     battle = takeTurn(blockResult.battle, 'attack', () => 0).battle
     expect(battle.sides[0].hp).toBe(115)
@@ -489,7 +489,7 @@ describe('Guest 1337 block', () => {
     expect(battle.sides[0].blocks).toBe(1)
 
     const result = takeTurn(battle, 'attack', () => 0)
-    expect(result.battle.sides[1].hp).toBe(70)
+    expect(result.battle.sides[1].hp).toBe(82)
     expect(result.events.join(' ')).toContain('контрудар')
     expect(result.events.join(' ')).not.toContain('блок')
   })
