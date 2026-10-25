@@ -3387,7 +3387,7 @@ function sideStatus(side: Side): string {
     return `${cooldownAfterTick(side, index)}/${base}`
   }
   return [
-    side.juking ? emojiText('dodge', '🌀') : '',
+    side.juking || side.blocking ? emojiText('dodge', '🌀') : '',
     side.shield > 0 ? emojiText('shield', '🛡️') : '',
     side.tempHp > 0 ? `${emojiText('timer', '⏳')} TEMP ${side.tempHp}` : '',
     side.character.name === 'Veeronica' ? `${emojiText('battery', '🔋')} ${side.charge}%` : '',
@@ -3635,7 +3635,9 @@ function statusLines(battle: Battle): string[] {
       )
       const stance = side.juking
         ? `стойка +${Math.round(JUKE_STANCE_BONUS * 100)}% (${side.jukingTurns})`
-        : ''
+        : side.blocking
+          ? `стойка +${Math.round(JUKE_STANCE_BONUS * 100)}% (1)`
+          : ''
       const battery = batteryDodgeBonusOf(side)
       const batteryText =
         battery === 0
@@ -3718,11 +3720,12 @@ function statusHelpLines(battle: Battle): string[] {
 }
 
 function dodgePenalty(side: Side): string {
+  const stanced = side.juking || side.blocking
   const raw =
     jukeBonusOf(side) +
     batteryDodgeBonusOf(side) +
-    (side.juking ? JUKE_STANCE_BONUS : 0)
-  return !side.juking && raw < 0
+    (stanced ? JUKE_STANCE_BONUS : 0)
+  return !stanced && raw < 0
     ? ` · штраф −${Math.abs(Math.round(raw * 100))}%`
     : ''
 }

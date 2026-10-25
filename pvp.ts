@@ -567,15 +567,22 @@ export function batteryDodgeBonusOf(side: Side): number {
   return 0
 }
 
-function jukeChance(side: Side): number {
-  const stance = side.juking ? JUKE_STANCE_BONUS : 0
+function jukeStanceChance(side: Side): number {
   const chance =
-    jukeBonusOf(side) + batteryDodgeBonusOf(side) + stance + (side.bonusDodge ?? 0)
-  if (!side.juking) return Math.max(0, Math.min(0.9, chance))
+    jukeBonusOf(side) + batteryDodgeBonusOf(side) + JUKE_STANCE_BONUS + (side.bonusDodge ?? 0)
   return Math.min(0.9, Math.max(0.05, chance))
 }
 
+function jukeChance(side: Side): number {
+  if (side.juking) return jukeStanceChance(side)
+  const chance =
+    jukeBonusOf(side) + batteryDodgeBonusOf(side) + (side.bonusDodge ?? 0)
+  return Math.max(0, Math.min(0.9, chance))
+}
+
 export function jukeChanceOf(side: Side): number {
+  // While blocking, the panel shows the same dodge stance the log bluffs about.
+  if (side.blocking) return jukeStanceChance(side)
   return jukeChance(side)
 }
 
@@ -1384,8 +1391,12 @@ function applySpecial(
     case 'block': {
       side.blocking = true
       side.blockTargetId = (blockTarget ?? side).id
-      // No event here: the block should only become visible in the log when
-      // it actually saves someone, not as a unique "uses Block" line.
+      // Bluff: log exactly what the dodge stance logs, so the opponent cannot
+      // tell Block apart from a normal dodge from the battle log alone. The
+      // block itself only reveals itself when it absorbs a hit.
+      events.push(
+        `${side.name} готовит уворот: шанс ${Math.round(jukeStanceChance(side) * 100)}%.`,
+      )
       break
     }
     case 'empower':

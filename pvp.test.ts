@@ -480,6 +480,8 @@ describe('Guest 1337 block', () => {
     expect(blockResult.battle.sides[0].blocking).toBe(true)
     expect(blockResult.events.join(' ')).not.toContain('блок')
     expect(blockResult.events.join(' ')).not.toContain('урона')
+    expect(blockResult.events.join(' ')).toContain('готовит уворот')
+    expect(jukeChanceOf(blockResult.battle.sides[0])).toBeCloseTo(0.6)
     expect(blockResult.battle.sides[1].hp).toBe(100)
 
     battle = takeTurn(blockResult.battle, 'attack', () => 0).battle
@@ -510,6 +512,21 @@ describe('Guest 1337 block', () => {
     expect(result.notices.join(' ')).not.toContain('Блок не сработал')
     expect(result.events.join(' ')).toContain('Блок не сработал')
     expect(result.events.join(' ')).toContain('−30%')
+  })
+
+  test('logs Block exactly like a dodge stance', () => {
+    const guest = characterByName('Guest 1337')!
+    const blockBattle = createBattle(
+      { userId: 'a', name: 'Guest', character: guest },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    const jukeBattle = createBattle(
+      { userId: 'a', name: 'Guest', character: guest },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    const blockLine = takeTurn(blockBattle, 'special', () => 0).events.join(' ')
+    const jukeLine = takeTurn(jukeBattle, 'juke', () => 0).events.join(' ')
+    expect(blockLine).toBe(jukeLine)
   })
 
   test('temporary HP expiry does not blame Plasma Beam', () => {
