@@ -644,10 +644,12 @@ const PATTERNS: Array<[RegExp, string]> = [
     '$1 places a turret: 25 HP, 6 damage on its own turn.',
   ],
   [
-    /^(.+) ставит диспенсер: 15 HP, 10 лечения в свой ход\.$/,
-    '$1 places a dispenser: 15 HP, 10 healing on its own turn.',
+    /^(.+) ставит диспенсер: 25 HP, 10 лечения в свой ход\.$/,
+    '$1 places a dispenser: 25 HP, 10 healing on its own turn.',
   ],
   [/^(.+) раздаёт лечение — (.+)\.$/, '$1 dispenses healing — $2.'],
+  [/^(.+) уничтожен\.$/, '$1 is destroyed.'],
+  [/^(.+) рассыпается\.$/, '$1 crumbles.'],
   [
     /^(<:[^>]+> )?Миньоны: \*\*(\d+)\*\* · HP \*\*(\d+)\/(\d+)\*\* · атака \*\*(\d+)\*\*$/,
     '$1Minions: **$2** · HP **$3/$4** · attack **$5**',

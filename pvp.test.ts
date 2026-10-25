@@ -220,7 +220,7 @@ describe('2 на 2', () => {
     battle = takeTurn(battle, 'special', () => 0).battle
     const dispenser = battle.sides.find(side => side.structure === 'dispenser')
     expect(dispenser).toBeDefined()
-    expect(dispenser!.hp).toBe(15)
+    expect(dispenser!.hp).toBe(25)
     expect(battle.sides[0].effects.regeneration).toBeUndefined()
     expect(battle.sides[0].minionsSummoned).toBe(1)
 
@@ -228,6 +228,34 @@ describe('2 на 2', () => {
     battle = takeTurn(battle, 'special', () => 0).battle
     expect(battle.sides[0].hp).toBe(60)
     expect(battle.sides[2].hp).toBe(60)
+  })
+
+  test('the turret does not apply Glitch', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    let battle = createBattle(
+      { userId: 'a', name: 'A', character: builderman },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const turret = battle.sides.find(side => side.structure === 'sentry')!
+    battle.turn = turret.id
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.sides[1].effects.glitch).toBeUndefined()
+  })
+
+  test('a destroyed turret is reported in the log', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    let battle = createBattle(
+      { userId: 'a', name: 'A', character: builderman },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const turret = battle.sides.find(side => side.structure === 'sentry')!
+    turret.hp = 1
+    battle.turn = 1
+    const result = takeTurn(battle, 'attack', () => 0, turret.id)
+    expect(result.battle.sides.find(side => side.id === turret.id)?.hp).toBe(0)
+    expect(result.events.join(' ')).toContain('уничтожен')
   })
 
   test('structures collapse when Builderman dies', () => {

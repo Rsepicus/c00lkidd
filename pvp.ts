@@ -711,6 +711,13 @@ function dealDamage(
   }
   maybeRevive(defender, events)
   if (defender.hp === 0) {
+    if (defender.minion && !defender.pizzaMinion) {
+      events.push(
+        defender.structure
+          ? `${defender.name} уничтожен.`
+          : `${defender.name} рассыпается.`,
+      )
+    }
     creditRottenKill(battle, attacker, defender, events)
     clearMinionsOfDeadOwners(battle, events)
   }
@@ -868,7 +875,7 @@ function structureCharacter(kind: 'sentry' | 'dispenser'): Character {
     ability: 'Диспенсер: лечит союзников на 10 HP в свой ход.',
     power: 0,
     price: 0,
-    hp: 15,
+    hp: 25,
     attack: 0,
     special: { name: 'Dispenser', kind: 'dispenser', power: 10, cooldown: 0, description: '' },
   }
@@ -1493,7 +1500,7 @@ function applySpecial(
         break
       }
       addStructure(battle, side, 'dispenser')
-      events.push(`${side.name} ставит диспенсер: 15 HP, 10 лечения в свой ход.`)
+      events.push(`${side.name} ставит диспенсер: 25 HP, 10 лечения в свой ход.`)
       applyJuke = false
       break
     case 'pulse':
@@ -2032,7 +2039,9 @@ export function takeTurn(
         events.push(`${side.name}: +${bonus} урона (dive).`)
       }
       const dealt = dealDamage(side, target, raw, events, rng, battle)
-      if (dealt > 0 && target.hp > 0 && side.minion) {
+      // Rotten minions glitch on a basic hit; turrets and pizza minions do not.
+      const rottenMinion = side.minion && !side.pizzaMinion && !side.structure
+      if (dealt > 0 && target.hp > 0 && rottenMinion) {
         // Two ticks: the status is decremented at the start of the target's turn,
         // leaving one active tick to block their next ability.
         addStatus(target, 'glitch', 2, side)
