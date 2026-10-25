@@ -278,6 +278,22 @@ describe('embeds', () => {
     expect(String(battleEmbed(next).toJSON().description)).toContain('Ход 2:')
   })
 
+  test('battle log keeps the newest events when it is too long', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('Noob')! },
+      { userId: 'b', name: 'B', character: characterByName('Jason')! },
+    )
+    const events = Array.from({ length: 200 }, (_, index) => `event ${index}`)
+    const field = battleEmbed(battle, events)
+      .toJSON()
+      .fields?.find(entry => entry.name === 'Ход')
+    expect(field).toBeDefined()
+    expect(field!.value.length).toBeLessThanOrEqual(1024)
+    expect(field!.value).toContain('event 199')
+    expect(field!.value).not.toContain('event 0')
+    expect(field!.value.startsWith('…')).toBe(true)
+  })
+
   test('turn pings skip solo PvE, automated sides and the same user', () => {
     const pvp = createBattle(
       { userId: 'a', name: 'A', character: characterByName('Noob')! },

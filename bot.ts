@@ -3372,6 +3372,28 @@ function dodgePenalty(side: Side): string {
     : ''
 }
 
+/**
+ * Keeps the newest lines of a long turn log. Discord caps a field at 1024
+ * characters; cutting from the start hid the killing blows of a long batch.
+ */
+function clampBattleLog(events: string[], limit = 1024): string {
+  const text = events.join('\n')
+  if (text.length <= limit) return text
+  let start = events.length
+  let size = 0
+  while (start > 0) {
+    const line = events[start - 1]
+    const cost = line.length + (size > 0 ? 1 : 0)
+    if (size + cost > limit - 2) break
+    size += cost
+    start--
+  }
+  if (start === events.length) {
+    return `…${(events.at(-1) ?? '').slice(-(limit - 1))}`
+  }
+  return ['…', ...events.slice(start)].join('\n').slice(0, limit)
+}
+
 export function battleEmbed(
   battle: Battle,
   events: string[] = [],
@@ -3460,7 +3482,7 @@ export function battleEmbed(
     .setDescription(description)
 
   if (events.length > 0) {
-    embed.addFields({ name: 'Ход', value: events.join('\n').slice(0, 1024) })
+    embed.addFields({ name: 'Ход', value: clampBattleLog(events) })
   }
   if (battle.finished) {
     embed.addFields({ name: 'Итоги', value: battleStatsText(battle) })
