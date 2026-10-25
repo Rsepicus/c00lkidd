@@ -29,7 +29,7 @@ import {
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chooseBossAction, chooseBotAction } from './ai'
+import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
 import { simulateBalance, type BalanceSimulation } from './balance'
 import {
   loadBattleState,
@@ -81,6 +81,7 @@ import {
   checkTrialResult,
   claimTrialResult,
   createTrialBattle,
+  trialClaimKey,
   type Trial,
 } from './trials'
 import {
@@ -1943,7 +1944,14 @@ function trialGoalLine(trial: Trial): string {
     : `Цель: ${trialObjectiveText(trial)}.`
 }
 
-export function trialsPanelEmbed(selected?: Trial): EmbedBuilder {
+export function availableTrials(user?: UserData): Trial[] {
+  if (!user) return [...TRIALS]
+  return TRIALS.filter(trial => (user.trialClaimed[trialClaimKey(trial)] ?? 0) === 0)
+}
+
+export function trialsPanelEmbed(selected?: Trial, user?: UserData): EmbedBuilder {
+  const available = availableTrials(user)
+  const completed = TRIALS.length - available.length
   const lines = selected
     ? [
         `${characterLabel(selected.characterName)} · ${selected.mode}`,
@@ -1951,11 +1959,18 @@ export function trialsPanelEmbed(selected?: Trial): EmbedBuilder {
         `Награда: **+${selected.bonusXp} XP**.`,
         'В 2 на 2 напарник — бот. Мастерство начисляется один раз за испытание.',
       ]
-    : [
-        'Испытания персонажей: сыграй за героя и выполни его цель.',
-        `Всего испытаний: **${TRIALS.length}**. Награда — опыт мастерства этого персонажа.`,
-        'Выбери персонажа в меню ниже.',
-      ]
+    : available.length === 0
+      ? [
+          'Все испытания выполнены — награды получены.',
+          `Пройдено: **${TRIALS.length}/${TRIALS.length}**.`,
+          'Можно вернуться в меню PvE.',
+        ]
+      : [
+          'Испытания персонажей: сыграй за героя и выполни его цель.',
+          `Доступно: **${available.length}** из ${TRIALS.length}.` +
+            (completed > 0 ? ` Выполнено: **${completed}**.` : ''),
+          'Награда — опыт мастерства этого персонажа. Выполненные испытания исчезают из списка.',
+        ]
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.battle)
     .setTitle(`${emojiText('trials', '🏅')} Испытания`)
@@ -1963,32 +1978,39 @@ export function trialsPanelEmbed(selected?: Trial): EmbedBuilder {
     .setFooter({ text: 'Forsaken Simulator' })
 }
 
-export function trialsPanelComponents(): Array<
+export function trialsPanelComponents(user?: UserData): Array<
   ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
 > {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId('trials:select')
-    .setPlaceholder('Выбрать испытание')
-    .addOptions(
-      TRIALS.map(trial => {
-        const emoji = characterEmojiData(trial.characterName)
-        return {
-          label: trial.characterName,
-          description: `${trial.mode} · ${trialObjectiveText(trial)}`.slice(0, 100),
-          value: trial.id,
-          ...(emoji ? { emoji } : {}),
-        }
-      }),
-    )
-  return [
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu),
+  const available = availableTrials(user)
+  const rows: Array<
+    ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
+  > = []
+  if (available.length > 0) {
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('trials:select')
+      .setPlaceholder('Выбрать испытание')
+      .addOptions(
+        available.map(trial => {
+          const emoji = characterEmojiData(trial.characterName)
+          return {
+            label: trial.characterName,
+            description: `${trial.mode} · ${trialObjectiveText(trial)}`.slice(0, 100),
+            value: trial.id,
+            ...(emoji ? { emoji } : {}),
+          }
+        }),
+      )
+    rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu))
+  }
+  rows.push(
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId('pve:menu')
         .setLabel('← Назад')
         .setStyle(ButtonStyle.Secondary),
     ),
-  ]
+  )
+  return rows
 }
 
 function trialStartComponents(trial: Trial): ActionRowBuilder<ButtonBuilder>[] {
@@ -3822,18 +3844,18 @@ function runAutomatedTurns(input: Battle, events: string[]): Battle {
     guard++ < Math.max(12, current.sides.length + 12)
   ) {
     const side = current.sides[current.turn]
-    const decision = side.fake
-      ? { action: 'attack' as const, specialIndex: 0 }
+    const decision: BotDecision = side.fake
+      ? { action: 'attack', specialIndex: 0 }
       : side.boss
         ? chooseBossAction(current, Math.random)
         : side.minion
-          ? { action: 'attack' as const, specialIndex: 0 }
-          : { action: chooseBotAction(current, Math.random), specialIndex: 0 }
+          ? { action: 'attack', specialIndex: 0 }
+          : chooseBotTurn(current, Math.random)
     const result = takeTurn(
       current,
       decision.action,
       Math.random,
-      undefined,
+      decision.targetIndex,
       decision.specialIndex,
     )
     current = result.battle
@@ -7452,8 +7474,8 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
     towerRuns.delete(interaction.message.id)
     trialRuns.delete(interaction.message.id)
     await interaction.update({
-      embeds: [trialsPanelEmbed()],
-      components: trialsPanelComponents(),
+      embeds: [trialsPanelEmbed(undefined, user)],
+      components: trialsPanelComponents(user),
     })
     return
   }

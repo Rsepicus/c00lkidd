@@ -220,6 +220,11 @@ const EXACT: Record<string, string> = {
   'Испытания персонажей: сыграй за героя и выполни его цель.':
     'Character trials: play the hero and complete their goal.',
   'Выбери персонажа в меню ниже.': 'Choose a character in the menu below.',
+  'Награда — опыт мастерства этого персонажа. Выполненные испытания исчезают из списка.':
+    'Reward: mastery XP for that character. Completed trials disappear from the list.',
+  'Все испытания выполнены — награды получены.':
+    'All trials completed — rewards claimed.',
+  'Можно вернуться в меню PvE.': 'You can return to the PvE menu.',
   'В 2 на 2 напарник — бот. Мастерство начисляется один раз за испытание.':
     'In 2v2 your partner is a bot. Mastery is awarded once per trial.',
   'Башня': 'Tower',
@@ -655,9 +660,11 @@ const PATTERNS: Array<[RegExp, string]> = [
     'Floor reward: $1 → $2 $3 across floors.',
   ],
   [
-    /^Всего испытаний: \*\*(\d+)\*\*\. Награда — опыт мастерства этого персонажа\.$/,
-    'Total trials: **$1**. Reward: mastery XP for that character.',
+    /^Доступно: \*\*(\d+)\*\* из (\d+)\. Выполнено: \*\*(\d+)\*\*\.$/,
+    'Available: **$1** of $2. Completed: **$3**.',
   ],
+  [/^Доступно: \*\*(\d+)\*\* из (\d+)\.$/, 'Available: **$1** of $2.'],
+  [/^Пройдено: \*\*(\d+)\/(\d+)\*\*\.$/, 'Completed: **$1/$2**.'],
   [/^Награда: \*\*\+(\d+) XP\*\*\.$/, 'Reward: **+$1 XP**.'],
   [
     /Пройдено волн: \*\*(\d+)\*\*\. Награда: \*\*\+(\d+)\*\* (.+)/,

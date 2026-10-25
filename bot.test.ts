@@ -1055,6 +1055,32 @@ describe('embeds', () => {
     expect(rows[1].components.map(component => component.custom_id)).toEqual(['pve:menu'])
   })
 
+  test('completed trials disappear from the list', () => {
+    const user = { ...defaultUser(), trialClaimed: { 'pve:jason': 1 } }
+    const rows = trialsPanelComponents(user).map(row => row.toJSON())
+    const select = rows[0].components[0] as {
+      options: Array<{ value: string }>
+    }
+    expect(select.options).toHaveLength(TRIALS.length - 1)
+    expect(select.options.some(option => option.value === 'jason')).toBe(false)
+    expect(String(trialsPanelEmbed(undefined, user).toJSON().description)).toContain(
+      `Доступно: **${TRIALS.length - 1}** из ${TRIALS.length}`,
+    )
+  })
+
+  test('the trials panel reports when everything is done', () => {
+    const user = {
+      ...defaultUser(),
+      trialClaimed: Object.fromEntries(TRIALS.map(trial => [`pve:${trial.id}`, 1])),
+    }
+    const rows = trialsPanelComponents(user).map(row => row.toJSON())
+    expect(rows).toHaveLength(1)
+    expect(rows[0].components.map(component => component.custom_id)).toEqual(['pve:menu'])
+    expect(String(trialsPanelEmbed(undefined, user).toJSON().description)).toContain(
+      'Все испытания выполнены',
+    )
+  })
+
   test('a 2x2 trial pairs the player with a bot ally', () => {
     const trial = TRIALS.find(candidate => candidate.id === 'noob')!
     const battle = trialBattle(

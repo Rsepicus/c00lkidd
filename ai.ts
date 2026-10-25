@@ -3,6 +3,7 @@ import {
   alliesOf,
   cooldownAfterTick,
   enemiesOf,
+  specialNeedsAllyTarget,
   specialNeedsEnemyTarget,
   specialOf,
   specialReady,
@@ -11,7 +12,11 @@ import {
   type Side,
 } from './pvp'
 
-export type BotDecision = { action: Action; specialIndex: number }
+export type BotDecision = {
+  action: Action
+  specialIndex: number
+  targetIndex?: number
+}
 
 const LOW_HP = 0.4
 const DANGER_HP = 0.55
@@ -223,7 +228,112 @@ function shouldJuke(side: Side): boolean {
   return hpRatio(side) <= DANGER_HP
 }
 
+function boostedDamage(side: Side, damage: number): number {
+  return hasStatus(side, 'strength') ? Math.ceil(damage * 1.2) : damage
+}
+
+/** HP a hit must chew through, including shields, temporary HP and Shatterpoint. */
+function effectiveHp(side: Side): number {
+  const shield = Math.max(0, Math.min(90, side.shield))
+  return (side.hp + side.tempHp + side.shatterpoint) / (1 - shield / 100)
+}
+
+function damageThroughShield(damage: number, side: Side): number {
+  const shield = Math.max(0, Math.min(90, side.shield))
+  return Math.ceil(damage * (1 - shield / 100))
+}
+
+/** How much an enemy is worth shutting down: damage output plus support value. */
+function threatOf(enemy: Side): number {
+  return (
+    enemy.character.attack +
+    (enemy.character.class === 'Support' ? 10 : 0) +
+    (enemy.boss ? 20 : 0)
+  )
+}
+
+function chooseEnemyTarget(
+  battle: Battle,
+  side: Side,
+  damage: number,
+  control: boolean,
+): number | undefined {
+  const candidates = battle.sides
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(({ candidate }) => candidate.team !== side.team && candidate.hp > 0)
+  if (candidates.length === 0) return undefined
+
+  if (damage > 0) {
+    const lethal = candidates.filter(
+      ({ candidate }) =>
+        damageThroughShield(damage, candidate) >=
+        candidate.hp + candidate.tempHp + candidate.shatterpoint,
+    )
+    if (lethal.length > 0) {
+      return lethal.reduce((best, option) =>
+        threatOf(option.candidate) > threatOf(best.candidate) ? option : best,
+      ).index
+    }
+  }
+
+  const score = (candidate: Side): number =>
+    control ? threatOf(candidate) * 100 : 1000 - effectiveHp(candidate)
+  return candidates.reduce((best, option) =>
+    score(option.candidate) > score(best.candidate) ? option : best,
+  ).index
+}
+
+function chooseAllyTarget(battle: Battle, side: Side): number | undefined {
+  const candidates = battle.sides
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(({ candidate }) => candidate.team === side.team && candidate.hp > 0)
+  if (candidates.length === 0) return undefined
+  return candidates.reduce((best, option) =>
+    hpRatio(option.candidate) < hpRatio(best.candidate) ? option : best,
+  ).index
+}
+
+function chooseSpecialTarget(
+  battle: Battle,
+  side: Side,
+  specialIndex: number,
+): number | undefined {
+  if (specialNeedsAllyTarget(side, specialIndex)) return chooseAllyTarget(battle, side)
+  if (!specialNeedsEnemyTarget(side, specialIndex)) return undefined
+  const special = specialOf(side, specialIndex)
+  const damage = boostedDamage(side, immediateDamage(special, side))
+  return chooseEnemyTarget(battle, side, damage, damage <= 0)
+}
+
+function withTarget(battle: Battle, side: Side, decision: BotDecision): BotDecision {
+  let targetIndex: number | undefined
+  if (decision.action === 'attack') {
+    targetIndex = chooseEnemyTarget(
+      battle,
+      side,
+      boostedDamage(side, side.character.attack),
+      false,
+    )
+  } else if (decision.action === 'special') {
+    targetIndex = chooseSpecialTarget(battle, side, decision.specialIndex)
+  }
+  return targetIndex === undefined ? decision : { ...decision, targetIndex }
+}
+
+export function chooseBotTurn(battle: Battle, rng: Rng): BotDecision {
+  const side = battle.sides[battle.turn]
+  return withTarget(battle, side, {
+    action: chooseBotAction(battle, rng),
+    specialIndex: 0,
+  })
+}
+
 export function chooseBossAction(battle: Battle, rng: Rng): BotDecision {
+  const side = battle.sides[battle.turn]
+  return withTarget(battle, side, decideBossAction(battle, rng))
+}
+
+function decideBossAction(battle: Battle, rng: Rng): BotDecision {
   const side = battle.sides[battle.turn]
   const enemies = enemiesOf(battle, side)
   const ready = [0, 1].filter(

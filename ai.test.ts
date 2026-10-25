@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { chooseBossAction, chooseBotAction } from './ai'
+import { chooseBossAction, chooseBotAction, chooseBotTurn } from './ai'
 import type { Character } from './forsaken'
-import { createBattle, type Battle } from './pvp'
+import { createBattle, createTeamBattle, type Battle } from './pvp'
 
 function character(overrides: Partial<Character> = {}): Character {
   return {
@@ -212,15 +212,15 @@ describe('chooseBossAction', () => {
 
   test('alternates between both specials', () => {
     const battle = bossBattleWith()
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 0 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 0 })
     battle.sides[1].abilityUses = 1
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 1 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 1 })
   })
 
   test('uses the second special when the first is on cooldown', () => {
     const battle = bossBattleWith()
     battle.sides[1].cooldown = 2
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 1 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 1 })
   })
 
   test('heals when wounded instead of wasting the turn on damage', () => {
@@ -229,7 +229,7 @@ describe('chooseBossAction', () => {
       { name: 'Heavy', kind: 'heavy', power: 20, description: '' },
     )
     battle.sides[1].hp = 30
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 0 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 0 })
   })
 
   test('does not waste a heal at full HP and uses the damaging special', () => {
@@ -237,7 +237,7 @@ describe('chooseBossAction', () => {
       { special: { name: 'Heal', kind: 'heal', power: 20, description: '' } },
       { name: 'Heavy', kind: 'heavy', power: 20, description: '' },
     )
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 1 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 1 })
   })
 
   test('prefers damage when a player side is nearly dead', () => {
@@ -247,7 +247,7 @@ describe('chooseBossAction', () => {
     )
     battle.sides[1].hp = 30
     battle.sides[0].hp = 15
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 1 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 1 })
   })
 
   test('does not reuse a dodge special while already dodging', () => {
@@ -256,7 +256,7 @@ describe('chooseBossAction', () => {
       { name: 'Heavy', kind: 'heavy', power: 20, description: '' },
     )
     battle.sides[1].dodging = true
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 1 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 1 })
   })
 
   test('does not re-apply a debuff the player already has', () => {
@@ -265,7 +265,7 @@ describe('chooseBossAction', () => {
       { name: 'Heavy', kind: 'heavy', power: 20, description: '' },
     )
     battle.sides[0].effects.glitch = 2
-    expect(chooseBossAction(battle, () => 0)).toEqual({ action: 'special', specialIndex: 1 })
+    expect(chooseBossAction(battle, () => 0)).toMatchObject({ action: 'special', specialIndex: 1 })
   })
 
   test('rests to clear Hemorrhage even at high HP', () => {
@@ -291,5 +291,75 @@ describe('chooseBossAction', () => {
     battle.sides[1].secondCooldown = 2
     battle.sides[0].hp = 10
     expect(chooseBossAction(battle, () => 0).action).toBe('attack')
+  })
+})
+
+describe('target selection', () => {
+  function teamBattle(
+    actor: Character = character(),
+    ally: Character = character(),
+    enemy1: Character = character(),
+    enemy2: Character = character(),
+  ): Battle {
+    return createTeamBattle(
+      [
+        { userId: 'p', name: 'P', character: actor },
+        { userId: 'p', name: 'P', character: ally },
+      ],
+      [
+        { userId: 'bot:1', name: 'E1', character: enemy1 },
+        { userId: 'bot:2', name: 'E2', character: enemy2 },
+      ],
+    )
+  }
+
+  test('attacks focus the enemy with the lowest effective HP', () => {
+    const battle = teamBattle()
+    battle.sides[0].cooldown = 3
+    battle.sides[1].hp = 60
+    battle.sides[3].hp = 20
+    expect(chooseBotTurn(battle, () => 0.99).targetIndex).toBe(3)
+  })
+
+  test('a strong shield makes an enemy a worse focus target', () => {
+    const battle = teamBattle()
+    battle.sides[0].cooldown = 3
+    battle.sides[1].hp = 5
+    battle.sides[1].shield = 80
+    battle.sides[3].hp = 15
+    expect(chooseBotTurn(battle, () => 0.99).targetIndex).toBe(3)
+  })
+
+  test('control specials target the most dangerous enemy', () => {
+    const battle = teamBattle(
+      character({ special: { name: 'Glitch', kind: 'glitch', power: 0, description: '' } }),
+      character(),
+      character({ attack: 30 }),
+      character({ attack: 5 }),
+    )
+    const decision = chooseBotTurn(battle, () => 0)
+    expect(decision.action).toBe('special')
+    expect(decision.targetIndex).toBe(1)
+  })
+
+  test('block protects the most wounded ally', () => {
+    const battle = teamBattle(
+      character({ special: { name: 'Block', kind: 'block', power: 0, description: '' } }),
+    )
+    battle.sides[2].hp = 20
+    expect(chooseBotTurn(battle, () => 0).targetIndex).toBe(2)
+  })
+
+  test('self-only specials carry no target', () => {
+    const battle = teamBattle(
+      character({ special: { name: 'Dodge', kind: 'dodge', power: 0, description: '' } }),
+    )
+    expect(chooseBotTurn(battle, () => 0).targetIndex).toBeUndefined()
+  })
+
+  test('bosses carry a target for targeted specials', () => {
+    const battle = battleWith()
+    battle.turn = 1
+    expect(chooseBossAction(battle, () => 0).targetIndex).toBe(0)
   })
 })
