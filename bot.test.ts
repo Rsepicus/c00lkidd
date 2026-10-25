@@ -71,6 +71,7 @@ import {
   topEmbed,
   userCharacterEmojiData,
   userCharacterLabel,
+  automateGhostBattle,
 } from './bot'
 import { bossCharacter } from './boss'
 import { buyCosmetic } from './cosmetics'
@@ -1002,6 +1003,16 @@ describe('embeds', () => {
       ['pve:training:mode'],
       ['pve:training:start', 'pve:training:ghost', 'pve:menu'],
     ])
+  })
+
+  test('ghost opponents become automated and cannot ping real users', () => {
+    const battle = createBattle(
+      { userId: '123456789012345678', name: 'Player', character: characterByName('Noob')! },
+      { userId: '987654321098765432', name: 'Тень 5432', character: characterByName('Jason')! },
+    )
+    automateGhostBattle(battle)
+    expect(battle.sides[0].userId).toBe('123456789012345678')
+    expect(battle.sides[1].userId).toMatch(/^bot:training:shadow:/)
   })
 
   test('training setup can switch to player shadows', () => {

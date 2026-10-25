@@ -873,6 +873,13 @@ export function randomBattleFor(
     : createBattle(firstEntries[0], secondEntries[0])
 }
 
+export function automateGhostBattle(battle: Battle): void {
+  for (const side of battle.sides) {
+    if (side.team !== 1 || side.userId.startsWith('bot:')) continue
+    side.userId = `bot:training:shadow:${side.id}`
+  }
+}
+
 export function coopBossBattle(
   first: FighterEntry,
   second: FighterEntry,
@@ -6487,6 +6494,7 @@ async function startTrainingBattle(
         setup.mode,
       )
       battle = createGhostBattle(player, opponents, setup.mode)
+      automateGhostBattle(battle)
     } catch {
       await replyError(interaction, 'Не получилось подобрать тень. Попробуй обычную тренировку.')
       return
