@@ -2983,15 +2983,29 @@ export function targetComponents(
     if (emoji) button.setEmoji(emoji)
     row.addComponents(button)
   }
-  if (minionTargets.length > 0) {
-    const pizzaOnly = minionTargets.every(side => side.pizzaMinion)
-    const minionEmoji = emojiData(pizzaOnly ? 'pizzadelivery' : 'rottenminion')
-    const label = pizzaOnly
-      ? `Пицца-миньоны (${minionTargets.length})`
-      : `Миньоны (${minionTargets.length})`
+  const minionGroups = [
+    {
+      type: 'rotten',
+      targets: minionTargets.filter(index => !battle.sides[index]?.pizzaMinion),
+      label: 'Миньоны',
+      slug: 'rottenminion',
+      fallback: '🧟',
+    },
+    {
+      type: 'pizza',
+      targets: minionTargets.filter(index => battle.sides[index]?.pizzaMinion),
+      label: 'Пицца-миньоны',
+      slug: 'pizzadelivery',
+      fallback: '🍕',
+    },
+  ]
+  for (const group of minionGroups) {
+    if (group.targets.length === 0) continue
+    const minionEmoji = emojiData(group.slug)
+    const label = `${group.label} (${group.targets.length})`
     const button = new ButtonBuilder()
-      .setCustomId('pvp:target:minions')
-      .setLabel(minionEmoji ? label : `${pizzaOnly ? '🍕' : '🧟'} ${label}`)
+      .setCustomId(`pvp:target:minions:${group.type}`)
+      .setLabel(minionEmoji ? label : `${group.fallback} ${label}`)
       .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
     if (minionEmoji) button.setEmoji(minionEmoji)
     row.addComponents(button)
@@ -5589,10 +5603,15 @@ async function handleTargetButton(interaction: ButtonInteraction): Promise<void>
     await interaction.update({ components: battleComponents(battle) })
     return
   }
-  if (raw === 'minions') {
-    const minionIndex = pending.targets.find(
-      index => battle.sides[index]?.minion && (battle.sides[index]?.hp ?? 0) > 0,
-    )
+  if (raw === 'minions' || raw.startsWith('minions:')) {
+    const type = raw.split(':')[1]
+    const minionIndex = pending.targets.find(index => {
+      const side = battle.sides[index]
+      if (!side?.minion || side.hp <= 0) return false
+      if (type === 'pizza') return side.pizzaMinion === true
+      if (type === 'rotten') return !side.pizzaMinion
+      return true
+    })
     if (minionIndex === undefined) {
       await replyError(interaction, 'Живых миньонов не осталось.')
       return

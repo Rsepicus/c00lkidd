@@ -369,8 +369,12 @@ describe('embeds', () => {
     const embed = battleEmbed(battle).toJSON()
     expect(String(embed.description)).toContain('Миньоны')
     expect(battleStatsText(battle)).toContain('Миньоны')
-    const target = targetComponents(battle, [minion.id])[0].toJSON().components[0]
-    expect(target.custom_id).toBe('pvp:target:minions')
+    const target = targetComponents(battle, [minion.id])[0].toJSON().components[0] as {
+      custom_id: string
+      emoji?: { name?: string }
+    }
+    expect(target.custom_id).toBe('pvp:target:minions:rotten')
+    expect(target.emoji?.name).toBe('rottenminion')
   })
 
   test('groups pizza minions separately in the battle panel', () => {
@@ -384,8 +388,39 @@ describe('embeds', () => {
     expect(battleStatsText(summoned)).toContain('Пицца-миньоны')
 
     const minion = summoned.sides.find(side => side.pizzaMinion)!
-    const target = targetComponents(summoned, [minion.id])[0].toJSON().components[0]
-    expect(target.custom_id).toBe('pvp:target:minions')
+    const target = targetComponents(summoned, [minion.id])[0].toJSON().components[0] as {
+      custom_id: string
+      emoji?: { name?: string }
+    }
+    expect(target.custom_id).toBe('pvp:target:minions:pizza')
+    expect(target.emoji?.name).toBe('pizzadelivery')
+  })
+
+  test('separates pizza and rotten minion target buttons', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'Alice', character: characterByName('c00lkidd')! },
+      { userId: 'b', name: 'Bob', character: characterByName('Noob')! },
+    )
+    const summoned = takeTurn(battle, 'special', () => 0).battle
+    const pizza = summoned.sides.filter(side => side.pizzaMinion)
+    const rotten = addRottenMinion(summoned, summoned.sides[0], {
+      hp: 20,
+      maxHp: 20,
+      attack: 2,
+    })
+    const buttons = targetComponents(summoned, [...pizza.map(side => side.id), rotten.id])[0]
+      .toJSON()
+      .components as Array<{ custom_id: string; emoji?: { name?: string } }>
+    const minionButtons = buttons.filter(button =>
+      button.custom_id.startsWith('pvp:target:minions'),
+    )
+    expect(minionButtons.map(button => button.custom_id)).toEqual([
+      'pvp:target:minions:rotten',
+      'pvp:target:minions:pizza',
+    ])
+    expect(
+      minionButtons.find(button => button.custom_id === 'pvp:target:minions:pizza')?.emoji?.name,
+    ).toBe('pizzadelivery')
   })
 
   test('character card shows the mastery milestone badge', () => {

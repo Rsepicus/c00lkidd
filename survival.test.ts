@@ -9,12 +9,12 @@ describe('survival', () => {
   })
 
   test('rewards deeper waves more and heals a quarter of max HP', () => {
-    expect(survivalReward(1)).toBe(100)
-    expect(survivalReward(5)).toBe(200)
-    expect([1, 2, 3].reduce((sum, wave) => sum + survivalReward(wave), 0)).toBe(375)
+    expect(survivalReward(1)).toBe(90)
+    expect(survivalReward(5)).toBe(180)
+    expect([1, 2, 3].reduce((sum, wave) => sum + survivalReward(wave), 0)).toBe(338)
     expect(
       [1, 2, 3, 4, 5, 6, 7, 8].reduce((sum, wave) => sum + survivalReward(wave), 0),
-    ).toBe(1500)
+    ).toBe(1352)
     expect(survivalHeal(100)).toBe(25)
     expect(survivalHeal(110)).toBe(28)
   })
