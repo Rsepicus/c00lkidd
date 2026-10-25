@@ -1234,11 +1234,9 @@ export function profileEmbed(
       (favoriteTrial ? ` · ${favoriteTrial}` : '')
     : '—'
   const topBadge = topMastery ? masteryBadge(topMastery.level) : null
-  const masterySkin = topMastery ? equippedSkin(user, topMastery.name) : undefined
   const masteryValue = topMastery
     ? `${userCharacterLabel(user, topMastery.name)} — ур. ${topMastery.level} «${topMastery.title}»` +
-      (topBadge ? ` · ${topBadge}` : '') +
-      (masterySkin ? `\nСкин: **${skinName(masterySkin, user.language)}**` : '')
+      (topBadge ? ` · ${topBadge}` : '')
     : '—'
 
   return new EmbedBuilder()

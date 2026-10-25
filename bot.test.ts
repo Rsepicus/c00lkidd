@@ -424,7 +424,7 @@ describe('embeds', () => {
     expect(field('Любимый персонаж')).toContain('<:jason_gold:')
     expect(field('Любимый персонаж')).not.toContain('Золотой Jason')
     expect(field('Мастерство')).toContain('<:jason_gold:')
-    expect(field('Мастерство')).toContain('Золотой Jason')
+    expect(field('Мастерство')).not.toContain('Золотой Jason')
 
     expect(characterEmbed(characterByName('Jason')!, user).toJSON().title).toContain(
       '<:jason_gold:',
