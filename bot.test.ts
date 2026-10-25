@@ -79,6 +79,7 @@ import {
   trainingBotCharacter,
   trainingBotPartnerCharacter,
   trainingEntries,
+  trainingPlayerCharacter,
   towerBattle,
   towerPanelComponents,
   towerPanelEmbed,
@@ -1227,6 +1228,7 @@ describe('embeds', () => {
       row.toJSON().components.map(component => component.custom_id),
     )
     expect(rows).toEqual([
+      ['pve:training:player-character'],
       ['pve:training:ability'],
       ['pve:training:partner'],
       ['pve:training:partner-ability'],
@@ -1271,6 +1273,20 @@ describe('embeds', () => {
     expect(entries[0].character.special.name).toBe('Slateskin Potion')
     expect(entries[1].character.name).toBe('Elliot')
     expect(entries[1].character.special.name).toBe('Rush Hour')
+  })
+
+  test('training lets the player change the hero fighter', () => {
+    const setup = {
+      ownerId: '1',
+      mode: '1x1' as const,
+      playerCharacter: 'Jason',
+      playerAbility: 'Raging Pace',
+    }
+    const entries = trainingEntries(defaultUser(), setup, '123456789012345678', 'Player')
+    expect(entries).toHaveLength(1)
+    expect(entries[0].character.name).toBe('Jason')
+    expect(entries[0].character.special.name).toBe('Raging Pace')
+    expect(trainingPlayerCharacter(defaultUser(), setup).name).toBe('Jason')
   })
 
   test('Boss Rush panel offers both modes', () => {

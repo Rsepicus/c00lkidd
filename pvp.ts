@@ -868,7 +868,7 @@ function structureCharacter(kind: 'sentry' | 'dispenser'): Character {
     ability: 'Диспенсер: лечит союзников на 10 HP в свой ход.',
     power: 0,
     price: 0,
-    hp: 25,
+    hp: 15,
     attack: 0,
     special: { name: 'Dispenser', kind: 'dispenser', power: 10, cooldown: 0, description: '' },
   }
@@ -1493,7 +1493,7 @@ function applySpecial(
         break
       }
       addStructure(battle, side, 'dispenser')
-      events.push(`${side.name} ставит диспенсер: 25 HP, 10 лечения в свой ход.`)
+      events.push(`${side.name} ставит диспенсер: 15 HP, 10 лечения в свой ход.`)
       applyJuke = false
       break
     case 'pulse':

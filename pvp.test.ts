@@ -220,7 +220,7 @@ describe('2 на 2', () => {
     battle = takeTurn(battle, 'special', () => 0).battle
     const dispenser = battle.sides.find(side => side.structure === 'dispenser')
     expect(dispenser).toBeDefined()
-    expect(dispenser!.hp).toBe(25)
+    expect(dispenser!.hp).toBe(15)
     expect(battle.sides[0].effects.regeneration).toBeUndefined()
     expect(battle.sides[0].minionsSummoned).toBe(1)
 

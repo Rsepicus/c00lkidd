@@ -412,7 +412,7 @@ export const SURVIVORS: readonly Character[] = [
     attack: 10,
     special: { name: 'Sentry', kind: 'turret', power: 6, description: 'Турель: 25 HP, 6 урона в свой ход; её можно убить. Builderman получает −10% уворота на 2 хода.' },
     alternates: [
-      { name: 'Dispenser', kind: 'dispenser', power: 0, description: 'Диспенсер: 25 HP, лечит союзников на 10 HP в свой ход; его можно убить. Builderman получает −10% уворота.', cooldown: 3 },
+      { name: 'Dispenser', kind: 'dispenser', power: 0, description: 'Диспенсер: 15 HP, лечит союзников на 10 HP в свой ход; его можно убить. Builderman получает −10% уворота.', cooldown: 3 },
     ],
   },
   {

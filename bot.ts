@@ -317,6 +317,7 @@ type TrainingSetup = {
   botAbility?: string
   botPartner?: string
   botPartnerAbility?: string
+  playerCharacter?: string
   playerAbility?: string
   partner?: string
   partnerAbility?: string
@@ -2147,6 +2148,13 @@ function trainingActiveBase(user: UserData): Character {
   return characterByName(user.active ?? '') ?? characterByName('Noob')!
 }
 
+function trainingPlayerBase(user: UserData, setup: TrainingSetup): Character {
+  return (
+    (setup.playerCharacter ? characterByName(setup.playerCharacter) : undefined) ??
+    trainingActiveBase(user)
+  )
+}
+
 function trainingPartnerBase(user: UserData, setup: TrainingSetup): Character {
   return (setup.partner ? characterByName(setup.partner) : undefined) ?? partnerCharacter(user)
 }
@@ -2163,7 +2171,7 @@ function trainingBotPartnerBase(setup: TrainingSetup): Character {
 }
 
 export function trainingPlayerCharacter(user: UserData, setup: TrainingSetup): Character {
-  return characterWithSpecial(trainingActiveBase(user), setup.playerAbility)
+  return characterWithSpecial(trainingPlayerBase(user, setup), setup.playerAbility)
 }
 
 export function trainingPartnerCharacter(user: UserData, setup: TrainingSetup): Character {
@@ -2262,11 +2270,17 @@ export function trainingSetupComponents(
     ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
   > = []
   if (page === 'player') {
-    const playerBase = trainingActiveBase(user)
+    const playerBase = trainingPlayerBase(user, setup)
     const player = trainingPlayerCharacter(user, setup)
     const partnerBase = trainingPartnerBase(user, setup)
     const partner = trainingPartnerCharacter(user, setup)
     rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('pve:training:player-character')
+          .setPlaceholder('Герой')
+          .addOptions(trainingCharacterOptions(playerBase.name)),
+      ),
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId('pve:training:ability')
@@ -7685,7 +7699,13 @@ async function handlePveTrainingSelect(
     mode: '1x1' as const,
   }
   const value = interaction.values[0]
-  if (interaction.customId === 'pve:training:character') {
+  if (interaction.customId === 'pve:training:player-character') {
+    const base = value === 'random' ? randomCharacter(Math.random) : characterByName(value)
+    if (base) {
+      setup.playerCharacter = base.name
+      setup.playerAbility = base.special.name
+    }
+  } else if (interaction.customId === 'pve:training:character') {
     const base = value === 'random' ? randomCharacter(Math.random) : characterByName(value)
     if (base) {
       setup.botCharacter = base.name
