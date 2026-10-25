@@ -33,6 +33,8 @@ import {
   pvpSetupEmbed,
   questsComponents,
   questsEmbed,
+  trainingSetupComponents,
+  trainingSetupEmbed,
   rematchComponents,
   settingsComponents,
   settingsEmbed,
@@ -218,6 +220,7 @@ describe('i18n', () => {
         characterEmbed(characterByName('Jane Doe')!, user),
         questsEmbed(user),
         pvePanelEmbed(),
+        trainingSetupEmbed(user, { ownerId: '42', mode: '2x2', ghost: true }),
         survivalPanelEmbed(user, {
           '123456789012345678': user,
           '123456789012345679': {
@@ -250,6 +253,7 @@ describe('i18n', () => {
         ...characterBrowserComponents(false, character, user, true),
         ...questsComponents(user),
         ...pvePanelComponents(),
+        ...trainingSetupComponents(user, { ownerId: '42', mode: '2x2', ghost: true }),
         ...survivalPanelComponents(),
         ...cosmeticsComponents(user),
         ...bossPanelComponents(),

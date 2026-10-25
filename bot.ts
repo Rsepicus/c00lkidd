@@ -159,6 +159,12 @@ import {
   type StatusName,
 } from './pvp'
 import {
+  createGhostBattle,
+  ghostSnapshot,
+  pickGhostOpponents,
+  recordGhostResult,
+} from './training'
+import {
   BONUS_COOLDOWN_MS,
   buyCharacter,
   claimDailyBonus,
@@ -279,6 +285,7 @@ type TrainingSetup = {
   ownerId: string
   mode: BattleMode
   botCharacter?: string
+  ghost?: boolean
 }
 
 type DebugTestSetup = {
@@ -346,6 +353,7 @@ const pvpSetups = new Map<string, PvpSetup>()
 const duels = new Map<string, DuelSeries>()
 const pveOwners = new Map<string, string>()
 const trainingSetups = new Map<string, TrainingSetup>()
+const ghostTrainingBattles = new Map<string, { ownerId: string; mode: BattleMode }>()
 const debugTests = new Map<string, DebugTestSetup>()
 const survivalRuns = new Map<string, SurvivalRun>()
 const drafts = new Map<string, DraftState>()
@@ -376,6 +384,7 @@ type PersistedBattleState = {
   logs: Array<[string, string[]]>
   wagers: Array<[string, number]>
   training: string[]
+  ghostTraining?: Array<[string, { ownerId: string; mode: BattleMode }]>
   gameModes: Array<[string, PvpMode]>
   boss: Array<[string, { mode: BossMode; week: string; coop?: boolean }]>
   channels: Array<[string, string]>
@@ -402,6 +411,7 @@ function serializeBattleState(): PersistedBattleState {
     logs: [...battleLogs.entries()],
     wagers: [...wagers.entries()],
     training: [...trainingBattles],
+    ghostTraining: [...ghostTrainingBattles.entries()],
     gameModes: [...battleGameModes.entries()],
     boss: [...bossBattles.entries()],
     channels: [...battleChannels.entries()],
@@ -428,6 +438,7 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
   battleLogs.clear()
   wagers.clear()
   trainingBattles.clear()
+  ghostTrainingBattles.clear()
   battleGameModes.clear()
   bossBattles.clear()
   battleChannels.clear()
@@ -444,6 +455,18 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
   for (const [id, log] of snapshotEntries<string[]>(state.logs)) battleLogs.set(id, log)
   for (const [id, wager] of snapshotEntries<number>(state.wagers)) wagers.set(id, wager)
   for (const id of Array.isArray(state.training) ? state.training : []) trainingBattles.add(id)
+  for (const [id, ghost] of snapshotEntries<{ ownerId: string; mode: BattleMode }>(
+    state.ghostTraining,
+  )) {
+    if (
+      ghost &&
+      typeof ghost === 'object' &&
+      typeof ghost.ownerId === 'string' &&
+      (ghost.mode === '1x1' || ghost.mode === '2x2')
+    ) {
+      ghostTrainingBattles.set(id, ghost)
+    }
+  }
   for (const [id, mode] of snapshotEntries<PvpMode>(state.gameModes)) battleGameModes.set(id, mode)
   for (const [id, boss] of snapshotEntries<{ mode: BossMode; week: string; coop?: boolean }>(
     state.boss,
@@ -1679,7 +1702,9 @@ export function trainingSetupEmbed(user: UserData, setup: TrainingSetup): EmbedB
     .setDescription(
       [
         `Твой герой: ${userCharacterLabel(user, activeCharacter(user).name)}`,
-        `Герой бота: **${setup.botCharacter ?? 'случайный'}**`,
+        setup.ghost
+          ? 'Противник: **тени игроков**'
+          : `Герой бота: **${setup.botCharacter ?? 'случайный'}**`,
         `Формат: **${setup.mode === '2x2' ? '2 на 2' : '1 на 1'}**`,
       ].join('\n'),
     )
@@ -1740,9 +1765,33 @@ export function trainingSetupComponents(
         if (sword) button.setEmoji(sword)
         return button
       })(),
+      (() => {
+        const button = new ButtonBuilder()
+          .setCustomId('pve:training:ghost')
+          .setLabel(setup.ghost ? 'Тени: вкл' : 'Тени: выкл')
+          .setStyle(setup.ghost ? ButtonStyle.Success : ButtonStyle.Secondary)
+        const spectre = emojiData('spectre')
+        if (spectre) button.setEmoji(spectre)
+        return button
+      })(),
       new ButtonBuilder()
         .setCustomId('pve:menu')
         .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+function trainingGhostAgainComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('pve:training')
+        .setLabel('Ещё бой')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('В меню PvE')
         .setStyle(ButtonStyle.Secondary),
     ),
   ]
@@ -3597,6 +3646,7 @@ function cleanupBattle(messageId: string): void {
   turnPings.delete(messageId)
   wagers.delete(messageId)
   trainingBattles.delete(messageId)
+  ghostTrainingBattles.delete(messageId)
   battleGameModes.delete(messageId)
   bossBattles.delete(messageId)
   pendingTargets.delete(messageId)
@@ -3613,6 +3663,7 @@ function finishBattleState(
 ): { note: string; components: ActionRowBuilder<ButtonBuilder>[] } {
   const wager = wagers.get(messageId) ?? 0
   const training = trainingBattles.has(messageId)
+  const ghostTraining = ghostTrainingBattles.get(messageId)
   const gameMode = battleGameModes.get(messageId) ?? 'classic'
   const boss = bossBattles.get(messageId)
   let note = ''
@@ -3783,6 +3834,39 @@ function finishBattleState(
     } else {
       components = bossRetryComponents(boss.mode)
     }
+  } else if (ghostTraining && battle.winner !== null) {
+    const ownerId = ghostTraining.ownerId
+    let user = userOf(ownerId)
+    const playerSides = battle.sides.filter(
+      side => side.userId === ownerId && !side.fake && !side.minion,
+    )
+    const characterNames = [...new Set(playerSides.map(side => side.character.name))]
+    const ghostNotes: string[] = []
+    for (const characterName of characterNames) {
+      const characterSides = playerSides.filter(side => side.character.name === characterName)
+      const abilityUses = characterSides.reduce((sum, side) => sum + side.abilityUses, 0)
+      const bonusXp = abilityXp(
+        abilityUses,
+        specialCooldown(characterSides[0]!.character.special),
+      )
+      const progress = recordGhostResult(user, characterName, battle.winner === 0, bonusXp)
+      user = progress.user
+      ghostNotes.push(...masteryProgressNotes(progress, characterName, user.language))
+    }
+    store.users[ownerId] = user
+    persist()
+    rememberPveOwner(messageId, ownerId)
+    note = [
+      notePrefix,
+      ghostTraining.mode === '2x2' ? 'Бой с тенями 2 на 2 окончен.' : 'Бой с тенями окончен.',
+      battle.winner === 0
+        ? 'Победа — мастерство начислено.'
+        : 'Поражение — мастерство начислено.',
+      ...ghostNotes,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    components = trainingGhostAgainComponents()
   } else if (battle.winner === null) {
     note = [notePrefix, 'Бой окончен вничью.'].filter(Boolean).join('\n')
   } else if (training) {
@@ -6374,42 +6458,61 @@ async function startTrainingBattle(
   messageId: string,
 ): Promise<void> {
   const user = userOf(setup.ownerId)
-  const botCharacter =
-    (setup.botCharacter ? characterByName(setup.botCharacter) : undefined) ??
-    randomCharacter(Math.random)
-
   let battle: Battle
-  if (setup.mode === '2x2') {
-    const botPool = CHARACTERS.filter(character => character.name !== botCharacter.name)
-    const botPartner = botPool[Math.floor(Math.random() * botPool.length)] ?? botCharacter
-    battle = createTeamBattle(
-      teamEntries(user, setup.ownerId, interaction.user.displayName),
-      [
+  if (setup.ghost) {
+    try {
+      const player = ghostSnapshot(user, setup.ownerId)
+      player.name = interaction.user.displayName
+      const opponents = pickGhostOpponents(
+        store.users,
+        setup.ownerId,
+        setup.mode === '2x2' ? 2 : 1,
+        Math.random,
+        setup.mode,
+      )
+      battle = createGhostBattle(player, opponents, setup.mode)
+    } catch {
+      await replyError(interaction, 'Не получилось подобрать тень. Попробуй обычную тренировку.')
+      return
+    }
+    ghostTrainingBattles.set(messageId, { ownerId: setup.ownerId, mode: setup.mode })
+  } else {
+    const botCharacter =
+      (setup.botCharacter ? characterByName(setup.botCharacter) : undefined) ??
+      randomCharacter(Math.random)
+
+    if (setup.mode === '2x2') {
+      const botPool = CHARACTERS.filter(character => character.name !== botCharacter.name)
+      const botPartner = botPool[Math.floor(Math.random() * botPool.length)] ?? botCharacter
+      battle = createTeamBattle(
+        teamEntries(user, setup.ownerId, interaction.user.displayName),
+        [
+          {
+            userId: `bot:${interaction.id}:1`,
+            name: 'Тренировочный бот',
+            character: botCharacter,
+          },
+          {
+            userId: `bot:${interaction.id}:2`,
+            name: 'Тренировочный бот',
+            character: botPartner,
+          },
+        ],
+      )
+    } else {
+      battle = createBattle(
         {
-          userId: `bot:${interaction.id}:1`,
+          userId: setup.ownerId,
+          name: interaction.user.displayName,
+          character: activeCharacter(user),
+        },
+        {
+          userId: `bot:${interaction.id}`,
           name: 'Тренировочный бот',
           character: botCharacter,
         },
-        {
-          userId: `bot:${interaction.id}:2`,
-          name: 'Тренировочный бот',
-          character: botPartner,
-        },
-      ],
-    )
-  } else {
-    battle = createBattle(
-      {
-        userId: setup.ownerId,
-        name: interaction.user.displayName,
-        character: activeCharacter(user),
-      },
-      {
-        userId: `bot:${interaction.id}`,
-        name: 'Тренировочный бот',
-        character: botCharacter,
-      },
-    )
+      )
+    }
   }
 
   trainingSetups.delete(messageId)
@@ -6456,6 +6559,20 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
       embeds: [survivalPanelEmbed(user, store.users)],
       components: survivalPanelComponents(),
       allowedMentions: { parse: [] },
+    })
+    return
+  }
+  if (interaction.customId === 'pve:training:ghost') {
+    const setup = trainingSetups.get(interaction.message.id)
+    if (!setup) {
+      await replyError(interaction, 'Настройка тренировки устарела. Открой /пве заново.')
+      return
+    }
+    setup.ghost = !setup.ghost
+    trainingSetups.set(interaction.message.id, setup)
+    await interaction.update({
+      embeds: [trainingSetupEmbed(user, setup)],
+      components: trainingSetupComponents(user, setup),
     })
     return
   }

@@ -1000,8 +1000,20 @@ describe('embeds', () => {
     expect(rows).toEqual([
       ['pve:training:character'],
       ['pve:training:mode'],
-      ['pve:training:start', 'pve:menu'],
+      ['pve:training:start', 'pve:training:ghost', 'pve:menu'],
     ])
+  })
+
+  test('training setup can switch to player shadows', () => {
+    const setup = { ownerId: '1', mode: '2x2' as const, ghost: true }
+    const embed = trainingSetupEmbed(defaultUser(), setup).toJSON()
+    expect(embed.description).toContain('тени игроков')
+    expect(embed.description).not.toContain('Герой бота')
+
+    const ghostButton = trainingSetupComponents(defaultUser(), setup)[2]
+      .toJSON()
+      .components.find(component => component.custom_id === 'pve:training:ghost')
+    expect(ghostButton?.label).toBe('Тени: вкл')
   })
 
   test('leaders is an embed', () => {
