@@ -425,7 +425,7 @@ function pickBossTarget(enemies: Side[]): Side {
 
 export const CRY_CHARGES = 2
 export const OBLATION_FULL = 100
-const OBLATION_PER_ATTACK = 34
+const OBLATION_PER_ATTACK = 25
 const BLOOD_HUNT_CHARGES = 3
 const BLOOD_HUNT_BONUS = 3
 const BLOOD_HUNT_ROAR = 8

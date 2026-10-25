@@ -396,7 +396,7 @@ export const SURVIVORS: readonly Character[] = [
     price: 500,
     hp: 100,
     attack: 11,
-    special: { name: 'Oblation', kind: 'revive', power: 0, description: 'Копится на 34% за каждый удар; при 100% даёт вторую жизнь с 50 HP и приоритет хода (один раз).' },
+    special: { name: 'Oblation', kind: 'revive', power: 0, description: 'Копится на 25% за каждый удар; при 100% даёт вторую жизнь с 50 HP и приоритет хода (один раз).' },
     alternates: [
       { name: 'Pray', kind: 'pray', power: 50, description: 'Тратит заряд Oblation на лечение только самого Two Time: 1 HP за 2% (до 50). Вторую жизнь не даёт.' },
     ],

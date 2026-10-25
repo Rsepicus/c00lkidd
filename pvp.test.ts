@@ -575,7 +575,21 @@ describe('Two Time prayer', () => {
       { userId: 'b', name: 'B', character: heavy },
     )
     battle = takeTurn(battle, 'attack', () => 0).battle
-    expect(battle.sides[0].charge).toBe(34)
+    expect(battle.sides[0].charge).toBe(25)
+  })
+
+  test('Oblation takes four landed hits to fill', () => {
+    let battle = battleWith(twoTime, healer)
+    for (let attack = 0; attack < 3; attack++) {
+      battle = takeTurn(battle, 'attack', () => 0).battle
+      battle = takeTurn(battle, 'rest', () => 0).battle
+    }
+    expect(battle.sides[0].charge).toBe(75)
+    expect(specialReady(battle.sides[0])).toBe(false)
+
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.sides[0].charge).toBe(100)
+    expect(specialReady(battle.sides[0])).toBe(true)
   })
 })
 

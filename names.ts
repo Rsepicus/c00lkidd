@@ -32,7 +32,7 @@ const EN: Record<string, string> = {
   c00lgui: "Copies the chosen enemy's ability for the rest of the battle, grants 12 temporary HP; the copy is ready immediately.",
   Block: 'Protects the chosen ally or yourself from the next hit; after blocking, gain +5 temporary HP and +50% on the next attack. On a miss: −30% dodge for 2 turns.',
   Charge: 'Charge: 3 damage and the opponent skips a turn.',
-  Oblation: 'Charges by 34% per landed hit; at 100% grants one 50 HP second life and turn priority.',
+  Oblation: 'Charges by 25% per landed hit; at 100% grants one 50 HP second life and turn priority.',
   Pray: 'Spends Oblation charge to heal only Two Time: 1 HP per 2% (up to 50). No second life.',
   Sentry: "Turret: 5 damage immediately and 6 damage at the start of the enemy's turn for 2 turns; Builderman gets −10% dodge for 2 turns.",
   Dispenser: 'Heals both allies for 10 HP at the start of their turns for 2 turns. Builderman gets −10% dodge.',
