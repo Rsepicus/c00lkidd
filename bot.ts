@@ -6812,6 +6812,7 @@ async function launchBossRushBattle(
   run: BossRushRun,
   messageId: string,
 ): Promise<void> {
+  await interaction.deferUpdate()
   const user = userOf(ownerId)
   const battle = bossRushBattle(user, ownerId, interaction.user.displayName, run)
   applyBossRushHp(battle, run)
@@ -6820,7 +6821,7 @@ async function launchBossRushBattle(
   battles.set(messageId, battle)
   battleChannels.set(messageId, interaction.channelId)
   const deadline = armBattleTimer(interaction.client, messageId, battle)
-  await interaction.update({
+  await interaction.editReply({
     embeds: [battleEmbed(battle, [], undefined, deadline)],
     components: battleComponents(battle),
   })
@@ -6856,6 +6857,7 @@ async function startTrainingBattle(
   setup: TrainingSetup,
   messageId: string,
 ): Promise<void> {
+  await interaction.deferUpdate()
   const user = userOf(setup.ownerId)
   const botCharacter = trainingBotCharacter(setup)
   const botPartner = trainingBotPartnerCharacter(setup)
@@ -6895,7 +6897,7 @@ async function startTrainingBattle(
   battleChannels.set(messageId, interaction.channelId)
   const deadline = armBattleTimer(interaction.client, messageId, battle)
   await withBattleTurnLanguage(battle, async () => {
-    await interaction.update({
+    await interaction.editReply({
       embeds: [battleEmbed(battle, [], undefined, deadline)],
       components: battleComponents(battle),
     })
@@ -7358,6 +7360,13 @@ async function main(): Promise<void> {
           await handleCommand(interaction)
         }
       } catch (error) {
+        const code =
+          error && typeof error === 'object' && 'code' in error
+            ? (error as { code?: unknown }).code
+            : undefined
+        // 10062 = the interaction token expired (for example, a click that
+        // arrived while the bot was restarting). There is nothing to respond to.
+        if (code === 10062) return
         appendErrorLog(ERROR_LOG_PATH, error, `interaction:${interaction.id}`)
         console.error('[bot] ошибка обработки взаимодействия:', error)
         if (interaction.isRepliable() && !interaction.replied) {
