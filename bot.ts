@@ -151,9 +151,13 @@ import {
   ensureWeeklyQuest,
   evaluateAchievements,
   favoriteCharacter,
+  MASTERY_MAX_XP,
   masteryBadge,
   masteryLevel,
   masteryTitle,
+  prestigeCharacter,
+  prestigeLevel,
+  prestigeStars,
   questName,
   recordCharacterResult,
   rerollQuest,
@@ -172,6 +176,16 @@ import {
   withLanguage,
 } from './i18n'
 import { atropaDescription, passiveDescription, specialDescription } from './names'
+import { createDmBattle, dmMatchTurnUserId, takeDmPair } from './matchmaking'
+import { dailyShopPrice, isDailyFeatured, shopRotation } from './shop-rotation'
+import {
+  applyLoadoutPreset,
+  deleteLoadoutPreset,
+  MAX_PRESETS,
+  orderCharactersByFavorites,
+  saveLoadoutPreset,
+  toggleFavorite,
+} from './loadouts'
 import {
   addRottenMinion,
   batteryDodgeBonusOf,
@@ -200,7 +214,7 @@ import {
 } from './pvp'
 import {
   BONUS_COOLDOWN_MS,
-  buyCharacter,
+  buyCharacterAtPrice,
   claimDailyBonus,
   DAILY_BONUS,
   defaultUser,
@@ -220,6 +234,7 @@ import {
   setLoadout,
   setPartner,
   wagerAllowed,
+  type LoadoutPreset,
   type Store,
   type UserData,
 } from './store'
@@ -387,6 +402,25 @@ type CoopBossInvite = {
   createdAt: number
   targetId?: string
 }
+
+type DmMatchPlayer = {
+  userId: string
+  name: string
+  channelId: string
+  messageId: string
+}
+
+type DmMatch = {
+  id: string
+  battle: Battle
+  players: [DmMatchPlayer, DmMatchPlayer]
+  ping: { userId: string; channelId: string; messageId: string } | null
+}
+
+const dmQueue: string[] = []
+const dmMatches = new Map<string, DmMatch>()
+const dmMatchByUser = new Map<string, string>()
+let dmMatchCounter = 0
 
 const challenges = new Map<string, Challenge>()
 const openChallenges = new Map<string, OpenChallenge>()
@@ -604,6 +638,8 @@ type PendingTarget = {
 }
 const pendingTargets = new Map<string, PendingTarget>()
 const hubOwners = new Map<string, string>()
+type CharacterFilter = 'all' | 'killer' | 'survivor' | 'owned'
+const characterFilters = new Map<string, CharacterFilter>()
 const finishedBattles = new Map<
   string,
   {
@@ -875,11 +911,17 @@ export function pvpSetupComponents(
     .setStyle(ButtonStyle.Secondary)
   if (cross) cancel.setEmoji(cross)
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(wager, create, cancel)
+  const global = new ButtonBuilder()
+    .setCustomId('pvp:global')
+    .setLabel('Глобальный поиск')
+    .setStyle(ButtonStyle.Primary)
+  if (sword) global.setEmoji(sword)
   return [
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(format),
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(mode),
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(series),
     row,
+    new ActionRowBuilder<ButtonBuilder>().addComponents(global),
   ]
 }
 
@@ -1159,6 +1201,13 @@ export function hubComponents(user: UserData): ActionRowBuilder<ButtonBuilder>[]
     .setStyle(ButtonStyle.Secondary)
   if (cosmeticsEmoji) cosmeticsButton.setEmoji(cosmeticsEmoji)
 
+  const presetsEmoji = emojiData('abilities')
+  const presetsButton = new ButtonBuilder()
+    .setCustomId('hub:presets')
+    .setLabel(presetsEmoji ? 'Пресеты' : '📦 Пресеты')
+    .setStyle(ButtonStyle.Secondary)
+  if (presetsEmoji) presetsButton.setEmoji(presetsEmoji)
+
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(shopButton, chooseButton, charsButton),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -1170,6 +1219,7 @@ export function hubComponents(user: UserData): ActionRowBuilder<ButtonBuilder>[]
       historyButton,
       topButton,
       cosmeticsButton,
+      presetsButton,
     ),
   ]
 }
@@ -1194,9 +1244,13 @@ export function shopComponents(
           .addOptions(
             purchasable.map(character => {
               const emoji = characterEmojiData(character.name)
+              const day = isoDayKey()
+              const price = dailyShopPrice(character, day)
+              const note =
+                price < character.price ? `${price} монет · −20%` : `${character.price} монет`
               return {
                 label: character.name,
-                description: characterOptionDescription(character, `${character.price} монет`),
+                description: characterOptionDescription(character, note),
                 value: character.name,
                 ...(emoji ? { emoji } : {}),
               }
@@ -1207,6 +1261,77 @@ export function shopComponents(
   }
 
   rows.push(backRow())
+  return rows
+}
+
+function presetDescription(preset: LoadoutPreset): string {
+  const partner = preset.partner
+    ? ` + ${preset.partner} (${preset.partnerSpecial ?? '—'})`
+    : ''
+  return `${preset.character} (${preset.special})${partner}`
+}
+
+export function presetsEmbed(user: UserData, note?: string): EmbedBuilder {
+  const lines =
+    user.presets.length === 0
+      ? [
+          'Пока нет пресетов.',
+          'Настрой героя, напарника и способности, затем нажми «Сохранить текущий».',
+        ]
+      : user.presets.map(
+          (preset, index) => `${index + 1}. **${preset.name}** — ${presetDescription(preset)}`,
+        )
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.choose)
+    .setTitle(`${emojiText('abilities', '📦')} Пресеты`)
+    .setDescription([note, ...lines].filter(Boolean).join('\n\n'))
+    .setFooter({ text: `Пресетов: ${user.presets.length}/${MAX_PRESETS} · Forsaken Simulator` })
+}
+
+export function presetsComponents(
+  user: UserData,
+): Array<ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>> {
+  const rows: Array<
+    ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>
+  > = []
+  if (user.presets.length > 0) {
+    const options = user.presets.map(preset => {
+      const emoji = characterEmojiData(preset.character)
+      return {
+        label: preset.name,
+        description: presetDescription(preset).slice(0, 100),
+        value: preset.id,
+        ...(emoji ? { emoji } : {}),
+      }
+    })
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('presets:apply')
+          .setPlaceholder('Применить пресет')
+          .addOptions(options),
+      ),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('presets:delete')
+          .setPlaceholder('Удалить пресет')
+          .addOptions(options),
+      ),
+    )
+  }
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('presets:save')
+        .setLabel('Сохранить текущий')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(user.presets.length >= MAX_PRESETS),
+      new ButtonBuilder()
+        .setCustomId('hub:back')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  )
   return rows
 }
 
@@ -1328,19 +1453,33 @@ export function chooseComponents(
 
 export function shopEmbed(user: UserData, note?: string): EmbedBuilder {
   const coin = emojiText('points', '🪙')
+  const day = isoDayKey()
+  const featured = shopRotation(day)
   const list = (characters: readonly Character[]) =>
     characters
       .map(character => {
-        const price = character.price === 0 ? 'бесплатно' : `${character.price} ${coin}`
-        return `**${userCharacterLabel(user, character.name)}** — ${price}`
+        const base = character.price === 0 ? 'бесплатно' : `${character.price} ${coin}`
+        const price = character.price > 0 ? `${dailyShopPrice(character, day)} ${coin}` : base
+        const mark = isDailyFeatured(character, day) ? ` · ${price} (−20%)` : ''
+        return `**${userCharacterLabel(user, character.name)}** — ${base}${mark}`
       })
       .join('\n')
   const characters = list(CHARACTERS)
+  const rotation = featured
+    .map(
+      character =>
+        `**${userCharacterLabel(user, character.name)}** — ${dailyShopPrice(character, day)} ${coin}`,
+    )
+    .join('\n')
 
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.shop)
     .setTitle(`${emojiText('inventory', '🛒')} Магазин Forsaken`)
     .setDescription(note ? `${note}\n\n${characters}` : characters)
+    .addFields({
+      name: 'Ротация дня · −20%',
+      value: rotation || '—',
+    })
     .setFooter({ text: `Баланс: ${user.coins}` })
 }
 
@@ -2995,11 +3134,13 @@ export function characterEmbed(character: Character, user: UserData): EmbedBuild
         `${Math.round((stat.wins / battles) * 100)}%`
   const xp = stat?.xp ?? 0
   const level = masteryLevel(xp)
+  const prestige = prestigeLevel(stat)
+  const stars = prestigeStars(prestige)
   const badge = masteryBadge(level)
   const xpIcon = emojiText('xp', '')
-  const masteryValue = `Ур. ${level} «${masteryTitle(level)}»${badge ? ` · ${badge}` : ''}\n${
-    xpIcon ? `${xpIcon} ` : ''
-  }${level >= 10 ? 'MAX' : `${xp % 100}/100 XP`}`
+  const masteryValue = `${stars ? `${stars} · ` : ''}Ур. ${level} «${masteryTitle(level)}»${
+    badge ? ` · ${badge}` : ''
+  }\n${xpIcon ? `${xpIcon} ` : ''}${level >= 10 ? 'MAX' : `${xp % 100}/100 XP`}`
   const wins = stat?.wins ?? 0
   const trialTitle = trialTitleForWins(wins)
   const nextTrial = TRIAL_TIERS.find(tier => wins < tier.wins)
@@ -3059,11 +3200,23 @@ export function characterPromptEmbed(): EmbedBuilder {
     )
 }
 
+function filterCharacters(
+  characters: readonly Character[],
+  user: UserData,
+  filter: CharacterFilter,
+): Character[] {
+  if (filter === 'killer') return characters.filter(entry => entry.role === 'killer')
+  if (filter === 'survivor') return characters.filter(entry => entry.role === 'survivor')
+  if (filter === 'owned') return characters.filter(entry => user.owned.includes(entry.name))
+  return [...characters]
+}
+
 export function characterBrowserComponents(
   showBack: boolean,
   character?: Character,
   user?: UserData,
   canEdit = false,
+  filter: CharacterFilter = 'all',
 ): Array<ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>> {
   const rows: Array<
     ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
@@ -3073,20 +3226,44 @@ export function characterBrowserComponents(
         .setCustomId('char:view')
         .setPlaceholder('Выбери персонажа')
         .addOptions(
-          CHARACTERS.map(entry => {
-            const emoji = user
-              ? userCharacterEmojiData(user, entry.name)
-              : characterEmojiData(entry.name)
-            return {
-              label: entry.name,
-              description: characterOptionDescription(entry, characterClass(entry)),
-              value: entry.name,
-              ...(emoji ? { emoji } : {}),
-            }
-          }),
+          (user
+            ? orderCharactersByFavorites(
+                filterCharacters(CHARACTERS, user, filter),
+                user.favorites,
+              )
+            : CHARACTERS
+          ).map(entry => {
+              const emoji = user
+                ? userCharacterEmojiData(user, entry.name)
+                : characterEmojiData(entry.name)
+              const favorite = user?.favorites.includes(entry.name) ?? false
+              return {
+                label: favorite ? `⭐ ${entry.name}` : entry.name,
+                description: characterOptionDescription(entry, characterClass(entry)),
+                value: entry.name,
+                ...(emoji ? { emoji } : {}),
+              }
+            },
+          ),
         ),
     ),
   ]
+
+  if (!character && user) {
+    rows.push(
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('char:filter')
+          .setPlaceholder('Фильтр')
+          .addOptions([
+            { label: 'Все', value: 'all', default: filter === 'all' },
+            { label: 'Киллеры', value: 'killer', default: filter === 'killer' },
+            { label: 'Выжившие', value: 'survivor', default: filter === 'survivor' },
+            { label: 'Купленные', value: 'owned', default: filter === 'owned' },
+          ]),
+      ),
+    )
+  }
 
   if (canEdit && character && user && user.owned.includes(character.name)) {
     const specials = availableSpecials(character)
@@ -3147,6 +3324,29 @@ export function characterBrowserComponents(
         ),
       )
     }
+  }
+
+  if (canEdit && character && user && user.owned.includes(character.name)) {
+    const favorite = user.favorites.includes(character.name)
+    const stat = user.characterStats[character.name]
+    const xp = stat?.xp ?? 0
+    const prestige = prestigeLevel(stat)
+    const index = CHARACTERS.findIndex(entry => entry.name === character.name)
+    const buttons = [
+      new ButtonBuilder()
+        .setCustomId(`char:favorite:${index}`)
+        .setLabel(favorite ? 'Убрать из избранного' : 'В избранное')
+        .setStyle(favorite ? ButtonStyle.Secondary : ButtonStyle.Primary),
+    ]
+    if (xp >= MASTERY_MAX_XP) {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId(`char:prestige:${index}`)
+          .setLabel(prestige > 0 ? `Престиж ★${prestige}` : 'Престиж')
+          .setStyle(ButtonStyle.Success),
+      )
+    }
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons))
   }
 
   if (showBack) {
@@ -3284,6 +3484,38 @@ function minionSummaryLines(minions: Side[]): string[] {
   return lines
 }
 
+function abilityBreakdown(side: Side, limit = 3): string {
+  const entries = Object.entries(side.abilityStats ?? {})
+    .filter(([, stat]) => stat.uses > 0)
+    .sort((left, right) => right[1].uses - left[1].uses)
+    .slice(0, limit)
+    .map(([name, stat]) => {
+      const parts = [`${stat.uses}×`]
+      if (stat.damage > 0) parts.push(`${stat.damage} урона`)
+      if (stat.healing > 0) parts.push(`${stat.healing} лечения`)
+      return `${name} ${parts.join(', ')}`
+    })
+  return entries.join('; ')
+}
+
+export function battleStatsEmbed(battle: Battle): EmbedBuilder {
+  const lines = battle.sides
+    .filter(side => !side.fake && !side.minion)
+    .map(side => {
+      const breakdown = abilityBreakdown(side, 6)
+      return (
+        `**${side.character.name}** (${side.name})\n` +
+        `Урон: **${side.damageDealt}** · Лечение: **${side.healingDone}** · ` +
+        `Получено: **${side.damageTaken}** · Способностей: **${side.abilityUses}**` +
+        (breakdown ? `\n${breakdown}` : '')
+      )
+    })
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.choose)
+    .setTitle(`${emojiText('achievement', '📊')} Статистика боя`)
+    .setDescription(lines.join('\n\n').slice(0, 4096))
+}
+
 export function battleStatsText(battle: Battle): string {
   const lines = battle.sides
     .filter(side => !side.fake && !side.minion)
@@ -3291,7 +3523,11 @@ export function battleStatsText(battle: Battle): string {
       const who = side.boss
         ? `${emojiText('boss', '👑')} ${side.name} (${side.character.name})`
         : `${sideCharacterLabel(side)} **${side.name}**`
-      return `${who} — ${side.damageDealt} урона · ${side.healingDone} лечения · ${side.abilityUses} способностей`
+      const breakdown = abilityBreakdown(side)
+      return (
+        `${who} — ${side.damageDealt} урона · ${side.healingDone} лечения · ` +
+        `${side.abilityUses} способностей${breakdown ? ` (${breakdown})` : ''}`
+      )
     })
 
   const minions = battle.sides.filter(side => side.minion && side.hp > 0)
@@ -3671,9 +3907,16 @@ export function battleComponents(battle: Battle): ActionRowBuilder<ButtonBuilder
     .setLabel('Прогноз')
     .setStyle(ButtonStyle.Secondary)
   if (forecastEmoji) forecastButton.setEmoji(forecastEmoji)
+  const statsEmoji = emojiData('achievement')
+  const statsButton = new ButtonBuilder()
+    .setCustomId('pvp:stats')
+    .setLabel('Статистика')
+    .setStyle(ButtonStyle.Secondary)
+  if (statsEmoji) statsButton.setEmoji(statsEmoji)
   const secondRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     restButton,
     forecastButton,
+    statsButton,
     surrenderButton,
   )
   const rows = [firstRow, secondRow]
@@ -6530,6 +6773,13 @@ async function handleBattleButton(interaction: ButtonInteraction): Promise<void>
     })
     return
   }
+  if (interaction.customId === 'pvp:stats') {
+    await interaction.reply({
+      embeds: [battleStatsEmbed(battle)],
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
   const side = battle.sides[battle.turn]
   if (interaction.user.id !== side.userId) {
     await replyError(interaction, 'Сейчас не твой ход.')
@@ -6758,6 +7008,248 @@ async function executeBattleAction(
   notifyNextTurn(interaction.client, current, interaction.channelId, interaction.message.id)
 }
 
+function dmComponentsFor(battle: Battle, userId: string): ActionRowBuilder<ButtonBuilder>[] {
+  if (battle.finished) return []
+  return battle.sides[battle.turn]?.userId === userId ? battleComponents(battle) : []
+}
+
+function dmAgainComponents(match: DmMatch): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`dmatch:${match.id}:again`)
+        .setLabel('Найти ещё')
+        .setStyle(ButtonStyle.Success),
+    ),
+  ]
+}
+
+async function clearDmPing(client: Client, match: DmMatch): Promise<void> {
+  if (!match.ping) return
+  const ping = match.ping
+  match.ping = null
+  await client.rest.delete(Routes.channelMessage(ping.channelId, ping.messageId)).catch(() => {})
+}
+
+async function notifyDmTurn(client: Client, match: DmMatch): Promise<void> {
+  await clearDmPing(client, match)
+  const active = match.battle.sides[match.battle.turn]
+  if (!active || match.battle.finished) return
+  const user = await client.users.fetch(active.userId).catch(() => null)
+  if (!user) return
+  const dm = await user.createDM().catch(() => null)
+  if (!dm) return
+  const content = translateText(
+    `${emojiText('swordwhite', '⚔️')} Твой ход! ${active.character.name}.`,
+    userOf(active.userId).language,
+  )
+  const message = await dm
+    .send({
+      content: `<@${active.userId}> ${content}`,
+      allowedMentions: { users: [active.userId] },
+    })
+    .catch(() => null)
+  if (message) {
+    match.ping = { userId: active.userId, channelId: dm.id, messageId: message.id }
+  }
+}
+
+async function syncDmMatch(
+  client: Client,
+  match: DmMatch,
+  events: string[],
+  note?: string,
+): Promise<void> {
+  for (const player of match.players) {
+    const components = match.battle.finished
+      ? dmAgainComponents(match)
+      : dmComponentsFor(match.battle, player.userId)
+    await withLanguage(userOf(player.userId).language, async () => {
+      await client.rest
+        .patch(Routes.channelMessage(player.channelId, player.messageId), {
+          body: {
+            embeds: [battleEmbed(match.battle, events, note).toJSON()],
+            components: components.map(row => row.toJSON()),
+          },
+        })
+        .catch(() => {})
+    })
+  }
+}
+
+async function queueDmUser(client: Client, userId: string): Promise<boolean> {
+  if (dmMatchByUser.has(userId)) return false
+  if (!dmQueue.includes(userId)) dmQueue.push(userId)
+  await tryMatchDmQueue(client)
+  return true
+}
+
+async function tryMatchDmQueue(client: Client): Promise<void> {
+  while (dmQueue.length >= 2) {
+    const { pair, rest } = takeDmPair(dmQueue)
+    dmQueue.splice(0, dmQueue.length, ...rest)
+    if (!pair) return
+    const [firstId, secondId] = pair
+    if (dmMatchByUser.has(firstId) || dmMatchByUser.has(secondId)) continue
+
+    const firstUser = await client.users.fetch(firstId).catch(() => null)
+    const secondUser = await client.users.fetch(secondId).catch(() => null)
+    const firstDm = firstUser ? await firstUser.createDM().catch(() => null) : null
+    const secondDm = secondUser ? await secondUser.createDM().catch(() => null) : null
+    if (!firstUser || !secondUser || !firstDm || !secondDm) {
+      if (firstDm) dmQueue.unshift(firstId)
+      if (secondDm) dmQueue.unshift(secondId)
+      continue
+    }
+
+    let battle: Battle
+    try {
+      battle = createDmBattle(
+        {
+          userId: firstId,
+          name: firstUser.displayName ?? firstUser.username,
+          character: activeCharacter(userOf(firstId)),
+        },
+        {
+          userId: secondId,
+          name: secondUser.displayName ?? secondUser.username,
+          character: activeCharacter(userOf(secondId)),
+        },
+      )
+    } catch {
+      continue
+    }
+
+    const id = (++dmMatchCounter).toString(36)
+    const firstMessage = await firstDm
+      .send({
+        embeds: [battleEmbed(battle)],
+        components: dmComponentsFor(battle, firstId),
+      })
+      .catch(() => null)
+    const secondMessage = await secondDm
+      .send({
+        embeds: [battleEmbed(battle)],
+        components: dmComponentsFor(battle, secondId),
+      })
+      .catch(() => null)
+    if (!firstMessage || !secondMessage) {
+      if (firstMessage) await firstMessage.delete().catch(() => {})
+      if (secondMessage) await secondMessage.delete().catch(() => {})
+      if (firstMessage) dmQueue.unshift(firstId)
+      if (secondMessage) dmQueue.unshift(secondId)
+      continue
+    }
+
+    const match: DmMatch = {
+      id,
+      battle,
+      players: [
+        {
+          userId: firstId,
+          name: battle.sides[0].name,
+          channelId: firstDm.id,
+          messageId: firstMessage.id,
+        },
+        {
+          userId: secondId,
+          name: battle.sides[1].name,
+          channelId: secondDm.id,
+          messageId: secondMessage.id,
+        },
+      ],
+      ping: null,
+    }
+    if (dmMatches.size >= 100) {
+      const finished = [...dmMatches.entries()].find(([, entry]) => entry.battle.finished)
+      if (finished) dmMatches.delete(finished[0])
+    }
+    dmMatches.set(id, match)
+    dmMatchByUser.set(firstId, id)
+    dmMatchByUser.set(secondId, id)
+    await notifyDmTurn(client, match)
+  }
+}
+
+async function handleGlobalPvpButton(interaction: ButtonInteraction): Promise<void> {
+  const userId = interaction.user.id
+  if (dmMatchByUser.has(userId)) {
+    await replyError(interaction, 'Ты уже в глобальном бою.')
+    return
+  }
+  await interaction.reply({
+    content: 'Ищу соперника на всех серверах…',
+    flags: MessageFlags.Ephemeral,
+  })
+  await queueDmUser(interaction.client, userId)
+}
+
+async function handleDmMatchButton(interaction: ButtonInteraction): Promise<void> {
+  const [, id, action] = interaction.customId.split(':')
+  const match = dmMatches.get(id)
+  if (!match) {
+    await replyError(interaction, 'Этот бой уже недоступен.')
+    return
+  }
+  if (!match.players.some(player => player.userId === interaction.user.id)) {
+    await replyError(interaction, 'Это чужой бой.')
+    return
+  }
+  if (action === 'again') {
+    const queued = await queueDmUser(interaction.client, interaction.user.id)
+    await interaction.reply({
+      content: queued ? 'Снова ищу соперника…' : 'Ты уже в бою.',
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+  if (match.battle.finished) {
+    await replyError(interaction, 'Бой уже окончен.')
+    return
+  }
+  if (dmMatchTurnUserId(match.battle) !== interaction.user.id) {
+    await replyError(interaction, 'Сейчас не твой ход.')
+    return
+  }
+  const actionName = action as Action
+  if (!['attack', 'special', 'juke', 'rest'].includes(actionName)) {
+    await replyError(interaction, 'Неизвестное действие.')
+    return
+  }
+
+  await interaction.deferUpdate()
+  let result: ReturnType<typeof takeTurn>
+  try {
+    result = takeTurn(match.battle, actionName, Math.random)
+  } catch (error) {
+    await interaction
+      .followUp({
+        content: error instanceof Error ? error.message : 'Не получилось выполнить действие.',
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {})
+    return
+  }
+  match.battle = result.battle
+  await clearDmPing(interaction.client, match)
+
+  let note: string | undefined
+  if (match.battle.finished) {
+    if (match.battle.winner !== null) {
+      const record = recordBattle(match.battle, match.battle.winner, 0, false, 'classic')
+      note = record.notes.length > 0 ? record.notes.join('\n') : undefined
+      persist()
+    } else {
+      note = 'Бой окончен вничью.'
+    }
+    dmMatchByUser.delete(match.players[0].userId)
+    dmMatchByUser.delete(match.players[1].userId)
+  }
+
+  await syncDmMatch(interaction.client, match, result.events, note)
+  if (!match.battle.finished) await notifyDmTurn(interaction.client, match)
+}
+
 async function handleTopPageButton(interaction: ButtonInteraction): Promise<void> {
   const page = Number.parseInt(interaction.customId.split(':')[2] ?? '0', 10)
   await interaction.update({
@@ -6797,6 +7289,35 @@ async function handleHub(interaction: ButtonInteraction | StringSelectMenuIntera
       return
     }
 
+    if (interaction.customId === 'presets:apply') {
+      try {
+        const updated = applyLoadoutPreset(user, interaction.values[0])
+        store.users[ownerId] = updated
+        persist()
+        await interaction.update({
+          embeds: [presetsEmbed(updated, 'Пресет применён.')],
+          components: presetsComponents(updated),
+        })
+      } catch (error) {
+        await replyError(
+          interaction,
+          error instanceof Error ? error.message : 'Не получилось применить пресет.',
+        )
+      }
+      return
+    }
+
+    if (interaction.customId === 'presets:delete') {
+      const updated = deleteLoadoutPreset(user, interaction.values[0])
+      store.users[ownerId] = updated
+      persist()
+      await interaction.update({
+        embeds: [presetsEmbed(updated, 'Пресет удалён.')],
+        components: presetsComponents(updated),
+      })
+      return
+    }
+
     if (interaction.customId === 'hub:buy') {
       const character = characterByName(interaction.values[0])
       if (!character) {
@@ -6804,15 +7325,21 @@ async function handleHub(interaction: ButtonInteraction | StringSelectMenuIntera
         return
       }
       try {
-        const updated = buyCharacter(user, character)
+        const day = isoDayKey()
+        const price = dailyShopPrice(character, day)
+        const updated = buyCharacterAtPrice(user, character, price)
         store.users[ownerId] = updated
         persist()
+        const discount =
+          price < character.price
+            ? ` (ротация дня: −${character.price - price} ${emojiText('points', '🪙')})`
+            : ''
         await interaction.update({
           embeds: [
             shopEmbed(
               updated,
               `${emojiText('check', '✅')} **${characterLabel(character.name)}** куплен за ` +
-                `${character.price} ${emojiText('points', '🪙')}. Баланс: ${updated.coins} ${emojiText('points', '🪙')}`,
+                `${price} ${emojiText('points', '🪙')}${discount}. Баланс: ${updated.coins} ${emojiText('points', '🪙')}`,
             ),
           ],
           components: shopComponents(updated),
@@ -6973,7 +7500,13 @@ async function handleHub(interaction: ButtonInteraction | StringSelectMenuIntera
     case 'hub:chars':
       await interaction.update({
         embeds: [characterPromptEmbed()],
-        components: characterBrowserComponents(true),
+        components: characterBrowserComponents(
+          true,
+          undefined,
+          user,
+          false,
+          characterFilters.get(interaction.message.id) ?? 'all',
+        ),
       })
       return
     case 'hub:achievements':
@@ -7006,6 +7539,12 @@ async function handleHub(interaction: ButtonInteraction | StringSelectMenuIntera
         components: cosmeticsComponents(user),
       })
       return
+    case 'hub:presets':
+      await interaction.update({
+        embeds: [presetsEmbed(user)],
+        components: presetsComponents(user),
+      })
+      return
     case 'hub:back':
       await interaction.update({
         embeds: [profileEmbed(ownerId, user, interaction.user.displayName)],
@@ -7029,10 +7568,135 @@ async function handleCharacterSelect(interaction: StringSelectMenuInteraction): 
   }
 
   const user = getUser(store, ownerId ?? interaction.user.id)
+  const filter = characterFilters.get(interaction.message.id) ?? 'all'
   await interaction.update({
     embeds: [characterEmbed(character, user)],
-    components: characterBrowserComponents(Boolean(ownerId), character, user, Boolean(ownerId)),
+    components: characterBrowserComponents(
+      Boolean(ownerId),
+      character,
+      user,
+      Boolean(ownerId),
+      filter,
+    ),
   })
+}
+
+async function handleCharacterFilter(interaction: StringSelectMenuInteraction): Promise<void> {
+  const ownerId = hubOwners.get(interaction.message.id)
+  if (!ownerId || interaction.user.id !== ownerId) {
+    await replyError(interaction, 'Это чужая панель.')
+    return
+  }
+  const user = userOf(ownerId)
+  const filter = interaction.values[0] as CharacterFilter
+  characterFilters.set(interaction.message.id, filter)
+  await interaction.update({
+    embeds: [characterPromptEmbed()],
+    components: characterBrowserComponents(true, undefined, user, false, filter),
+  })
+}
+
+async function handleCharacterAction(interaction: ButtonInteraction): Promise<void> {
+  const parts = interaction.customId.split(':')
+  const action = parts[1]
+  const character = CHARACTERS[Number.parseInt(parts[2] ?? '', 10)]
+  const characterName = character?.name ?? ''
+  if (!character) {
+    await replyError(interaction, 'Такого персонажа нет.')
+    return
+  }
+  const ownerId = hubOwners.get(interaction.message.id)
+  if (!ownerId || interaction.user.id !== ownerId) {
+    await replyError(interaction, 'Это чужая панель.')
+    return
+  }
+  const user = userOf(ownerId)
+  if (action === 'favorite') {
+    try {
+      const updated = toggleFavorite(user, characterName)
+      store.users[ownerId] = updated
+      persist()
+      await interaction.update({
+        embeds: [characterEmbed(character, updated)],
+        components: characterBrowserComponents(
+          true,
+          character,
+          updated,
+          true,
+          characterFilters.get(interaction.message.id) ?? 'all',
+        ),
+      })
+    } catch (error) {
+      await replyError(
+        interaction,
+        error instanceof Error ? error.message : 'Не получилось изменить избранное.',
+      )
+    }
+    return
+  }
+  if (action === 'prestige') {
+    try {
+      const result = prestigeCharacter(user, characterName)
+      store.users[ownerId] = result.user
+      persist()
+      await interaction.update({
+        embeds: [characterEmbed(character, result.user)],
+        components: characterBrowserComponents(
+          true,
+          character,
+          result.user,
+          true,
+          characterFilters.get(interaction.message.id) ?? 'all',
+        ),
+      })
+      await interaction.followUp({
+        content:
+          `${emojiText('xp', '⭐')} Престиж **${result.prestige}**! ` +
+          `+${result.reward} ${emojiText('points', '🪙')}.`,
+        flags: MessageFlags.Ephemeral,
+      })
+    } catch (error) {
+      await replyError(
+        interaction,
+        error instanceof Error ? error.message : 'Не получилось повысить престиж.',
+      )
+    }
+  }
+}
+
+export function presetSaveModal(): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId('presets:save:modal')
+    .setTitle('Сохранить пресет')
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('name')
+          .setLabel('Название пресета')
+          .setMaxLength(32)
+          .setRequired(true)
+          .setStyle(TextInputStyle.Short),
+      ),
+    )
+}
+
+async function handlePresetSaveModal(interaction: ModalSubmitInteraction): Promise<void> {
+  const userId = interaction.user.id
+  const name = interaction.fields.getTextInputValue('name')
+  try {
+    const updated = saveLoadoutPreset(userOf(userId), name)
+    store.users[userId] = updated
+    persist()
+    await interaction.update({
+      embeds: [presetsEmbed(updated, 'Пресет сохранён.')],
+      components: presetsComponents(updated),
+    })
+  } catch (error) {
+    await interaction.reply({
+      content: error instanceof Error ? error.message : 'Не получилось сохранить пресет.',
+      flags: MessageFlags.Ephemeral,
+    })
+  }
 }
 
 export function customColorModal(ownerId: string, current: string | null): ModalBuilder {
@@ -7985,6 +8649,22 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     await handleTopPageButton(interaction)
     return
   }
+  if (interaction.customId === 'presets:save') {
+    const ownerId = hubOwners.get(interaction.message.id)
+    if (!ownerId || interaction.user.id !== ownerId) {
+      await replyError(interaction, 'Это чужая панель.')
+      return
+    }
+    await interaction.showModal(presetSaveModal())
+    return
+  }
+  if (
+    interaction.customId.startsWith('char:favorite:') ||
+    interaction.customId.startsWith('char:prestige:')
+  ) {
+    await handleCharacterAction(interaction)
+    return
+  }
   if (interaction.customId.startsWith('hub:')) {
     await handleHub(interaction)
     return
@@ -7999,6 +8679,14 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   }
   if (interaction.customId.startsWith('boss:start:')) {
     await handleBossStart(interaction)
+    return
+  }
+  if (interaction.customId.startsWith('dmatch:')) {
+    await handleDmMatchButton(interaction)
+    return
+  }
+  if (interaction.customId === 'pvp:global') {
+    await handleGlobalPvpButton(interaction)
     return
   }
   if (interaction.customId.startsWith('pvp:setup:')) {
@@ -8083,6 +8771,10 @@ async function main(): Promise<void> {
             await handleDebugCoinsModal(interaction)
             return
           }
+          if (interaction.customId === 'presets:save:modal') {
+            await handlePresetSaveModal(interaction)
+            return
+          }
         }
         if (interaction.isStringSelectMenu()) {
           if (interaction.customId.startsWith('pvp:setup:')) {
@@ -8091,6 +8783,10 @@ async function main(): Promise<void> {
           }
           if (interaction.customId === 'pvp:draft:select') {
             await handleDraftSelect(interaction)
+            return
+          }
+          if (interaction.customId === 'char:filter') {
+            await handleCharacterFilter(interaction)
             return
           }
           if (interaction.customId === 'char:view') {

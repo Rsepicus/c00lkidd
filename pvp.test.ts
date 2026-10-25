@@ -1619,6 +1619,63 @@ describe('battle stats', () => {
   })
 })
 
+describe('per-ability battle stats', () => {
+  test('records a damaging special as one use with its damage', () => {
+    const result = takeTurn(battleWith(heavy, healer), 'special', () => 0).battle
+    expect(result.sides[0].abilityUses).toBe(1)
+    expect(result.sides[0].abilityStats).toEqual({
+      Test: { uses: 1, damage: 20, healing: 0 },
+    })
+  })
+
+  test('records healing from a healing special', () => {
+    const battle = battleWith(healer, heavy)
+    battle.sides[0].hp = 50
+
+    const result = takeTurn(battle, 'special', () => 0).battle
+    expect(result.sides[0].abilityStats).toEqual({
+      Heal: { uses: 1, damage: 0, healing: 30 },
+    })
+  })
+
+  test('accumulates repeated uses of the same special', () => {
+    let battle = battleWith(heavy, healer)
+    battle = takeTurn(battle, 'special', () => 0).battle
+    battle.sides[0].cooldown = 0
+    battle = takeTurn(battle, 'rest', () => 0).battle
+    battle = takeTurn(battle, 'special', () => 0).battle
+
+    expect(battle.sides[0].abilityUses).toBe(2)
+    expect(battle.sides[0].abilityStats).toEqual({
+      Test: { uses: 2, damage: 40, healing: 0 },
+    })
+  })
+
+  test('records a boss second-slot special under its own name', () => {
+    const boss = character({
+      name: 'Boss',
+      alternates: [{ name: 'Rage', kind: 'strength', power: 0, description: '' }],
+    })
+    const battle = createBattle(
+      { userId: 'a', name: 'A', character: heavy },
+      { userId: 'boss:1', name: 'Boss', character: boss, boss: true },
+    )
+    battle.turn = 1
+
+    const result = takeTurn(battle, 'special', () => 0, undefined, 1).battle
+    expect(result.sides[1].abilityStats).toEqual({
+      Rage: { uses: 1, damage: 0, healing: 0 },
+    })
+  })
+
+  test('records a use even when the special deals no damage', () => {
+    const result = takeTurn(battleWith(shielder, heavy), 'special', () => 0).battle
+    expect(result.sides[0].abilityStats).toEqual({
+      Shield: { uses: 1, damage: 0, healing: 0 },
+    })
+  })
+})
+
 describe('character passives and new survivors', () => {
   const duel = (left: Character, right: Character): Battle =>
     createBattle(

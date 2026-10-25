@@ -66,6 +66,16 @@ export type CharacterStat = {
   wins: number
   losses: number
   xp: number
+  prestige?: number
+}
+
+export type LoadoutPreset = {
+  id: string
+  name: string
+  character: string
+  special: string
+  partner: string | null
+  partnerSpecial: string | null
 }
 
 export type Cosmetics = {
@@ -122,6 +132,8 @@ export type UserData = {
   trialClaimed: Record<string, number>
   cosmetics: Cosmetics
   loadouts: Record<string, string>
+  presets: LoadoutPreset[]
+  favorites: string[]
   language: Language
   lastPvp?: PvpSetup
 }
@@ -179,6 +191,8 @@ export function defaultUser(now = Date.now()): UserData {
     trialClaimed: {},
     cosmetics: { owned: [], accent: null, title: null, customColor: null },
     loadouts: {},
+    presets: [],
+    favorites: [],
     language: 'ru',
   }
 }
@@ -317,9 +331,74 @@ function normalizeCharacterStats(stats: unknown): Record<string, CharacterStat> 
     ) {
       continue
     }
-    result[name] = { wins: stat.wins, losses: stat.losses, xp: stat.xp }
+    result[name] = {
+      wins: stat.wins,
+      losses: stat.losses,
+      xp: stat.xp,
+      prestige:
+        typeof stat.prestige === 'number' && Number.isFinite(stat.prestige)
+          ? Math.max(0, Math.floor(stat.prestige))
+          : 0,
+    }
   }
   return result
+}
+
+function normalizePresets(value: unknown, owned: string[]): LoadoutPreset[] {
+  if (!Array.isArray(value)) return []
+  const presets: LoadoutPreset[] = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue
+    const raw = entry as Partial<LoadoutPreset>
+    if (typeof raw.id !== 'string' || typeof raw.name !== 'string') continue
+    if (typeof raw.character !== 'string' || !owned.includes(raw.character)) continue
+    const character = CHARACTERS.find(candidate => candidate.name === raw.character)
+    if (!character) continue
+    const specials = availableSpecials(character).map(special => special.name)
+    const special =
+      typeof raw.special === 'string' && specials.includes(raw.special)
+        ? raw.special
+        : character.special.name
+    const partner =
+      typeof raw.partner === 'string' &&
+      raw.partner !== raw.character &&
+      owned.includes(raw.partner)
+        ? raw.partner
+        : null
+    const partnerCharacter = partner
+      ? CHARACTERS.find(candidate => candidate.name === partner)
+      : undefined
+    const partnerSpecials = partnerCharacter
+      ? availableSpecials(partnerCharacter).map(entrySpecial => entrySpecial.name)
+      : []
+    const partnerSpecial = partnerCharacter
+      ? typeof raw.partnerSpecial === 'string' &&
+        partnerSpecials.includes(raw.partnerSpecial)
+        ? raw.partnerSpecial
+        : partnerCharacter.special.name
+      : null
+    presets.push({
+      id: raw.id.slice(0, 32),
+      name: raw.name.slice(0, 32),
+      character: raw.character,
+      special,
+      partner,
+      partnerSpecial,
+    })
+    if (presets.length >= 5) break
+  }
+  return presets
+}
+
+function normalizeFavorites(value: unknown, owned: string[]): string[] {
+  if (!Array.isArray(value)) return []
+  return [
+    ...new Set(
+      value.filter(
+        (name): name is string => typeof name === 'string' && owned.includes(name),
+      ),
+    ),
+  ].slice(0, 12)
 }
 
 function normalizeTrialClaimed(value: unknown): Record<string, number> {
@@ -405,8 +484,10 @@ function normalizeEquippedSkins(
     if (!owned.includes(character) || typeof id !== 'string') continue
     const skin = skinById(id)
     if (!skin || skin.character !== character) continue
-    const xp = characterStats[character]?.xp ?? 0
-    if (skinLevel(xp) < skin.level) continue
+    const stat = characterStats[character]
+    const xp = stat?.xp ?? 0
+    const prestiged = (stat?.prestige ?? 0) > 0
+    if (!prestiged && skinLevel(xp) < skin.level) continue
     skins[character] = id
   }
   return skins
@@ -449,6 +530,8 @@ export function normalizeUser(user: Partial<UserData>): UserData {
     trialClaimed: normalizeTrialClaimed(user.trialClaimed),
     cosmetics: normalizeCosmetics(user.cosmetics),
     loadouts: normalizeLoadouts(user.loadouts),
+    presets: normalizePresets(user.presets, owned),
+    favorites: normalizeFavorites(user.favorites, owned),
     language: user.language === 'en' ? 'en' : 'ru',
     lastPvp: normalizeLastPvp(user.lastPvp),
   }
@@ -462,22 +545,31 @@ export function getUser(store: Store, userId: string, now = Date.now()): UserDat
   return store.users[userId] ?? defaultUser(now)
 }
 
-export function buyCharacter(user: UserData, character: Character): UserData {
+export function buyCharacterAtPrice(
+  user: UserData,
+  character: Character,
+  price: number,
+): UserData {
   if (user.owned.includes(character.name)) {
     throw new Error('Этот персонаж уже куплен.')
   }
   if (FREE_CHARACTERS.includes(character.name)) {
     throw new Error('Этот персонаж доступен изначально.')
   }
-  if (user.coins < character.price) {
-    throw new Error(`Не хватает монет: нужно ${character.price}, у тебя ${user.coins}.`)
+  const cost = Math.max(0, Math.floor(price))
+  if (user.coins < cost) {
+    throw new Error(`Не хватает монет: нужно ${cost}, у тебя ${user.coins}.`)
   }
   return {
     ...user,
-    coins: user.coins - character.price,
+    coins: user.coins - cost,
     owned: [...user.owned, character.name],
     active: user.active ?? character.name,
   }
+}
+
+export function buyCharacter(user: UserData, character: Character): UserData {
+  return buyCharacterAtPrice(user, character, character.price)
 }
 
 export function ownedCharacters(user: UserData): Character[] {

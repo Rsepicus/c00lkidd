@@ -8,6 +8,7 @@ import {
   battleComponents,
   battleEmbed,
   battleReward,
+  battleStatsEmbed,
   battleStatsText,
   battleTurnLanguage,
   bossCoopComponents,
@@ -52,6 +53,8 @@ import {
   parseToken,
   partnerCharacter,
   profileEmbed,
+  presetsComponents,
+  presetsEmbed,
   pveBossComponents,
   pveModesComponents,
   pveModesEmbed,
@@ -377,7 +380,7 @@ describe('embeds', () => {
     )
     expect(rows).toEqual([
       ['pvp:attack', 'pvp:special', 'pvp:juke'],
-      ['pvp:rest', 'pvp:forecast', 'pvp:surrender'],
+      ['pvp:rest', 'pvp:forecast', 'pvp:stats', 'pvp:surrender'],
     ])
   })
 
@@ -909,7 +912,7 @@ describe('embeds', () => {
   test('shop is one character list with killers before survivors', () => {
     const embed = shopEmbed(defaultUser()).toJSON()
     expect(embed.title).toContain('Магазин')
-    expect(embed.fields).toBeUndefined()
+    expect(embed.fields?.some(field => String(field.name).includes('Ротация'))).toBe(true)
     const value = String(embed.description)
     expect(value).not.toContain('Киллеры')
     expect(value).not.toContain('Выжившие')
@@ -939,6 +942,97 @@ describe('embeds', () => {
     const description = String(shopEmbed(defaultUser(), 'note').toJSON().description)
     expect(description.startsWith('note\n\n')).toBe(true)
     expect(description).toContain('Jason')
+  })
+
+  test('shop shows the daily rotation', () => {
+    const embed = shopEmbed(defaultUser()).toJSON()
+    expect(embed.fields?.some(field => String(field.name).includes('Ротация'))).toBe(true)
+  })
+
+  test('presets panel lists saved loadouts', () => {
+    const user = {
+      ...defaultUser(),
+      presets: [
+        {
+          id: '1',
+          name: 'Main',
+          character: 'Noob',
+          special: 'Bloxy Cola',
+          partner: 'Jason',
+          partnerSpecial: 'Raging Pace',
+        },
+      ],
+    }
+    expect(String(presetsEmbed(user).toJSON().description)).toContain('Main')
+    const rows = presetsComponents(user).map(row => row.toJSON())
+    expect(rows[0].components[0].custom_id).toBe('presets:apply')
+    expect(rows[1].components[0].custom_id).toBe('presets:delete')
+    expect(rows[2].components.map(component => component.custom_id)).toEqual([
+      'presets:save',
+      'hub:back',
+    ])
+  })
+
+  test('battle stats panel and results list ability usage', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('Jason')! },
+      { userId: 'b', name: 'B', character: characterByName('Noob')! },
+    )
+    battle.sides[0].abilityStats = {
+      'Gashing Wound': { uses: 2, damage: 40, healing: 0 },
+    }
+    const description = String(battleStatsEmbed(battle).toJSON().description)
+    expect(description).toContain('Gashing Wound')
+    expect(description).toContain('40')
+    expect(battleStatsText(battle)).toContain('Gashing Wound')
+  })
+
+  test('character browser filters by role and favorites', () => {
+    const user = { ...defaultUser(), favorites: ['Jason'] }
+    const rows = characterBrowserComponents(true, undefined, user, false, 'killer').map(row =>
+      row.toJSON(),
+    )
+    const view = rows[0].components[0] as { options: Array<{ value: string }> }
+    expect(
+      view.options.every(
+        option => CHARACTERS.find(entry => entry.name === option.value)?.role === 'killer',
+      ),
+    ).toBe(true)
+    const filter = rows[1].components[0] as {
+      custom_id: string
+      options: Array<{ value: string }>
+    }
+    expect(filter.custom_id).toBe('char:filter')
+    expect(filter.options.map(option => option.value)).toEqual([
+      'all',
+      'killer',
+      'survivor',
+      'owned',
+    ])
+  })
+
+  test('character page offers favorites and prestige', () => {
+    const user = {
+      ...defaultUser(),
+      owned: [...defaultUser().owned, 'Jason'],
+      characterStats: { Jason: { wins: 0, losses: 0, xp: 900, prestige: 0 } },
+      favorites: ['Jason'],
+    }
+    const rows = characterBrowserComponents(
+      true,
+      characterByName('Jason')!,
+      user,
+      true,
+    ).map(row => row.toJSON())
+    const ids = rows
+      .flatMap(row => row.components.map(component => component.custom_id))
+      .filter((id): id is string => typeof id === 'string')
+    const jasonIndex = CHARACTERS.findIndex(entry => entry.name === 'Jason')
+    expect(ids).toContain(`char:favorite:${jasonIndex}`)
+    expect(ids).toContain(`char:prestige:${jasonIndex}`)
+    const select = rows[0].components[0] as { options: Array<{ label: string; value: string }> }
+    expect(select.options[0].value).toBe('Jason')
+    expect(select.options[0].label).toContain('⭐')
   })
 
   test('main panels render without standard Discord emoji', () => {
@@ -1722,6 +1816,7 @@ describe('commandDefinitions', () => {
       'pvp:setup:create',
       'pvp:setup:cancel',
     ])
+    expect(rows[4].components.map(component => component.custom_id)).toEqual(['pvp:global'])
   })
 
   test('wraps owner tools in /дебаг without options', () => {
@@ -1756,6 +1851,7 @@ describe('commandDefinitions', () => {
       'hub:history',
       'hub:top',
       'hub:cosmetics',
+      'hub:presets',
     ])
   })
 

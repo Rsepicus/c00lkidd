@@ -112,6 +112,16 @@ describe('normalizeUser', () => {
     expect(normalized.equippedSkins).toEqual({ Jason: 'jason-gold' })
   })
 
+  test('keeps prestige skins after xp is reset', () => {
+    const normalized = normalizeUser({
+      ...defaultUser(),
+      owned: ['Noob', 'Jason'],
+      characterStats: { Jason: { wins: 0, losses: 0, xp: 0, prestige: 1 } },
+      equippedSkins: { Jason: 'jason-gold' },
+    })
+    expect(normalized.equippedSkins).toEqual({ Jason: 'jason-gold' })
+  })
+
   test('discards an outdated quest shape', () => {
     const legacy = {
       ...defaultUser(),
@@ -177,7 +187,9 @@ describe('normalizeUser', () => {
       ...defaultUser(),
       characterStats: stats as never,
     })
-    expect(normalized.characterStats).toEqual({ Jason: { wins: 3, losses: 1, xp: 70 } })
+    expect(normalized.characterStats).toEqual({
+      Jason: { wins: 3, losses: 1, xp: 70, prestige: 0 },
+    })
   })
 
   test('keeps owned cosmetics and equipped slots', () => {

@@ -98,8 +98,10 @@ export function equippedSkin(user: UserData, character: string): Skin | undefine
   if (!id) return undefined
   const skin = skinById(id)
   if (!skin || skin.character !== character) return undefined
-  const xp = user.characterStats[character]?.xp ?? 0
-  return skinUnlocked(character, xp, id) ? skin : undefined
+  const stat = user.characterStats[character]
+  const xp = stat?.xp ?? 0
+  const prestiged = (stat?.prestige ?? 0) > 0
+  return prestiged || skinUnlocked(character, xp, id) ? skin : undefined
 }
 
 export function nextSkin(character: string, xp: number): Skin | undefined {

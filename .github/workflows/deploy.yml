@@ -47,9 +47,12 @@ jobs:
             errors.ts
             forsaken.ts
             i18n.ts
+            loadouts.ts
+            matchmaking.ts
             names.ts
             progress.ts
             pvp.ts
+            shop-rotation.ts
             skins.ts
             store.ts
             survival.ts

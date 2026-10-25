@@ -4,6 +4,7 @@ import { skinsFor, type Skin } from './skins'
 import {
   ownedCharacters,
   type BattleRecord,
+  type CharacterStat,
   type DailyQuest,
   type QuestBattleResult as BaseQuestBattleResult,
   type QuestKind as BaseQuestKind,
@@ -120,6 +121,21 @@ export function masteryTitle(level: number): string {
   return 'Новичок'
 }
 
+export const PRESTIGE_REWARD_BASE = 500
+const PRESTIGE_REWARD_STEP = 100
+const PRESTIGE_STAR_CAP = 5
+
+export function prestigeLevel(stat: { prestige?: number } | null | undefined): number {
+  const value = stat?.prestige
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.floor(value))
+}
+
+export function prestigeStars(prestige: number): string {
+  const safe = Number.isFinite(prestige) ? Math.max(0, Math.floor(prestige)) : 0
+  return '★'.repeat(Math.min(safe, PRESTIGE_STAR_CAP))
+}
+
 export type CharacterPerformance = {
   name: string
   wins: number
@@ -190,21 +206,36 @@ export function recordCharacterResult(
   milestones: MasteryMilestone[]
   skinsUnlocked: Skin[]
 } {
-  const stat = user.characterStats[characterName] ?? { wins: 0, losses: 0, xp: 0 }
+  const stat: CharacterStat =
+    user.characterStats[characterName] ?? { wins: 0, losses: 0, xp: 0 }
+  const prestige = prestigeLevel(stat)
   const oldLevel = masteryLevel(stat.xp)
   const baseXp = Math.min(MASTERY_MAX_XP, stat.xp)
   const gain = (won ? MASTERY_WIN_XP : MASTERY_LOSS_XP) + Math.max(0, Math.floor(bonusXp))
   const xp = Math.min(MASTERY_MAX_XP, baseXp + gain)
   const level = masteryLevel(xp)
-  const reward = Math.max(0, level - oldLevel) * MASTERY_LEVEL_REWARD
+  // Rule: level-up coins are only paid before the first prestige, so a prestiged
+  // character cannot farm the same per-level rewards on every re-climb.
+  const reward =
+    prestige === 0 ? Math.max(0, level - oldLevel) * MASTERY_LEVEL_REWARD : 0
   const claimed = new Set(user.masteryRewards ?? [])
   const milestones = MASTERY_MILESTONES.filter(
     milestone => level >= milestone.level && !claimed.has(`${characterName}:${milestone.level}`),
   )
   const milestoneReward = milestones.reduce((sum, milestone) => sum + milestone.reward, 0)
-  const skinsUnlocked = skinsFor(characterName).filter(
-    skin => skin.level > oldLevel && skin.level <= level,
-  )
+  const skinsUnlocked =
+    prestige > 0
+      ? []
+      : skinsFor(characterName).filter(
+          skin => skin.level > oldLevel && skin.level <= level,
+        )
+
+  const nextStat: CharacterStat = {
+    wins: stat.wins + (countBattle && won ? 1 : 0),
+    losses: stat.losses + (countBattle && !won ? 1 : 0),
+    xp,
+  }
+  if (stat.prestige !== undefined) nextStat.prestige = prestige
 
   return {
     user: {
@@ -216,11 +247,7 @@ export function recordCharacterResult(
       ],
       characterStats: {
         ...user.characterStats,
-        [characterName]: {
-          wins: stat.wins + (countBattle && won ? 1 : 0),
-          losses: stat.losses + (countBattle && !won ? 1 : 0),
-          xp,
-        },
+        [characterName]: nextStat,
       },
     },
     xpGained: xp - baseXp,
@@ -230,6 +257,46 @@ export function recordCharacterResult(
     milestoneReward,
     milestones,
     skinsUnlocked,
+  }
+}
+
+export function prestigeCharacter(
+  user: UserData,
+  characterName: string,
+): { user: UserData; prestige: number; reward: number } {
+  if (characterByName(characterName) === undefined) {
+    throw new Error(`Персонаж «${characterName}» не найден.`)
+  }
+
+  const stat = user.characterStats[characterName]
+  const xp = stat?.xp ?? 0
+  const currentXp = Number.isFinite(xp) ? Math.max(0, Math.floor(xp)) : 0
+  if (!stat || currentXp < MASTERY_MAX_XP) {
+    throw new Error(
+      `Мастерство персонажа «${characterName}» ещё не достигло максимального уровня ` +
+        `(нужно ${MASTERY_MAX_XP} XP, сейчас ${currentXp}).`,
+    )
+  }
+
+  const prestige = prestigeLevel(stat) + 1
+  const reward = PRESTIGE_REWARD_BASE + PRESTIGE_REWARD_STEP * (prestige - 1)
+
+  return {
+    user: {
+      ...user,
+      coins: user.coins + reward,
+      characterStats: {
+        ...user.characterStats,
+        [characterName]: {
+          wins: stat.wins,
+          losses: stat.losses,
+          xp: 0,
+          prestige,
+        },
+      },
+    },
+    prestige,
+    reward,
   }
 }
 

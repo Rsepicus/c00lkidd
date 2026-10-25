@@ -14,12 +14,18 @@ import {
   masteryBadge,
   masteryLevel,
   masteryTitle,
+  prestigeCharacter,
+  prestigeLevel,
+  prestigeStars,
   questName,
   recordCharacterResult,
   rerollQuest,
   topMasteryCharacter,
   ABILITY_QUEST_REWARD,
   MASTERY_LEVEL_REWARD,
+  MASTERY_MAX_XP,
+  MASTERY_WIN_XP,
+  PRESTIGE_REWARD_BASE,
   QUEST_POOL,
   QUEST_REWARD,
   todayKey,
@@ -629,6 +635,139 @@ describe('mastery', () => {
   test('has no favorite without battles', () => {
     expect(favoriteCharacter(user({}))).toBeNull()
     expect(topMasteryCharacter(user({}))).toBeNull()
+  })
+})
+
+describe('mastery prestige', () => {
+  test('refuses unknown characters and characters below max mastery', () => {
+    expect(() => prestigeCharacter(user({}), 'Неизвестный')).toThrow('не найден')
+
+    const almost = user({
+      characterStats: { Jason: { wins: 4, losses: 1, xp: MASTERY_MAX_XP - 1 } },
+    })
+    expect(() => prestigeCharacter(almost, 'Jason')).toThrow('максимального уровня')
+
+    expect(() => prestigeCharacter(user({}), 'Jason')).toThrow('максимального уровня')
+  })
+
+  test('prestiges a maxed character, resets XP and keeps battle stats and items', () => {
+    const current = user({
+      characterStats: { Jason: { wins: 7, losses: 3, xp: MASTERY_MAX_XP } },
+      masteryRewards: ['Jason:3', 'Jason:6', 'Jason:10'],
+      equippedSkins: { Jason: 'jason-gold' },
+      loadouts: { main: 'Jason' },
+    })
+    const result = prestigeCharacter(current, 'Jason')
+
+    expect(result.prestige).toBe(1)
+    expect(result.reward).toBe(PRESTIGE_REWARD_BASE)
+    expect(Number.isInteger(result.reward)).toBe(true)
+    expect(result.user.coins).toBe(current.coins + PRESTIGE_REWARD_BASE)
+    expect(result.user.characterStats.Jason).toEqual({
+      wins: 7,
+      losses: 3,
+      xp: 0,
+      prestige: 1,
+    })
+    expect(result.user.masteryRewards).toEqual(current.masteryRewards)
+    expect(result.user.equippedSkins).toEqual({ Jason: 'jason-gold' })
+    expect(result.user.loadouts).toEqual({ main: 'Jason' })
+  })
+
+  test('needs a fresh climb before the next prestige and pays more', () => {
+    const start = user({
+      characterStats: { Jason: { wins: 7, losses: 3, xp: MASTERY_MAX_XP } },
+      masteryRewards: ['Jason:3', 'Jason:6', 'Jason:10'],
+    })
+    const first = prestigeCharacter(start, 'Jason')
+    expect(first.prestige).toBe(1)
+    expect(() => prestigeCharacter(first.user, 'Jason')).toThrow('максимального уровня')
+
+    let current = first.user
+    for (let index = 0; index < MASTERY_MAX_XP / MASTERY_WIN_XP; index++) {
+      current = recordCharacterResult(current, 'Jason', true, false).user
+    }
+    expect(current.characterStats.Jason.xp).toBe(MASTERY_MAX_XP)
+    expect(current.characterStats.Jason.prestige).toBe(1)
+    expect(current.coins).toBe(first.user.coins)
+
+    const second = prestigeCharacter(current, 'Jason')
+    expect(second.prestige).toBe(2)
+    expect(second.reward).toBe(PRESTIGE_REWARD_BASE + 100)
+    expect(second.user.coins).toBe(first.user.coins + PRESTIGE_REWARD_BASE + 100)
+    expect(second.user.characterStats.Jason).toEqual({
+      wins: 7,
+      losses: 3,
+      xp: 0,
+      prestige: 2,
+    })
+  })
+
+  test('does not pay milestone rewards again after prestige', () => {
+    const start = user({
+      characterStats: { Jason: { wins: 0, losses: 0, xp: MASTERY_MAX_XP } },
+      masteryRewards: ['Jason:3', 'Jason:6', 'Jason:10'],
+    })
+    const prestiged = prestigeCharacter(start, 'Jason').user
+
+    let result = recordCharacterResult(prestiged, 'Jason', true, false)
+    for (let index = 1; index < 10; index++) {
+      result = recordCharacterResult(result.user, 'Jason', true, false)
+    }
+
+    expect(result.level).toBe(3)
+    expect(result.milestones).toHaveLength(0)
+    expect(result.milestoneReward).toBe(0)
+    expect(result.user.masteryRewards).toEqual(start.masteryRewards)
+    expect(result.user.coins).toBe(prestiged.coins)
+  })
+
+  test('does not re-report skins after prestige', () => {
+    const start = user({
+      characterStats: { Jason: { wins: 0, losses: 0, xp: MASTERY_MAX_XP } },
+    })
+    let result = recordCharacterResult(
+      prestigeCharacter(start, 'Jason').user,
+      'Jason',
+      true,
+      false,
+      300,
+    )
+    for (let index = 1; index < 10; index++) {
+      result = recordCharacterResult(result.user, 'Jason', true, false)
+    }
+    expect(result.skinsUnlocked).toEqual([])
+  })
+
+  test('does not repeat level-up coin rewards after prestige', () => {
+    const start = user({
+      characterStats: { Jason: { wins: 0, losses: 0, xp: MASTERY_MAX_XP } },
+      masteryRewards: ['Jason:3', 'Jason:6', 'Jason:10'],
+    })
+    const prestiged = prestigeCharacter(start, 'Jason').user
+
+    let result = recordCharacterResult(prestiged, 'Jason', true, false)
+    for (let index = 1; index < 5; index++) {
+      result = recordCharacterResult(result.user, 'Jason', true, false)
+    }
+
+    expect(result.level).toBe(2)
+    expect(result.leveledUp).toBe(true)
+    expect(result.reward).toBe(0)
+    expect(result.user.coins).toBe(prestiged.coins)
+  })
+
+  test('reads prestige levels and caps prestige stars at five', () => {
+    expect(prestigeLevel(undefined)).toBe(0)
+    expect(prestigeLevel({})).toBe(0)
+    expect(prestigeLevel({ prestige: 2.9 })).toBe(2)
+    expect(prestigeLevel({ prestige: -1 })).toBe(0)
+
+    expect(prestigeStars(0)).toBe('')
+    expect(prestigeStars(1)).toBe('★')
+    expect(prestigeStars(3)).toBe('★★★')
+    expect(prestigeStars(9)).toBe('★★★★★')
+    expect(prestigeStars(-2)).toBe('')
   })
 })
 

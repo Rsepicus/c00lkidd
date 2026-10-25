@@ -89,3 +89,15 @@ describe('skins catalog', () => {
     expect(skinDescription(skin, 'en')).toContain('mastery level 10')
   })
 })
+
+describe('prestige skins', () => {
+  test('keeps an equipped skin after prestige resets xp', () => {
+    const user = {
+      ...defaultUser(),
+      owned: ['Jason'],
+      characterStats: { Jason: { wins: 0, losses: 0, xp: 0, prestige: 1 } },
+      equippedSkins: { Jason: 'jason-gold' },
+    }
+    expect(equippedSkin(user, 'Jason')?.id).toBe('jason-gold')
+  })
+})

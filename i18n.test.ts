@@ -4,6 +4,7 @@ import {
   achievementsEmbed,
   battleComponents,
   battleEmbed,
+  battleStatsEmbed,
   bossCoopComponents,
   bossCoopEmbed,
   bossPanelComponents,
@@ -29,6 +30,8 @@ import {
   openChallengeComponents,
   openChallengeEmbed,
   profileEmbed,
+  presetsComponents,
+  presetsEmbed,
   pveModesComponents,
   pveModesEmbed,
   pvePanelComponents,
@@ -225,6 +228,19 @@ describe('i18n', () => {
         ...user,
         trialClaimed: Object.fromEntries(TRIALS.map(trial => [trialClaimKey(trial), 1])),
       }
+      const presetUser = {
+        ...user,
+        presets: [
+          {
+            id: '1',
+            name: 'Main',
+            character: 'Noob',
+            special: 'Bloxy Cola',
+            partner: 'Jason',
+            partnerSpecial: 'Raging Pace',
+          },
+        ],
+      }
       const character = characterByName('Guest 1337')!
       const panels = [
         profileEmbed('42', user, 'Rsepicus'),
@@ -236,6 +252,7 @@ describe('i18n', () => {
         questsEmbed(user),
         pvePanelEmbed(),
         pveModesEmbed(),
+        presetsEmbed(presetUser),
         trainingSetupEmbed(user, {
           ownerId: '42',
           mode: '2x2',
@@ -286,9 +303,11 @@ describe('i18n', () => {
         ...shopComponents(user),
         ...chooseComponents(user),
         ...characterBrowserComponents(false, character, user, true),
+        ...characterBrowserComponents(true, undefined, user, false, 'killer'),
         ...questsComponents(user),
         ...pvePanelComponents(),
         ...pveModesComponents(),
+        ...presetsComponents(presetUser),
         ...towerPanelComponents(),
         ...towerUpgradeComponents(['power', 'vitality', 'guard']),
         ...trialsPanelComponents(),
@@ -397,6 +416,7 @@ describe('i18n', () => {
       const turn = takeTurn(battle, 'special', () => 0)
       battle = turn.battle
       expectNoCyrillic(battleEmbed(battle, turn.events, 'Note', Date.now() + 90_000).toJSON())
+      expectNoCyrillic(battleStatsEmbed(battle).toJSON())
       for (const row of battleComponents(battle)) expectNoCyrillic(row.toJSON())
       expectNoCyrillic(targetComponents(battle, [1])[0].toJSON())
     })

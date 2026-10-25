@@ -103,6 +103,7 @@ export type Side = {
   dotSourceId: number | null
   lifesteal: boolean
   abilityUses: number
+  abilityStats?: Record<string, { uses: number; damage: number; healing: number }>
   turns?: number
   rests?: number
   blocks?: number
@@ -2131,6 +2132,8 @@ export function takeTurn(
       if (!specialReady(side, specialIndex)) throw new Error('Oblation ещё не накоплен.')
       {
         const usedSpecial = specialOf(side, specialIndex)
+        const damageBefore = side.damageDealt
+        const healingBefore = side.healingDone
         applySpecial(
           battle,
           side,
@@ -2142,6 +2145,11 @@ export function takeTurn(
           blockTarget,
         )
         side.abilityUses += 1
+        const abilityStats = (side.abilityStats ??= {})
+        const stats = (abilityStats[usedSpecial.name] ??= { uses: 0, damage: 0, healing: 0 })
+        stats.uses += 1
+        stats.damage += Math.max(0, side.damageDealt - damageBefore)
+        stats.healing += Math.max(0, side.healingDone - healingBefore)
         const bloodHuntReady =
           isBloodHuntUser(side) &&
           side.charge >= CRY_CHARGES &&
