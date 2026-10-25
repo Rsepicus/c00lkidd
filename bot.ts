@@ -1,5 +1,6 @@
 import {
   ActionRowBuilder,
+  ActivityType,
   ApplicationIntegrationType,
   ButtonBuilder,
   ButtonStyle,
@@ -21,6 +22,7 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
   type ModalSubmitInteraction,
+  type PresenceData,
   type StringSelectMenuInteraction,
   type UserSelectMenuInteraction,
 } from 'discord.js'
@@ -165,6 +167,7 @@ import { atropaDescription, passiveDescription, specialDescription } from './nam
 import {
   addRottenMinion,
   batteryDodgeBonusOf,
+  canUseSpecialNow,
   cooldownAfterTick,
   createBattle,
   createTeamBattle,
@@ -177,7 +180,6 @@ import {
   specialNeedsAllyTarget,
   specialNeedsEnemyTarget,
   specialOf,
-  specialReady,
   surrender,
   takeTurn,
   type Action,
@@ -252,7 +254,7 @@ const OWNER_ID = '598861089916321802'
 const EMBED_COLORS = {
   profile: 0x8b1e1e,
   shop: 0xd4a017,
-  choose: 0x6a4c93,
+  choose: 0xb3001b,
   battle: 0xb3001b,
   victory: 0x2e7d32,
 }
@@ -633,6 +635,13 @@ export function resolveToken(
     throw new Error('DISCORD_BOT_TOKEN is missing in the environment and .env file')
   }
   return parseToken(fileContents)
+}
+
+export function botPresence(): PresenceData {
+  return {
+    status: 'online',
+    activities: [{ name: 'Forsaken Simulator · /пве', type: ActivityType.Playing }],
+  }
 }
 
 export function challengeText(
@@ -1823,14 +1832,18 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setLabel('Boss Rush')
     .setStyle(ButtonStyle.Danger)
   if (boss) rushButton.setEmoji(boss)
+  const towerEmoji = emojiData('tower')
   const towerButton = new ButtonBuilder()
     .setCustomId('pve:tower')
-    .setLabel('Башня')
+    .setLabel(towerEmoji ? 'Башня' : '🗼 Башня')
     .setStyle(ButtonStyle.Primary)
+  if (towerEmoji) towerButton.setEmoji(towerEmoji)
+  const trialsEmoji = emojiData('trials')
   const trialsButton = new ButtonBuilder()
     .setCustomId('pve:trials')
-    .setLabel('Испытания')
+    .setLabel(trialsEmoji ? 'Испытания' : '🏅 Испытания')
     .setStyle(ButtonStyle.Success)
+  if (trialsEmoji) trialsButton.setEmoji(trialsEmoji)
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       survivalButton,
@@ -1845,7 +1858,7 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
 export function towerPanelEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.battle)
-    .setTitle(`${emojiText('swordwhite', '⚔️')} Башня`)
+    .setTitle(`${emojiText('tower', '🗼')} Башня`)
     .setDescription(
       [
         `${TOWER_FLOORS} этажей, на каждом — двое противников с растущими HP и атакой.`,
@@ -1931,7 +1944,7 @@ function trialGoalLine(trial: Trial): string {
 export function trialsPanelEmbed(selected?: Trial): EmbedBuilder {
   const lines = selected
     ? [
-        `**${selected.characterName}** · ${selected.mode}`,
+        `${characterLabel(selected.characterName)} · ${selected.mode}`,
         trialGoalLine(selected),
         `Награда: **+${selected.bonusXp} XP**.`,
         'В 2 на 2 напарник — бот. Мастерство начисляется один раз за испытание.',
@@ -1943,7 +1956,7 @@ export function trialsPanelEmbed(selected?: Trial): EmbedBuilder {
       ]
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.battle)
-    .setTitle(`${emojiText('mvp', '🏅')} Испытания`)
+    .setTitle(`${emojiText('trials', '🏅')} Испытания`)
     .setDescription(lines.join('\n\n'))
     .setFooter({ text: 'Forsaken Simulator' })
 }
@@ -1955,11 +1968,15 @@ export function trialsPanelComponents(): Array<
     .setCustomId('trials:select')
     .setPlaceholder('Выбрать испытание')
     .addOptions(
-      TRIALS.map(trial => ({
-        label: trial.characterName,
-        description: `${trial.mode} · ${trialObjectiveText(trial)}`.slice(0, 100),
-        value: trial.id,
-      })),
+      TRIALS.map(trial => {
+        const emoji = characterEmojiData(trial.characterName)
+        return {
+          label: trial.characterName,
+          description: `${trial.mode} · ${trialObjectiveText(trial)}`.slice(0, 100),
+          value: trial.id,
+          ...(emoji ? { emoji } : {}),
+        }
+      }),
     )
   return [
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu),
@@ -1973,12 +1990,15 @@ export function trialsPanelComponents(): Array<
 }
 
 function trialStartComponents(trial: Trial): ActionRowBuilder<ButtonBuilder>[] {
+  const start = new ButtonBuilder()
+    .setCustomId(`trials:start:${trial.id}`)
+    .setLabel('Начать испытание')
+    .setStyle(ButtonStyle.Success)
+  const emoji = characterEmojiData(trial.characterName)
+  if (emoji) start.setEmoji(emoji)
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`trials:start:${trial.id}`)
-        .setLabel('Начать испытание')
-        .setStyle(ButtonStyle.Success),
+      start,
       new ButtonBuilder()
         .setCustomId('pve:trials')
         .setLabel('← К списку')
@@ -3384,7 +3404,7 @@ export function battleEmbed(
   const active = battle.sides[battle.turn]
   const turnLine = battle.finished
     ? ''
-    : `${emojiText('timer', '⏳')} Ход: ${
+    : `${emojiText('timer', '⏳')} Ход ${battle.clock + 1}: ${
         isBoss || battle.sides.length > 2
           ? `${active.name} · ${sideCharacterLabel(active)}`
           : active.name
@@ -3462,7 +3482,7 @@ export function battleComponents(battle: Battle): ActionRowBuilder<ButtonBuilder
     .setCustomId('pvp:special')
     .setLabel(specialEmoji ? specialText : `✨ ${specialText}`)
     .setStyle(ButtonStyle.Success)
-    .setDisabled(remainingCooldown > 0 || !specialReady(side))
+    .setDisabled(!canUseSpecialNow(side))
   if (specialEmoji) specialButton.setEmoji(specialEmoji)
 
   const staminaEmoji = emojiData('dodge')
@@ -6495,7 +6515,7 @@ async function executeBattleAction(
   pendingTargets.delete(interaction.message.id)
   stopBattleTimer(interaction.message.id)
   const side = battle.sides[battle.turn]
-  if (action === 'special' && (side.cooldown > 0 || !specialReady(side))) {
+  if (action === 'special' && !canUseSpecialNow(side)) {
     // A stale button from before an automated turn can arrive after the
     // cooldown has started; restore the panel instead of throwing.
     await restoreActionMenu(interaction, interaction.message.id, battle)
@@ -7796,6 +7816,7 @@ async function main(): Promise<void> {
   const client = new Client({ intents: [GatewayIntentBits.Guilds] })
 
   client.once('clientReady', async readyClient => {
+    readyClient.user.setPresence(botPresence())
     const snapshot = loadBattleState(BATTLE_STATE_PATH)
     if (snapshot) restoreBattleState(snapshot, readyClient)
     try {

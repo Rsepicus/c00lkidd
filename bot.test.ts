@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   achievementsEmbed,
   resolveToken,
+  botPresence,
   BATTLE_TURN_MS,
   battleComponents,
   battleEmbed,
@@ -119,6 +120,12 @@ describe('parseToken', () => {
 
   test('prefers the environment token for hosting', () => {
     expect(resolveToken('from-env', 'DISCORD_BOT_TOKEN=from-file\n')).toBe('from-env')
+  })
+
+  test('sets an online presence with a Forsaken activity', () => {
+    const presence = botPresence()
+    expect(presence.status).toBe('online')
+    expect(presence.activities?.[0]?.name).toContain('Forsaken')
   })
 
   test('falls back to the .env file when the environment is empty', () => {
@@ -257,6 +264,17 @@ describe('embeds', () => {
       { userId: 'b', name: 'B', character: characterByName('Noob')! },
     )
     expect(String(battleEmbed(battle).toJSON().description)).toContain('<:hp:')
+  })
+
+  test('battle header numbers the current turn', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('Noob')! },
+      { userId: 'b', name: 'B', character: characterByName('Jason')! },
+    )
+    expect(String(battleEmbed(battle).toJSON().description)).toContain('Ход 1:')
+
+    const next = takeTurn(battle, 'attack', () => 0).battle
+    expect(String(battleEmbed(next).toJSON().description)).toContain('Ход 2:')
   })
 
   test('battle offers an on-demand forecast with combat details', () => {
@@ -970,6 +988,7 @@ describe('embeds', () => {
       'pve:tower',
       'pve:trials',
     ])
+    expect(rows[1].components.every(component => component.emoji)).toBe(true)
   })
 
   test('Tower panel shows ten floors and offers a start button', () => {
@@ -1003,11 +1022,12 @@ describe('embeds', () => {
     const rows = trialsPanelComponents().map(row => row.toJSON())
     const select = rows[0].components[0] as {
       custom_id: string
-      options: Array<{ value: string }>
+      options: Array<{ value: string; emoji?: { id: string; name: string } }>
     }
     expect(select.custom_id).toBe('trials:select')
     expect(select.options).toHaveLength(TRIALS.length)
     expect(new Set(select.options.map(option => option.value)).size).toBe(TRIALS.length)
+    expect(select.options.every(option => option.emoji?.id)).toBe(true)
     expect(rows[1].components.map(component => component.custom_id)).toEqual(['pve:menu'])
   })
 

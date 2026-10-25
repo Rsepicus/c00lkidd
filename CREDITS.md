@@ -16,6 +16,9 @@ transparent 128px PNGs (stored in `emojis-ui/`).
   `drama` is used for `masks`, `paw-print` for `creatures`, and `skull` for the
   defeats counter.
 - The small `dot` marker is a custom-drawn white circle.
+- The `tower` and `trials` PvE icons are original SVGs drawn for this bot
+  (`emojis-custom-src/`), rasterized to white transparent 128px PNGs in
+  `emojis-custom-128/`.
 
 The Veeronica and Jane Doe character icons use the Damnation Wiki NavIcons
 (wikitide.net). The Sk8, Activate

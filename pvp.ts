@@ -539,6 +539,14 @@ export function cooldownAfterTick(side: Side, index = 0): number {
   return Math.max(0, cooldown - tick)
 }
 
+/**
+ * Whether the special can be used on this turn. A cooldown of 1 ticks down to
+ * 0 at the start of the turn, so the button stays enabled for that turn.
+ */
+export function canUseSpecialNow(side: Side, index = 0): boolean {
+  return cooldownAfterTick(side, index) <= 0 && specialReady(side, index)
+}
+
 export const JUKE_STANCE_BONUS = 0.6
 
 export function batteryDodgeBonusOf(side: Side): number {

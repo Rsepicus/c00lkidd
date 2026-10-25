@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { characterByName, characterWithSpecial, type Character } from './forsaken'
 import {
   addRottenMinion,
+  canUseSpecialNow,
   cooldownAfterTick,
   createBattle,
   createTeamBattle,
@@ -815,6 +816,19 @@ describe('wiki status effects', () => {
     expect(cooldownAfterTick(battle.sides[0])).toBe(1)
     battle.sides[0].effects.haste = 2
     expect(cooldownAfterTick(battle.sides[0])).toBe(0)
+  })
+
+  test('canUseSpecialNow allows a special with one cooldown tick left', () => {
+    const battle = battleWith(heavy, healer)
+    battle.sides[0].cooldown = 1
+    expect(canUseSpecialNow(battle.sides[0])).toBe(true)
+
+    battle.sides[0].cooldown = 2
+    expect(canUseSpecialNow(battle.sides[0])).toBe(false)
+
+    battle.sides[0].cooldown = 0
+    battle.sides[0].effects.glitch = 1
+    expect(canUseSpecialNow(battle.sides[0])).toBe(false)
   })
 
   test('Bleeding is a damage-over-time status', () => {
