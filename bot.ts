@@ -71,9 +71,11 @@ import {
   abilityEmojiData,
   abilityEmojiText,
   attackEmojiData,
+  characterEmoji,
   characterEmojiData,
   characterLabel,
   emojiData,
+  emojiTag,
   emojiText,
   skinnedCharacterLabel,
 } from './emoji'
@@ -160,12 +162,6 @@ import {
   type Side,
   type StatusName,
 } from './pvp'
-import {
-  createGhostBattle,
-  ghostSnapshot,
-  pickGhostOpponents,
-  recordGhostResult,
-} from './training'
 import {
   BONUS_COOLDOWN_MS,
   buyCharacter,
@@ -287,7 +283,9 @@ type TrainingSetup = {
   ownerId: string
   mode: BattleMode
   botCharacter?: string
-  ghost?: boolean
+  playerAbility?: string
+  partner?: string
+  partnerAbility?: string
 }
 
 type DebugTestSetup = {
@@ -355,7 +353,6 @@ const pvpSetups = new Map<string, PvpSetup>()
 const duels = new Map<string, DuelSeries>()
 const pveOwners = new Map<string, string>()
 const trainingSetups = new Map<string, TrainingSetup>()
-const ghostTrainingBattles = new Map<string, { ownerId: string; mode: BattleMode }>()
 const debugTests = new Map<string, DebugTestSetup>()
 const survivalRuns = new Map<string, SurvivalRun>()
 const drafts = new Map<string, DraftState>()
@@ -389,7 +386,6 @@ type PersistedBattleState = {
   logs: Array<[string, string[]]>
   wagers: Array<[string, number]>
   training: string[]
-  ghostTraining?: Array<[string, { ownerId: string; mode: BattleMode }]>
   gameModes: Array<[string, PvpMode]>
   boss: Array<[string, { mode: BossMode; week: string; day?: string; coop?: boolean }]>
   channels: Array<[string, string]>
@@ -416,7 +412,6 @@ function serializeBattleState(): PersistedBattleState {
     logs: [...battleLogs.entries()],
     wagers: [...wagers.entries()],
     training: [...trainingBattles],
-    ghostTraining: [...ghostTrainingBattles.entries()],
     gameModes: [...battleGameModes.entries()],
     boss: [...bossBattles.entries()],
     channels: [...battleChannels.entries()],
@@ -443,7 +438,6 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
   battleLogs.clear()
   wagers.clear()
   trainingBattles.clear()
-  ghostTrainingBattles.clear()
   battleGameModes.clear()
   bossBattles.clear()
   battleChannels.clear()
@@ -460,18 +454,6 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
   for (const [id, log] of snapshotEntries<string[]>(state.logs)) battleLogs.set(id, log)
   for (const [id, wager] of snapshotEntries<number>(state.wagers)) wagers.set(id, wager)
   for (const id of Array.isArray(state.training) ? state.training : []) trainingBattles.add(id)
-  for (const [id, ghost] of snapshotEntries<{ ownerId: string; mode: BattleMode }>(
-    state.ghostTraining,
-  )) {
-    if (
-      ghost &&
-      typeof ghost === 'object' &&
-      typeof ghost.ownerId === 'string' &&
-      (ghost.mode === '1x1' || ghost.mode === '2x2')
-    ) {
-      ghostTrainingBattles.set(id, ghost)
-    }
-  }
   for (const [id, mode] of snapshotEntries<PvpMode>(state.gameModes)) battleGameModes.set(id, mode)
   for (const [id, boss] of snapshotEntries<{
     mode: BossMode
@@ -544,7 +526,7 @@ const turnPings = new Map<
   string,
   { applicationId: string; token: string; messageId: string; channelId: string; at: number }
 >()
-let store: Store = { users: {} }
+export let store: Store = { users: {} }
 
 export function parseToken(contents: string): string {
   for (const line of contents.split('\n')) {
@@ -871,13 +853,6 @@ export function randomBattleFor(
   return mode === '2x2'
     ? createTeamBattle(firstEntries, secondEntries)
     : createBattle(firstEntries[0], secondEntries[0])
-}
-
-export function automateGhostBattle(battle: Battle): void {
-  for (const side of battle.sides) {
-    if (side.team !== 1 || side.userId.startsWith('bot:')) continue
-    side.userId = `bot:training:shadow:${side.id}`
-  }
 }
 
 export function coopBossBattle(
@@ -1368,25 +1343,93 @@ export function balanceEmbed(simulation: BalanceSimulation): EmbedBuilder {
     })
 }
 
-export function topEmbed(): EmbedBuilder {
-  const entries = Object.entries(store.users)
+export const TOP_PAGE_SIZE = 10
+
+function leaderboardUsers(): Array<[string, UserData]> {
+  return Object.entries(store.users)
     .filter(([userId]) => isRealUserId(userId))
     .sort((left, right) => right[1].wins - left[1].wins || right[1].coins - left[1].coins)
-    .slice(0, 10)
+}
+
+export function topPageCount(): number {
+  return Math.max(1, Math.ceil(leaderboardUsers().length / TOP_PAGE_SIZE))
+}
+
+function leaderboardCharacterEmojis(user: UserData): string {
+  const names = [user.active, user.partner].filter(
+    (name, index, list): name is string =>
+      Boolean(name) && list.indexOf(name) === index && Boolean(characterByName(name)),
+  )
+  return names
+    .map(name => {
+      const skin = equippedSkin(user, name)
+      const skinTag = skin ? emojiTag(skin.emoji) : ''
+      return skinTag || characterEmoji(name)
+    })
+    .filter(Boolean)
+    .join(' ')
+}
+
+export function topEmbed(page = 0): EmbedBuilder {
+  const allEntries = leaderboardUsers()
+  const totalPages = Math.max(1, Math.ceil(allEntries.length / TOP_PAGE_SIZE))
+  const current = Number.isFinite(page)
+    ? Math.max(0, Math.min(totalPages - 1, Math.floor(page)))
+    : 0
+  const entries = allEntries.slice(
+    current * TOP_PAGE_SIZE,
+    (current + 1) * TOP_PAGE_SIZE,
+  )
   const description =
     entries.length === 0
       ? 'Пока никто не играл.'
       : entries
-          .map(
-            ([userId, user], index) =>
-              `${index + 1}. <@${userId}> — ${user.wins} побед, ${user.coins} ${emojiText('points', '🪙')}`,
-          )
+          .map(([userId, user], index) => {
+            const characters = leaderboardCharacterEmojis(user)
+            return (
+              `${current * TOP_PAGE_SIZE + index + 1}. <@${userId}> — ${user.wins} побед, ` +
+              `${user.coins} ${emojiText('points', '🪙')}` +
+              (characters ? ` · ${characters}` : '')
+            )
+          })
           .join('\n')
 
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.shop)
     .setTitle(`${emojiText('achievement', '🏆')} Лидеры`)
     .setDescription(description)
+    .setFooter({
+      text: `Страница ${current + 1}/${totalPages} · всего ${allEntries.length}`,
+    })
+}
+
+export function topComponents(page = 0): ActionRowBuilder<ButtonBuilder>[] {
+  const totalPages = topPageCount()
+  const current = Number.isFinite(page)
+    ? Math.max(0, Math.min(totalPages - 1, Math.floor(page)))
+    : 0
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`top:page:${current - 1}`)
+      .setLabel('←')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(current <= 0),
+    new ButtonBuilder()
+      .setCustomId('top:pageinfo')
+      .setLabel(`${current + 1}/${totalPages}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(`top:page:${current + 1}`)
+      .setLabel('→')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(current >= totalPages - 1),
+    new ButtonBuilder()
+      .setCustomId('hub:back')
+      .setLabel('← Назад')
+      .setStyle(ButtonStyle.Secondary),
+  )
+  return [row]
 }
 
 export function historyEmbed(user: UserData): EmbedBuilder {
@@ -1712,20 +1755,71 @@ export function pveBossComponents(): Array<
   ]
 }
 
+function trainingActiveBase(user: UserData): Character {
+  return characterByName(user.active ?? '') ?? characterByName('Noob')!
+}
+
+function trainingPartnerBase(user: UserData, setup: TrainingSetup): Character {
+  return (setup.partner ? characterByName(setup.partner) : undefined) ?? partnerCharacter(user)
+}
+
+export function trainingPlayerCharacter(user: UserData, setup: TrainingSetup): Character {
+  return characterWithSpecial(trainingActiveBase(user), setup.playerAbility)
+}
+
+export function trainingPartnerCharacter(user: UserData, setup: TrainingSetup): Character {
+  return characterWithSpecial(trainingPartnerBase(user, setup), setup.partnerAbility)
+}
+
+export function trainingEntries(
+  user: UserData,
+  setup: TrainingSetup,
+  userId: string,
+  displayName: string,
+): FighterEntry[] {
+  const player: FighterEntry = {
+    userId,
+    name: displayName,
+    character: trainingPlayerCharacter(user, setup),
+  }
+  if (setup.mode !== '2x2') return [player]
+  return [
+    player,
+    {
+      userId,
+      name: displayName,
+      character: trainingPartnerCharacter(user, setup),
+    },
+  ]
+}
+
 export function trainingSetupEmbed(user: UserData, setup: TrainingSetup): EmbedBuilder {
+  const player = trainingPlayerCharacter(user, setup)
+  const partner = trainingPartnerCharacter(user, setup)
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.choose)
     .setTitle(`${emojiText('swordwhite', '⚔️')} Тренировка`)
     .setDescription(
       [
-        `Твой герой: ${userCharacterLabel(user, activeCharacter(user).name)}`,
-        setup.ghost
-          ? 'Противник: **тени игроков**'
-          : `Герой бота: **${setup.botCharacter ?? 'случайный'}**`,
+        `Твой герой: ${userCharacterLabel(user, player.name)} · **${player.special.name}**`,
+        `Напарник: ${userCharacterLabel(user, partner.name)} · **${partner.special.name}**`,
+        `Герой бота: **${setup.botCharacter ?? 'случайный'}**`,
         `Формат: **${setup.mode === '2x2' ? '2 на 2' : '1 на 1'}**`,
       ].join('\n'),
     )
     .setFooter({ text: 'Без наград и статистики · Forsaken Simulator' })
+}
+
+function trainingAbilityOptions(character: Character, selected: string, language: 'ru' | 'en') {
+  return availableSpecials(character).map(special => ({
+    label: special.name,
+    value: special.name,
+    description: specialDescription(special, language).slice(0, 100),
+    default: special.name === selected,
+    ...(abilityEmojiData(character.name, special.name)
+      ? { emoji: abilityEmojiData(character.name, special.name) }
+      : {}),
+  }))
 }
 
 export function trainingSetupComponents(
@@ -1734,6 +1828,29 @@ export function trainingSetupComponents(
 ): Array<
   ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>
 > {
+  const playerBase = trainingActiveBase(user)
+  const player = trainingPlayerCharacter(user, setup)
+  const partnerBase = trainingPartnerBase(user, setup)
+  const partner = trainingPartnerCharacter(user, setup)
+  const abilityMenu = new StringSelectMenuBuilder()
+    .setCustomId('pve:training:ability')
+    .setPlaceholder('Способность героя')
+    .addOptions(trainingAbilityOptions(playerBase, player.special.name, user.language))
+  const partnerMenu = new StringSelectMenuBuilder()
+    .setCustomId('pve:training:partner')
+    .setPlaceholder('Напарник')
+    .addOptions(
+      CHARACTERS.map(character => ({
+        label: character.name,
+        value: character.name,
+        default: character.name === partnerBase.name,
+        ...(characterEmojiData(character.name) ? { emoji: characterEmojiData(character.name) } : {}),
+      })),
+    )
+  const partnerAbilityMenu = new StringSelectMenuBuilder()
+    .setCustomId('pve:training:partner-ability')
+    .setPlaceholder('Способность напарника')
+    .addOptions(trainingAbilityOptions(partnerBase, partner.special.name, user.language))
   const characterMenu = new StringSelectMenuBuilder()
     .setCustomId('pve:training:character')
     .setPlaceholder('Герой бота')
@@ -1752,27 +1869,11 @@ export function trainingSetupComponents(
       })),
     ])
   const sword = emojiData('swordwhite')
-  const duo = emojiData('duo')
-  const modeMenu = new StringSelectMenuBuilder()
-    .setCustomId('pve:training:mode')
-    .setPlaceholder('Формат')
-    .addOptions([
-      {
-        label: '1 на 1',
-        value: '1x1',
-        default: setup.mode === '1x1',
-        ...(sword ? { emoji: sword } : {}),
-      },
-      {
-        label: '2 на 2',
-        value: '2x2',
-        default: setup.mode === '2x2',
-        ...(duo ? { emoji: duo } : {}),
-      },
-    ])
   return [
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(abilityMenu),
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(partnerMenu),
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(partnerAbilityMenu),
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(characterMenu),
-    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(modeMenu),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       (() => {
         const button = new ButtonBuilder()
@@ -1782,33 +1883,13 @@ export function trainingSetupComponents(
         if (sword) button.setEmoji(sword)
         return button
       })(),
-      (() => {
-        const button = new ButtonBuilder()
-          .setCustomId('pve:training:ghost')
-          .setLabel(setup.ghost ? 'Тени: вкл' : 'Тени: выкл')
-          .setStyle(setup.ghost ? ButtonStyle.Success : ButtonStyle.Secondary)
-        const spectre = emojiData('spectre')
-        if (spectre) button.setEmoji(spectre)
-        return button
-      })(),
+      new ButtonBuilder()
+        .setCustomId('pve:training:mode')
+        .setLabel(`Формат: ${setup.mode === '2x2' ? '2 на 2' : '1 на 1'}`)
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('pve:menu')
         .setLabel('← Назад')
-        .setStyle(ButtonStyle.Secondary),
-    ),
-  ]
-}
-
-function trainingGhostAgainComponents(): ActionRowBuilder<ButtonBuilder>[] {
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('pve:training')
-        .setLabel('Ещё бой')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('pve:menu')
-        .setLabel('В меню PvE')
         .setStyle(ButtonStyle.Secondary),
     ),
   ]
@@ -3664,7 +3745,6 @@ function cleanupBattle(messageId: string): void {
   turnPings.delete(messageId)
   wagers.delete(messageId)
   trainingBattles.delete(messageId)
-  ghostTrainingBattles.delete(messageId)
   battleGameModes.delete(messageId)
   bossBattles.delete(messageId)
   pendingTargets.delete(messageId)
@@ -3681,7 +3761,6 @@ function finishBattleState(
 ): { note: string; components: ActionRowBuilder<ButtonBuilder>[] } {
   const wager = wagers.get(messageId) ?? 0
   const training = trainingBattles.has(messageId)
-  const ghostTraining = ghostTrainingBattles.get(messageId)
   const gameMode = battleGameModes.get(messageId) ?? 'classic'
   const boss = bossBattles.get(messageId)
   let note = ''
@@ -3854,39 +3933,6 @@ function finishBattleState(
     } else {
       components = bossRetryComponents(boss.mode)
     }
-  } else if (ghostTraining && battle.winner !== null) {
-    const ownerId = ghostTraining.ownerId
-    let user = userOf(ownerId)
-    const playerSides = battle.sides.filter(
-      side => side.userId === ownerId && !side.fake && !side.minion,
-    )
-    const characterNames = [...new Set(playerSides.map(side => side.character.name))]
-    const ghostNotes: string[] = []
-    for (const characterName of characterNames) {
-      const characterSides = playerSides.filter(side => side.character.name === characterName)
-      const abilityUses = characterSides.reduce((sum, side) => sum + side.abilityUses, 0)
-      const bonusXp = abilityXp(
-        abilityUses,
-        specialCooldown(characterSides[0]!.character.special),
-      )
-      const progress = recordGhostResult(user, characterName, battle.winner === 0, bonusXp)
-      user = progress.user
-      ghostNotes.push(...masteryProgressNotes(progress, characterName, user.language))
-    }
-    store.users[ownerId] = user
-    persist()
-    rememberPveOwner(messageId, ownerId)
-    note = [
-      notePrefix,
-      ghostTraining.mode === '2x2' ? 'Бой с тенями 2 на 2 окончен.' : 'Бой с тенями окончен.',
-      battle.winner === 0
-        ? 'Победа — мастерство начислено.'
-        : 'Поражение — мастерство начислено.',
-      ...ghostNotes,
-    ]
-      .filter(Boolean)
-      .join('\n')
-    components = trainingGhostAgainComponents()
   } else if (battle.winner === null) {
     note = [notePrefix, 'Бой окончен вничью.'].filter(Boolean).join('\n')
   } else if (training) {
@@ -5917,6 +5963,14 @@ async function executeBattleAction(
   notifyNextTurn(interaction.client, current, interaction.channelId, interaction.message.id)
 }
 
+async function handleTopPageButton(interaction: ButtonInteraction): Promise<void> {
+  const page = Number.parseInt(interaction.customId.split(':')[2] ?? '0', 10)
+  await interaction.update({
+    embeds: [topEmbed(page)],
+    components: topComponents(page),
+  })
+}
+
 async function handleHub(interaction: ButtonInteraction | StringSelectMenuInteraction): Promise<void> {
   const ownerId = hubOwners.get(interaction.message.id)
   if (!ownerId) {
@@ -6119,7 +6173,7 @@ async function handleHub(interaction: ButtonInteraction | StringSelectMenuIntera
       }
       return
     case 'hub:top':
-      await interaction.update({ embeds: [topEmbed()], components: [backRow()] })
+      await interaction.update({ embeds: [topEmbed(0)], components: topComponents(0) })
       return
     case 'hub:chars':
       await interaction.update({
@@ -6487,62 +6541,38 @@ async function startTrainingBattle(
   messageId: string,
 ): Promise<void> {
   const user = userOf(setup.ownerId)
-  let battle: Battle
-  if (setup.ghost) {
-    try {
-      const player = ghostSnapshot(user, setup.ownerId)
-      player.name = interaction.user.displayName
-      const opponents = pickGhostOpponents(
-        store.users,
-        setup.ownerId,
-        1,
-        Math.random,
-        setup.mode,
-      )
-      battle = createGhostBattle(player, opponents, setup.mode)
-      automateGhostBattle(battle)
-    } catch {
-      await replyError(interaction, 'Не получилось подобрать тень. Попробуй обычную тренировку.')
-      return
-    }
-    ghostTrainingBattles.set(messageId, { ownerId: setup.ownerId, mode: setup.mode })
-  } else {
-    const botCharacter =
-      (setup.botCharacter ? characterByName(setup.botCharacter) : undefined) ??
-      randomCharacter(Math.random)
+  const botCharacter =
+    (setup.botCharacter ? characterByName(setup.botCharacter) : undefined) ??
+    randomCharacter(Math.random)
+  const entries = trainingEntries(
+    user,
+    setup,
+    setup.ownerId,
+    interaction.user.displayName,
+  )
 
-    if (setup.mode === '2x2') {
-      const botPool = CHARACTERS.filter(character => character.name !== botCharacter.name)
-      const botPartner = botPool[Math.floor(Math.random() * botPool.length)] ?? botCharacter
-      battle = createTeamBattle(
-        teamEntries(user, setup.ownerId, interaction.user.displayName),
-        [
-          {
-            userId: `bot:${interaction.id}:1`,
-            name: 'Тренировочный бот',
-            character: botCharacter,
-          },
-          {
-            userId: `bot:${interaction.id}:2`,
-            name: 'Тренировочный бот',
-            character: botPartner,
-          },
-        ],
-      )
-    } else {
-      battle = createBattle(
-        {
-          userId: setup.ownerId,
-          name: interaction.user.displayName,
-          character: activeCharacter(user),
-        },
-        {
-          userId: `bot:${interaction.id}`,
-          name: 'Тренировочный бот',
-          character: botCharacter,
-        },
-      )
-    }
+  let battle: Battle
+  if (setup.mode === '2x2') {
+    const botPool = CHARACTERS.filter(character => character.name !== botCharacter.name)
+    const botPartner = botPool[Math.floor(Math.random() * botPool.length)] ?? botCharacter
+    battle = createTeamBattle(entries, [
+      {
+        userId: `bot:${interaction.id}:1`,
+        name: 'Тренировочный бот',
+        character: botCharacter,
+      },
+      {
+        userId: `bot:${interaction.id}:2`,
+        name: 'Тренировочный бот',
+        character: botPartner,
+      },
+    ])
+  } else {
+    battle = createBattle(entries[0], {
+      userId: `bot:${interaction.id}`,
+      name: 'Тренировочный бот',
+      character: botCharacter,
+    })
   }
 
   trainingSetups.delete(messageId)
@@ -6592,13 +6622,13 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
     })
     return
   }
-  if (interaction.customId === 'pve:training:ghost') {
+  if (interaction.customId === 'pve:training:mode') {
     const setup = trainingSetups.get(interaction.message.id)
     if (!setup) {
       await replyError(interaction, 'Настройка тренировки устарела. Открой /пве заново.')
       return
     }
-    setup.ghost = !setup.ghost
+    setup.mode = setup.mode === '1x1' ? '2x2' : '1x1'
     trainingSetups.set(interaction.message.id, setup)
     await interaction.update({
       embeds: [trainingSetupEmbed(user, setup)],
@@ -6639,8 +6669,13 @@ async function handlePveTrainingSelect(
   const value = interaction.values[0]
   if (interaction.customId === 'pve:training:character') {
     setup.botCharacter = value === 'random' ? undefined : value
-  } else if (interaction.customId === 'pve:training:mode') {
-    setup.mode = parseBattleMode(value)
+  } else if (interaction.customId === 'pve:training:ability') {
+    setup.playerAbility = value
+  } else if (interaction.customId === 'pve:training:partner') {
+    setup.partner = value
+    setup.partnerAbility = undefined
+  } else if (interaction.customId === 'pve:training:partner-ability') {
+    setup.partnerAbility = value
   }
   trainingSetups.set(interaction.message.id, setup)
   const user = userOf(ownerId)
@@ -6794,6 +6829,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   }
   if (interaction.customId.startsWith('pve:')) {
     await handlePveButton(interaction)
+    return
+  }
+  if (interaction.customId.startsWith('top:')) {
+    await handleTopPageButton(interaction)
     return
   }
   if (interaction.customId.startsWith('hub:')) {

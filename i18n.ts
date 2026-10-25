@@ -181,9 +181,13 @@ const EXACT: Record<string, string> = {
   'Тренировочный бот': 'Training bot',
   'Без наград и статистики · Forsaken Simulator': 'No rewards or stats · Forsaken Simulator',
   'Случайный': 'Random',
+  'случайный': 'random',
   'Начать бой': 'Start battle',
   '← Назад': '← Back',
   'Герой бота': 'Bot hero',
+  'Способность героя': 'Hero ability',
+  'Формат: 1 на 1': 'Format: 1v1',
+  'Формат: 2 на 2': 'Format: 2v2',
   'Тени: вкл': 'Shadows: on',
   'Тени: выкл': 'Shadows: off',
   'Противник: **тени игроков**': 'Opponent: **player shadows**',
@@ -452,10 +456,12 @@ const EXACT: Record<string, string> = {
 }
 
 const PATTERNS: Array<[RegExp, string]> = [
-  [/^Твой герой: (.+)$/, 'Your hero: $1'],
+  [/^Твой герой: (.+) · \*\*(.+)\*\*$/, 'Your hero: $1 · **$2**'],
+  [/^Напарник: (.+) · \*\*(.+)\*\*$/, 'Partner: $1 · **$2**'],
   [/^Герой бота: \*\*(.+)\*\*$/, 'Bot hero: **$1**'],
   [/^Противник: \*\*тени игроков\*\*$/, 'Opponent: **player shadows**'],
   [/^Формат: \*\*(.+)\*\*$/, 'Format: **$1**'],
+  [/^Страница (\d+)\/(\d+) · всего (\d+)$/, 'Page $1/$2 · total $3'],
   [/^(.+) получает приоритет хода\.$/, '$1 gains turn priority.'],
   [/^(.+) действует ещё раз \(приоритет хода\)\.$/, '$1 acts again (turn priority).'],
   [/^(.+) получает иммунитет к стану на (\d+) хода?\.$/, '$1 gains stun immunity for $2 turns.'],

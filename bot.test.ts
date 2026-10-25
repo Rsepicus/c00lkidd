@@ -67,11 +67,14 @@ import {
   trainingSetupComponents,
   trainingSetupEmbed,
   targetComponents,
+  store,
   teamLabel,
+  topComponents,
   topEmbed,
+  topPageCount,
+  trainingEntries,
   userCharacterEmojiData,
   userCharacterLabel,
-  automateGhostBattle,
 } from './bot'
 import { bossCharacter } from './boss'
 import { buyCosmetic } from './cosmetics'
@@ -990,45 +993,85 @@ describe('embeds', () => {
     expect(battlesMenu.options.find(option => option.value === '50')?.default).toBe(true)
   })
 
-  test('training setup offers a bot character and a format', () => {
-    const setup = { ownerId: '1', mode: '2x2' as const, botCharacter: 'Jason' }
+  test('training setup offers hero, partner and bot choices', () => {
+    const setup = {
+      ownerId: '1',
+      mode: '2x2' as const,
+      botCharacter: 'Jason',
+      playerAbility: 'Slateskin Potion',
+      partner: 'Elliot',
+      partnerAbility: 'Rush Hour',
+    }
     const embed = trainingSetupEmbed(defaultUser(), setup).toJSON()
     expect(embed.description).toContain('Jason')
     expect(embed.description).toContain('2 на 2')
+    expect(embed.description).toContain('Slateskin Potion')
+    expect(embed.description).toContain('Elliot')
+    expect(embed.description).toContain('Rush Hour')
     const rows = trainingSetupComponents(defaultUser(), setup).map(row =>
       row.toJSON().components.map(component => component.custom_id),
     )
     expect(rows).toEqual([
+      ['pve:training:ability'],
+      ['pve:training:partner'],
+      ['pve:training:partner-ability'],
       ['pve:training:character'],
-      ['pve:training:mode'],
-      ['pve:training:start', 'pve:training:ghost', 'pve:menu'],
+      ['pve:training:start', 'pve:training:mode', 'pve:menu'],
     ])
   })
 
-  test('ghost opponents become automated and cannot ping real users', () => {
-    const battle = createBattle(
-      { userId: '123456789012345678', name: 'Player', character: characterByName('Noob')! },
-      { userId: '987654321098765432', name: 'Тень 5432', character: characterByName('Jason')! },
-    )
-    automateGhostBattle(battle)
-    expect(battle.sides[0].userId).toBe('123456789012345678')
-    expect(battle.sides[1].userId).toMatch(/^bot:training:shadow:/)
-  })
-
-  test('training setup can switch to player shadows', () => {
-    const setup = { ownerId: '1', mode: '2x2' as const, ghost: true }
-    const embed = trainingSetupEmbed(defaultUser(), setup).toJSON()
-    expect(embed.description).toContain('тени игроков')
-    expect(embed.description).not.toContain('Герой бота')
-
-    const ghostButton = trainingSetupComponents(defaultUser(), setup)[2]
-      .toJSON()
-      .components.find(component => component.custom_id === 'pve:training:ghost')
-    expect(ghostButton?.label).toBe('Тени: вкл')
+  test('training entries use the selected hero and partner abilities', () => {
+    const setup = {
+      ownerId: '1',
+      mode: '2x2' as const,
+      playerAbility: 'Slateskin Potion',
+      partner: 'Elliot',
+      partnerAbility: 'Rush Hour',
+    }
+    const entries = trainingEntries(defaultUser(), setup, '123456789012345678', 'Player')
+    expect(entries).toHaveLength(2)
+    expect(entries[0].character.special.name).toBe('Slateskin Potion')
+    expect(entries[1].character.name).toBe('Elliot')
+    expect(entries[1].character.special.name).toBe('Rush Hour')
   })
 
   test('leaders is an embed', () => {
     expect(topEmbed().toJSON().title).toContain('Лидеры')
+  })
+
+  test('leaders show equipped character emojis and paginate', () => {
+    const original = store.users
+    try {
+      store.users = {}
+      for (let index = 0; index < 12; index++) {
+        const userId = `12345678901234567${String(index).padStart(2, '0')}`
+        store.users[userId] = {
+          ...defaultUser(),
+          wins: 100 - index,
+          coins: 1000 - index,
+          active: index === 0 ? 'Jason' : 'Noob',
+          partner: index === 0 ? 'Noob' : null,
+        }
+      }
+      const first = topEmbed(0).toJSON()
+      expect(String(first.footer?.text)).toContain('Страница 1/2')
+      expect(String(first.description)).toContain('<:jason:')
+      expect(topPageCount()).toBe(2)
+      expect(String(topEmbed(1).toJSON().footer?.text)).toContain('Страница 2/2')
+
+      const firstButtons = topComponents(0)[0].toJSON().components
+      expect(firstButtons.map(button => button.custom_id)).toEqual([
+        'top:page:-1',
+        'top:pageinfo',
+        'top:page:1',
+        'hub:back',
+      ])
+      expect(firstButtons[0].disabled).toBe(true)
+      const lastButtons = topComponents(1)[0].toJSON().components
+      expect(lastButtons[2].disabled).toBe(true)
+    } finally {
+      store.users = original
+    }
   })
 
   test('achievements, quests and history are embeds', () => {

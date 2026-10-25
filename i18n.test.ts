@@ -44,6 +44,7 @@ import {
   survivalPanelComponents,
   survivalPanelEmbed,
   targetComponents,
+  topComponents,
   topEmbed,
 } from './bot'
 import {
@@ -220,7 +221,13 @@ describe('i18n', () => {
         characterEmbed(characterByName('Jane Doe')!, user),
         questsEmbed(user),
         pvePanelEmbed(),
-        trainingSetupEmbed(user, { ownerId: '42', mode: '2x2', ghost: true }),
+        trainingSetupEmbed(user, {
+          ownerId: '42',
+          mode: '2x2',
+          playerAbility: 'Slateskin Potion',
+          partner: 'Elliot',
+          partnerAbility: 'Rush Hour',
+        }),
         survivalPanelEmbed(user, {
           '123456789012345678': user,
           '123456789012345679': {
@@ -253,11 +260,18 @@ describe('i18n', () => {
         ...characterBrowserComponents(false, character, user, true),
         ...questsComponents(user),
         ...pvePanelComponents(),
-        ...trainingSetupComponents(user, { ownerId: '42', mode: '2x2', ghost: true }),
+        ...trainingSetupComponents(user, {
+          ownerId: '42',
+          mode: '2x2',
+          playerAbility: 'Slateskin Potion',
+          partner: 'Elliot',
+          partnerAbility: 'Rush Hour',
+        }),
         ...survivalPanelComponents(),
         ...cosmeticsComponents(user),
         ...bossPanelComponents(),
         ...bossCoopComponents(),
+        ...topComponents(0),
         ...openChallengeComponents(),
         ...rematchComponents(),
       ]

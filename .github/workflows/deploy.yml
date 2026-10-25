@@ -55,7 +55,6 @@ jobs:
             survival.ts
             synergies.ts
             tower.ts
-            training.ts
             trials.ts
             package.json
             bun.lock
