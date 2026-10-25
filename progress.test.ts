@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { isoWeekKey } from './boss'
 import { CHARACTERS } from './forsaken'
 import {
+  abilityXp,
   addHistory,
   applyCharacterTrial,
   applyQuestBattle,
@@ -477,6 +478,23 @@ describe('character trials', () => {
 })
 
 describe('mastery', () => {
+  test('scales ability XP with cooldown and caps it per battle', () => {
+    expect(abilityXp(1, 2)).toBe(3)
+    expect(abilityXp(1, 3)).toBe(4)
+    expect(abilityXp(1, 4)).toBe(5)
+    expect(abilityXp(3, 2)).toBe(9)
+    expect(abilityXp(4, 2)).toBe(10)
+    expect(abilityXp(2, 4)).toBe(10)
+    expect(abilityXp(0, 2)).toBe(0)
+  })
+
+  test('adds ability XP on top of the win/loss XP', () => {
+    const win = recordCharacterResult(user({}), 'Jason', true, false, 7)
+    expect(win.xpGained).toBe(27)
+    const loss = recordCharacterResult(user({}), 'Jason', false, false, 7)
+    expect(loss.xpGained).toBe(17)
+  })
+
   test('levels up every 100 experience and rewards coins', () => {
     const current = user({
       characterStats: { Jason: { wins: 0, losses: 0, xp: 90 } },

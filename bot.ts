@@ -96,6 +96,7 @@ import {
 } from './forsaken'
 import {
   ACHIEVEMENTS,
+  abilityXp,
   addHistory,
   applyCharacterTrial,
   applyQuestBattle,
@@ -3268,8 +3269,9 @@ function masteryProgressNotes(
 export function recordSurvivalWave(
   user: UserData,
   characterName: string,
+  bonusXp = 0,
 ): ReturnType<typeof recordCharacterResult> {
-  return recordCharacterResult(user, characterName, true, false)
+  return recordCharacterResult(user, characterName, true, false, bonusXp)
 }
 
 function recordBattle(
@@ -3308,7 +3310,13 @@ function recordBattle(
       const userSides = teamSides.filter(side => side.userId === userId)
       const characterNames = [...new Set(userSides.map(side => side.character.name))]
       for (const characterName of characterNames) {
-        const progress = recordCharacterResult(user, characterName, won)
+        const characterSides = userSides.filter(side => side.character.name === characterName)
+        const abilityUses = characterSides.reduce((sum, side) => sum + side.abilityUses, 0)
+        const bonusXp = abilityXp(
+          abilityUses,
+          specialCooldown(characterSides[0]!.character.special),
+        )
+        const progress = recordCharacterResult(user, characterName, won, true, bonusXp)
         user = progress.user
         if (progress.leveledUp) {
           notes.push(
@@ -3464,7 +3472,11 @@ function finishBattleState(
         player.hp + survivalHeal(survival.maxHp),
       )
       survivalRuns.set(messageId, survival)
-      const progress = recordSurvivalWave(userOf(survival.userId), player.character.name)
+      const progress = recordSurvivalWave(
+        userOf(survival.userId),
+        player.character.name,
+        abilityXp(player.abilityUses, specialCooldown(player.character.special)),
+      )
       store.users[survival.userId] = progress.user
       persist()
       note = [
@@ -3528,7 +3540,15 @@ function finishBattleState(
         ),
       ]
       for (const characterName of characterNames) {
-        const progress = recordCharacterResult(user, characterName, won, false)
+        const characterSides = playerSides.filter(
+          side => side.userId === userId && side.character.name === characterName,
+        )
+        const abilityUses = characterSides.reduce((sum, side) => sum + side.abilityUses, 0)
+        const bonusXp = abilityXp(
+          abilityUses,
+          specialCooldown(characterSides[0]!.character.special),
+        )
+        const progress = recordCharacterResult(user, characterName, won, false, bonusXp)
         user = progress.user
         bossMasteryNotes.push(...masteryProgressNotes(progress, characterName, user.language))
       }

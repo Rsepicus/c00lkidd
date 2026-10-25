@@ -1046,6 +1046,8 @@ describe('survival mastery', () => {
     const progress = recordSurvivalWave(defaultUser(), 'Jason')
     expect(progress.xpGained).toBe(20)
     expect(progress.user.characterStats.Jason).toEqual({ wins: 0, losses: 0, xp: 20 })
+    const withAbility = recordSurvivalWave(defaultUser(), 'Jason', 7)
+    expect(withAbility.xpGained).toBe(27)
   })
 })
 

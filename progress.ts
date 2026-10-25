@@ -83,6 +83,13 @@ export const MASTERY_MAX_XP = (MASTERY_MAX_LEVEL - 1) * MASTERY_XP_PER_LEVEL
 export const MASTERY_WIN_XP = 20
 export const MASTERY_LOSS_XP = 10
 export const MASTERY_LEVEL_REWARD = 50
+export const ABILITY_XP_CAP = 10
+
+export function abilityXp(uses: number, cooldown: number): number {
+  const safeUses = Number.isFinite(uses) ? Math.max(0, Math.floor(uses)) : 0
+  const safeCooldown = Number.isFinite(cooldown) ? Math.max(0, Math.floor(cooldown)) : 0
+  return Math.min(ABILITY_XP_CAP, safeUses * Math.max(3, safeCooldown + 1))
+}
 
 export type MasteryMilestone = { level: number; reward: number; badge: string }
 
@@ -172,6 +179,7 @@ export function recordCharacterResult(
   characterName: string,
   won: boolean,
   countBattle = true,
+  bonusXp = 0,
 ): {
   user: UserData
   xpGained: number
@@ -185,7 +193,7 @@ export function recordCharacterResult(
   const stat = user.characterStats[characterName] ?? { wins: 0, losses: 0, xp: 0 }
   const oldLevel = masteryLevel(stat.xp)
   const baseXp = Math.min(MASTERY_MAX_XP, stat.xp)
-  const gain = won ? MASTERY_WIN_XP : MASTERY_LOSS_XP
+  const gain = (won ? MASTERY_WIN_XP : MASTERY_LOSS_XP) + Math.max(0, Math.floor(bonusXp))
   const xp = Math.min(MASTERY_MAX_XP, baseXp + gain)
   const level = masteryLevel(xp)
   const reward = Math.max(0, level - oldLevel) * MASTERY_LEVEL_REWARD
