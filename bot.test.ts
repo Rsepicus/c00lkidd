@@ -384,6 +384,23 @@ describe('embeds', () => {
     ])
   })
 
+  test('battle components can be prefixed for DM matches', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('Noob')! },
+      { userId: 'b', name: 'B', character: characterByName('Jason')! },
+    )
+    const ids = battleComponents(battle, 'dmatch:1').map(row =>
+      row.toJSON().components.map(button => button.custom_id),
+    )
+    expect(ids[0]).toEqual(['dmatch:1:attack', 'dmatch:1:special', 'dmatch:1:juke'])
+    expect(ids[1]).toEqual([
+      'dmatch:1:rest',
+      'dmatch:1:forecast',
+      'dmatch:1:stats',
+      'dmatch:1:surrender',
+    ])
+  })
+
   test('forecast includes the full status and dodge breakdown', () => {
     const battle = createBattle(
       { userId: 'a', name: 'A', character: characterByName('Noob')! },
