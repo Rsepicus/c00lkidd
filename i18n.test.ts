@@ -27,6 +27,8 @@ import {
   openChallengeComponents,
   openChallengeEmbed,
   profileEmbed,
+  pvePanelComponents,
+  pvePanelEmbed,
   pvpSetupComponents,
   pvpSetupEmbed,
   questsComponents,
@@ -129,8 +131,33 @@ describe('i18n', () => {
       expectNoCyrillic(translateText(message, 'en'))
     }
     const commands = translateText('Открой /пве и /пвп.', 'en')
-    expect(commands).toContain('/пве')
-    expect(commands).toContain('/пвп')
+    expect(commands).toContain('/pve')
+    expect(commands).toContain('/pvp')
+  })
+
+  test('translates duel series text', () => {
+    expect(translateText('Серия **Bo3** · счёт **1:0**', 'en')).toBe(
+      'Series **Bo3** · score **1:0**',
+    )
+    expect(translateText('Раунд 1: **Alice** · счёт **1:0**.', 'en')).toBe(
+      'Round 1: **Alice** · score **1:0**.',
+    )
+    expect(translateText('Серия окончена: **Alice** побеждает **1:0**.', 'en')).toBe(
+      'Series over: **Alice** wins **1:0**.',
+    )
+  })
+
+  test('translates PvE survival text', () => {
+    expect(translateText('Выживание · волна 2 · награда за забег: 30', 'en')).toBe(
+      'Survival · wave 2 · run reward: 30',
+    )
+    expect(translateText('Волна **2** пройдена. HP: **40/100**.', 'en')).toBe(
+      'Wave **2** cleared. HP: **40/100**.',
+    )
+    expect(translateText('Опыт: **+20 XP**.', 'en')).toBe('XP: **+20 XP**.')
+    expect(translateText('Забег окончен на волне **2**.', 'en')).toBe(
+      'Run ended on wave **2**.',
+    )
   })
 
   test('renders every main panel without Cyrillic in English', () => {
@@ -145,6 +172,7 @@ describe('i18n', () => {
         characterEmbed(characterByName('Veeronica')!, user),
         characterEmbed(characterByName('Jane Doe')!, user),
         questsEmbed(user),
+        pvePanelEmbed(),
         achievementsEmbed(user),
         historyEmbed(user),
         topEmbed(),
@@ -169,6 +197,7 @@ describe('i18n', () => {
         ...chooseComponents(user),
         ...characterBrowserComponents(false, character, user, true),
         ...questsComponents(user),
+        ...pvePanelComponents(),
         ...cosmeticsComponents(user),
         ...bossPanelComponents(),
         ...bossCoopComponents(),
@@ -255,12 +284,15 @@ describe('i18n', () => {
     })
   })
 
-  test('keeps real slash-command names in English help', () => {
+  test('uses English slash-command aliases in English help', () => {
     withLanguage('en', () => {
       const text = String(helpEmbed(englishUser()).toJSON().description)
-      expect(text).toContain('/пве')
-      expect(text).toContain('/пвп')
-      expect(text).toContain('/дебаг')
+      expect(text).toContain('/pve')
+      expect(text).toContain('/pvp')
+      expect(text).toContain('/debug')
+      expect(text).not.toContain('/пве')
+      expect(text).not.toContain('/пвп')
+      expect(text).not.toContain('/дебаг')
     })
   })
 

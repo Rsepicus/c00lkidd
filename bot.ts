@@ -832,8 +832,21 @@ export function coopBossBattle(
   ])
 }
 
+const COMMAND_NAME_EN: Record<string, string> = {
+  профиль: 'profile',
+  пвп: 'pvp',
+  пве: 'pve',
+  дебаг: 'debug',
+  гайд: 'guide',
+  команды: 'commands',
+}
+
+const COMMAND_NAME_BASE: Record<string, string> = Object.fromEntries(
+  Object.entries(COMMAND_NAME_EN).map(([russian, english]) => [english, russian]),
+)
+
 function baseCommand(name: string, description: string): SlashCommandBuilder {
-  return new SlashCommandBuilder()
+  const builder = new SlashCommandBuilder()
     .setName(name)
     .setDescription(description)
     .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
@@ -842,6 +855,9 @@ function baseCommand(name: string, description: string): SlashCommandBuilder {
       InteractionContextType.BotDM,
       InteractionContextType.PrivateChannel,
     )
+  const english = COMMAND_NAME_EN[name]
+  if (english) builder.setNameLocalizations({ 'en-US': english })
+  return builder
 }
 
 const BATTLE_MODE_CHOICES = [
@@ -856,6 +872,7 @@ export function commandDefinitions(): SlashCommandBuilder[] {
       .addUserOption(option =>
         option
           .setName('пользователь')
+          .setNameLocalizations({ 'en-US': 'user' })
           .setDescription('Чей профиль показать')
           .setDescriptionLocalizations({ 'en-US': 'Whose profile to show' }),
       ),
@@ -866,19 +883,20 @@ export function commandDefinitions(): SlashCommandBuilder[] {
       .addUserOption(option =>
         option
           .setName('соперник')
+          .setNameLocalizations({ 'en-US': 'opponent' })
           .setDescription('Кого вызываем (необязательно — можно открыть вызов для всех)')
           .setDescriptionLocalizations({
             'en-US': 'Opponent (optional — leave empty for an open challenge)',
           })
           .setRequired(false),
       ),
-    baseCommand('пве', 'Босс и тренировка в одном меню').setDescriptionLocalizations({
-      ru: 'Босс и тренировка в одном меню',
-      'en-US': 'Boss and training in one menu',
+    baseCommand('пве', 'Босс, тренировка и выживание в одном меню').setDescriptionLocalizations({
+      ru: 'Босс, тренировка и выживание в одном меню',
+      'en-US': 'Boss, training and survival in one menu',
     }),
-    baseCommand('дебаг', 'Панель создателя: монеты и тест баланса').setDescriptionLocalizations({
-      ru: 'Панель создателя: монеты и тест баланса',
-      'en-US': 'Creator panel: coins and balance test',
+    baseCommand('дебаг', 'Панель создателя: монеты, тест баланса и проверка').setDescriptionLocalizations({
+      ru: 'Панель создателя: монеты, тест баланса и проверка',
+      'en-US': 'Creator panel: coins, balance test and health check',
     }),
     baseCommand('гайд', 'Краткий гайд по режимам, статусам и прогрессу').setDescriptionLocalizations({
       ru: 'Краткий гайд по режимам, статусам и прогрессу',
@@ -1947,19 +1965,19 @@ export function helpEmbed(user: UserData): EmbedBuilder {
   const description = en
     ? [
         '**Commands**',
-        `${emojiText('welcomehell', '👤')} \`/профиль [user]\` — profile, shop, characters, quests, achievements, history, leaderboard and cosmetics.`,
-        `${emojiText('swordwhite', '⚔️')} \`/пвп [opponent]\` — setup panel: 1v1/2v2, classic/random/draft, wager via modal, then a direct or open challenge.`,
-        `${emojiText('boss', '👑')} \`/пве\` — PvE menu with Boss and Training buttons.`,
-        `${emojiText('abilities', '📖')} \`/гайд\` — quick guide to modes, statuses and progression.`,
+        `${emojiText('welcomehell', '👤')} \`/profile [user]\` — profile, shop, characters, quests, achievements, history, leaderboard and cosmetics.`,
+        `${emojiText('swordwhite', '⚔️')} \`/pvp [opponent]\` — setup panel: 1v1/2v2, classic/random/draft, wager via modal, then a direct or open challenge.`,
+        `${emojiText('boss', '👑')} \`/pve\` — PvE menu with Boss, Training and Survival buttons.`,
+        `${emojiText('abilities', '📖')} \`/guide\` — quick guide to modes, statuses and progression.`,
         `${emojiText('settings', '⚙️')} \`/settings\` — interface and ability description language.`,
-        `${emojiText('abilities', '📖')} \`/команды\` — this command list.`,
-        `${emojiText('settings', '⚙️')} \`/дебаг\` — creator panel: coins, balance test and health check (owner only).`,
+        `${emojiText('abilities', '📖')} \`/commands\` — this command list.`,
+        `${emojiText('settings', '⚙️')} \`/debug\` — creator panel: coins, balance test and health check (owner only).`,
       ].join('\n')
     : [
         '**Команды**',
         `${emojiText('welcomehell', '👤')} \`/профиль [пользователь]\` — профиль, магазин, персонажи, квесты, достижения, история, лидеры и косметика.`,
         `${emojiText('swordwhite', '⚔️')} \`/пвп [соперник]\` — панель настройки: 1×1/2×2, классика/рандом/драфт, ставка через модалку, затем личный или открытый вызов.`,
-        `${emojiText('boss', '👑')} \`/пве\` — меню PvE с кнопками «Босс» и «Тренировка».`,
+        `${emojiText('boss', '👑')} \`/пве\` — меню PvE с кнопками «Босс», «Тренировка» и «Выживание».`,
         `${emojiText('abilities', '📖')} \`/гайд\` — краткий гайд по режимам, статусам и прогрессу.`,
         `${emojiText('settings', '⚙️')} \`/settings\` — язык интерфейса и описаний способностей.`,
         `${emojiText('abilities', '📖')} \`/команды\` — этот список команд.`,
@@ -1975,8 +1993,58 @@ export function helpEmbed(user: UserData): EmbedBuilder {
     })
 }
 
-export function onboardingEmbed(user?: UserData): EmbedBuilder {
+const languagePromptSource = new Map<string, 'command' | 'button'>()
+
+export function languagePickerEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.choose)
+    .setTitle('🌐 Choose language / Выбери язык')
+    .setDescription(
+      'Pick the interface language. You can change it later with `/settings`.\n' +
+        'After choosing, repeat the action you started.\n' +
+        'Выбери язык интерфейса. Потом его можно сменить в `/settings`.\n' +
+        'Потом повтори действие, которое начал.',
+    )
+    .setFooter({ text: 'Forsaken Simulator' })
+}
+
+export function shouldPromptLanguage(user: UserData, customId: string): boolean {
+  return !customId.startsWith('onboarding:') && !user.onboarded
+}
+
+export function languagePickerComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('onboarding:lang:ru')
+        .setLabel('🇷🇺 Русский')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('onboarding:lang:en')
+        .setLabel('🇬🇧 English')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+export function onboardingEmbed(user?: UserData, note?: string): EmbedBuilder {
   const en = user?.language === 'en'
+  const lines = en
+    ? [
+        '**1. Profile** — `/profile`: characters, shop, quests and rewards.',
+        '**2. Battle** — `/pvp`: pick 1×1 or 2×2 and a mode; the wager is optional.',
+        '**3. PvE** — `/pve`: boss, training and survival.',
+        '**4. Help** — `/guide` and `/commands` explain modes, statuses and progression.',
+        'Start with `/profile` and claim the daily bonus.',
+      ]
+    : [
+        '**1. Профиль** — `/профиль`: персонажи, магазин, квесты и награды.',
+        '**2. Бой** — `/пвп`: выбери 1×1 или 2×2 и режим; ставка необязательна.',
+        '**3. PvE** — `/пве`: босс, тренировка и выживание.',
+        '**4. Помощь** — `/гайд` и `/команды` объясняют режимы, статусы и прогресс.',
+        'Начни с `/профиль` и забери ежедневный бонус.',
+      ]
+  if (note) lines.push(note)
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.choose)
     .setTitle(
@@ -1984,24 +2052,7 @@ export function onboardingEmbed(user?: UserData): EmbedBuilder {
         en ? 'Welcome to Forsaken Simulator' : 'Добро пожаловать в Forsaken Simulator'
       }`,
     )
-    .setDescription(
-      (en
-        ? [
-            '**1. Profile** — `/профиль`: characters, shop, quests and rewards.',
-            '**2. Battle** — `/пвп`: pick 1×1 or 2×2 and a mode; the wager is optional.',
-            '**3. Boss** — `/пве`: boss and training menu.',
-            '**4. Help** — `/гайд` and `/команды` explain modes, statuses and progression.',
-            'Start with `/профиль` and claim the daily bonus.',
-          ]
-        : [
-            '**1. Профиль** — `/профиль`: персонажи, магазин, квесты и награды.',
-            '**2. Бой** — `/пвп`: выбери 1×1 или 2×2 и режим; ставка необязательна.',
-            '**3. Босс** — `/пве`: босс и тренировка.',
-            '**4. Помощь** — `/гайд` и `/команды` объясняют режимы, статусы и прогресс.',
-            'Начни с `/профиль` и забери ежедневный бонус.',
-          ]
-      ).join('\n'),
-    )
+    .setDescription(lines.join('\n'))
     .setFooter({
       text: en ? 'Shown once · Forsaken Simulator' : 'Показывается один раз · Forsaken Simulator',
     })
@@ -2045,7 +2096,7 @@ export function guideEmbed(user?: UserData): EmbedBuilder {
         '• **Classic** — your active and second character.',
         '• **Random** — random heroes and abilities for both players.',
         '• **Draft** — a shared pool of 12 heroes, bans, picks and an ability-choice phase.',
-        '• **1×1 / 2×2** — pick the format in `/пвп`; in 2×2 each player controls two heroes.',
+        '• **1×1 / 2×2** — pick the format in `/pvp`; in 2×2 each player controls two heroes.',
         '',
         `${emojiText('swordwhite', '⚔️')} **Battle**`,
         '• 90 seconds per turn; the first miss is an automatic rest, the second is a defeat.',
@@ -2982,6 +3033,24 @@ function isAutomatedSide(side: Side): boolean {
   return side.fake || side.boss || side.userId.startsWith('bot:') || side.userId.startsWith('boss:')
 }
 
+export function battleTurnLanguage(
+  battle: Battle,
+  languageOf: (userId: string) => UserData['language'] = userId => userOf(userId).language,
+): UserData['language'] | undefined {
+  if (battle.finished) return undefined
+  const side = battle.sides[battle.turn]
+  if (!side || isAutomatedSide(side)) return undefined
+  return languageOf(side.userId)
+}
+
+async function withBattleTurnLanguage<T>(
+  battle: Battle,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const language = battleTurnLanguage(battle)
+  return language ? withLanguage(language, fn) : fn()
+}
+
 function stopBattleTimer(messageId: string): void {
   const timer = battleTimers.get(messageId)
   if (timer) clearTimeout(timer)
@@ -3057,16 +3126,18 @@ async function patchBattleMessage(
   components?: ActionRowBuilder<ButtonBuilder>[],
 ): Promise<void> {
   if (!channelId) return
-  await client.rest
-    .patch(Routes.channelMessage(channelId, messageId), {
-      body: {
-        embeds: [battleEmbed(battle, events, note, deadline).toJSON()],
-        components: (components ?? (battle.finished ? [] : battleComponents(battle))).map(row =>
-          row.toJSON(),
-        ),
-      },
-    })
-    .catch(() => {})
+  await withBattleTurnLanguage(battle, async () => {
+    await client.rest
+      .patch(Routes.channelMessage(channelId, messageId), {
+        body: {
+          embeds: [battleEmbed(battle, events, note, deadline).toJSON()],
+          components: (components ?? (battle.finished ? [] : battleComponents(battle))).map(row =>
+            row.toJSON(),
+          ),
+        },
+      })
+      .catch(() => {})
+  })
 }
 
 async function updateBattleInteraction(
@@ -3078,25 +3149,27 @@ async function updateBattleInteraction(
   components: ActionRowBuilder<ButtonBuilder>[],
   deadline?: number,
 ): Promise<void> {
-  try {
-    await interaction.update({
-      embeds: [battleEmbed(battle, events, note, deadline)],
-      components,
-    })
-  } catch {
-    // The interaction can expire while a turn or simulation is being processed.
-    // Keep the public battle message in sync even if the callback token is gone.
-    await patchBattleMessage(
-      interaction.client,
-      messageId,
-      interaction.channelId,
-      battle,
-      events,
-      note,
-      deadline,
-      components,
-    )
-  }
+  await withBattleTurnLanguage(battle, async () => {
+    try {
+      await interaction.update({
+        embeds: [battleEmbed(battle, events, note, deadline)],
+        components,
+      })
+    } catch {
+      // The interaction can expire while a turn or simulation is being processed.
+      // Keep the public battle message in sync even if the callback token is gone.
+      await patchBattleMessage(
+        interaction.client,
+        messageId,
+        interaction.channelId,
+        battle,
+        events,
+        note,
+        deadline,
+        components,
+      )
+    }
+  })
 }
 
 async function handleBattleTimeout(client: Client, messageId: string): Promise<void> {
@@ -3615,7 +3688,17 @@ async function handleAutocomplete(interaction: AutocompleteInteraction): Promise
 }
 
 async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-  switch (interaction.commandName) {
+  if (!userOf(interaction.user.id).onboarded) {
+    languagePromptSource.set(interaction.user.id, 'command')
+    await interaction.reply({
+      embeds: [languagePickerEmbed()],
+      components: languagePickerComponents(),
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
+  const commandName = COMMAND_NAME_BASE[interaction.commandName] ?? interaction.commandName
+  switch (commandName) {
     case 'профиль': {
       const target = interaction.options.getUser('пользователь') ?? interaction.user
       if (target.id !== interaction.user.id) {
@@ -3633,16 +3716,6 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       })
       const message = await interaction.fetchReply()
       hubOwners.set(message.id, interaction.user.id)
-      if (!user.onboarded) {
-        const updated = { ...user, onboarded: true }
-        store.users[interaction.user.id] = updated
-        persist()
-        await interaction.followUp({
-          embeds: [onboardingEmbed(updated)],
-          components: onboardingComponents(updated),
-          flags: MessageFlags.Ephemeral,
-        })
-      }
       return
     }
     case 'пвп': {
@@ -4252,23 +4325,25 @@ async function finishDraft(
       `${state.players[1].name} — ${teams[1].map(c => c.name).join(', ')}.`,
   ]
   if (interaction) {
-    try {
-      await interaction.update({
-        embeds: [battleEmbed(battle, events, undefined, deadline)],
-        components: battleComponents(battle),
-      })
-    } catch {
-      await patchBattleMessage(
-        client,
-        state.messageId,
-        state.channelId,
-        battle,
-        events,
-        undefined,
-        deadline,
-        battleComponents(battle),
-      )
-    }
+    await withBattleTurnLanguage(battle, async () => {
+      try {
+        await interaction.update({
+          embeds: [battleEmbed(battle, events, undefined, deadline)],
+          components: battleComponents(battle),
+        })
+      } catch {
+        await patchBattleMessage(
+          client,
+          state.messageId,
+          state.channelId,
+          battle,
+          events,
+          undefined,
+          deadline,
+          battleComponents(battle),
+        )
+      }
+    })
   } else {
     await patchBattleMessage(
       client,
@@ -4491,9 +4566,11 @@ async function handleChallengeButton(interaction: ButtonInteraction): Promise<vo
   battleChannels.set(interaction.message.id, interaction.channelId)
   if (challenge.wager > 0) wagers.set(interaction.message.id, challenge.wager)
   const deadline = armBattleTimer(interaction.client, interaction.message.id, battle)
-  await interaction.update({
-    embeds: [battleEmbed(battle, [], undefined, deadline)],
-    components: battleComponents(battle),
+  await withBattleTurnLanguage(battle, async () => {
+    await interaction.update({
+      embeds: [battleEmbed(battle, [], undefined, deadline)],
+      components: battleComponents(battle),
+    })
   })
   notifyBattleStart(
     interaction.client,
@@ -4572,9 +4649,11 @@ async function startDuelRound(
   battleChannels.set(duel.messageId, duel.channelId)
   const deadline = armBattleTimer(interaction.client, duel.messageId, battle)
   const score = `Серия **Bo${duel.bestOf}** · счёт **${duel.wins[0]}:${duel.wins[1]}**`
-  await interaction.update({
-    embeds: [battleEmbed(battle, [], score, deadline)],
-    components: battleComponents(battle),
+  await withBattleTurnLanguage(battle, async () => {
+    await interaction.update({
+      embeds: [battleEmbed(battle, [], score, deadline)],
+      components: battleComponents(battle),
+    })
   })
   notifyBattleStart(interaction.client, battle, duel.channelId, duel.messageId)
 }
@@ -4903,9 +4982,11 @@ async function handleOpenChallengeButton(interaction: ButtonInteraction): Promis
   battleChannels.set(messageId, interaction.channelId)
   if (offer.wager > 0) wagers.set(messageId, offer.wager)
   const deadline = armBattleTimer(interaction.client, messageId, battle)
-  await interaction.update({
-    embeds: [battleEmbed(battle, [], undefined, deadline)],
-    components: battleComponents(battle),
+  await withBattleTurnLanguage(battle, async () => {
+    await interaction.update({
+      embeds: [battleEmbed(battle, [], undefined, deadline)],
+      components: battleComponents(battle),
+    })
   })
   notifyBattleStart(interaction.client, battle, interaction.channelId, messageId)
 }
@@ -5109,9 +5190,11 @@ async function handleBossCoopButton(interaction: ButtonInteraction): Promise<voi
   bossBattles.set(messageId, { mode: '2x2', week, coop: true })
   battleChannels.set(messageId, interaction.channelId)
   const deadline = armBattleTimer(interaction.client, messageId, battle)
-  await interaction.update({
-    embeds: [battleEmbed(battle, [], undefined, deadline)],
-    components: battleComponents(battle),
+  await withBattleTurnLanguage(battle, async () => {
+    await interaction.update({
+      embeds: [battleEmbed(battle, [], undefined, deadline)],
+      components: battleComponents(battle),
+    })
   })
   notifyBattleStart(interaction.client, battle, interaction.channelId, messageId)
 }
@@ -6027,9 +6110,11 @@ async function startTrainingBattle(
   trainingBattles.add(messageId)
   battleChannels.set(messageId, interaction.channelId)
   const deadline = armBattleTimer(interaction.client, messageId, battle)
-  await interaction.update({
-    embeds: [battleEmbed(battle, [], undefined, deadline)],
-    components: battleComponents(battle),
+  await withBattleTurnLanguage(battle, async () => {
+    await interaction.update({
+      embeds: [battleEmbed(battle, [], undefined, deadline)],
+      components: battleComponents(battle),
+    })
   })
   notifyBattleStart(interaction.client, battle, interaction.channelId, messageId)
 }
@@ -6173,6 +6258,15 @@ async function handlePveBossInvite(
 }
 
 async function handleButton(interaction: ButtonInteraction): Promise<void> {
+  if (shouldPromptLanguage(userOf(interaction.user.id), interaction.customId)) {
+    languagePromptSource.set(interaction.user.id, 'button')
+    await interaction.reply({
+      embeds: [languagePickerEmbed()],
+      components: languagePickerComponents(),
+      flags: MessageFlags.Ephemeral,
+    })
+    return
+  }
   if (interaction.customId.startsWith('skin:equip:')) {
     const [userId, character, skinId] = interaction.customId
       .slice('skin:equip:'.length)
@@ -6209,6 +6303,30 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     await interaction.update({
       embeds: [settingsEmbed(updated)],
       components: settingsComponents(updated),
+    })
+    return
+  }
+  if (
+    interaction.customId === 'onboarding:lang:ru' ||
+    interaction.customId === 'onboarding:lang:en'
+  ) {
+    const language = interaction.customId === 'onboarding:lang:en' ? 'en' : 'ru'
+    const source = languagePromptSource.get(interaction.user.id)
+    languagePromptSource.delete(interaction.user.id)
+    const user = userOf(interaction.user.id)
+    const updated = { ...user, language, onboarded: true }
+    store.users[interaction.user.id] = updated
+    persist()
+    setActiveLanguage(language)
+    const note =
+      source === 'button'
+        ? language === 'en'
+          ? 'Now press the same button again to continue.'
+          : 'Теперь нажми ту же кнопку ещё раз, чтобы продолжить.'
+        : undefined
+    await interaction.update({
+      embeds: [onboardingEmbed(updated, note)],
+      components: onboardingComponents(updated),
     })
     return
   }

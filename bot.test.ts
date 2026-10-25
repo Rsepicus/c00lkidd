@@ -7,6 +7,7 @@ import {
   battleEmbed,
   battleReward,
   battleStatsText,
+  battleTurnLanguage,
   bossCoopComponents,
   bossCoopEmbed,
   bossCoopRematchComponents,
@@ -37,7 +38,10 @@ import {
   helpEmbed,
   historyEmbed,
   hubComponents,
+  languagePickerComponents,
+  languagePickerEmbed,
   onboardingEmbed,
+  shouldPromptLanguage,
   openChallengeComponents,
   openChallengeEmbed,
   parseBattleMode,
@@ -772,6 +776,36 @@ describe('embeds', () => {
     expect(embed.description).toContain('/пве')
   })
 
+  test('English onboarding points at English command aliases', () => {
+    const embed = onboardingEmbed({ ...defaultUser(), language: 'en' }).toJSON()
+    expect(embed.title).toContain('Welcome')
+    expect(embed.description).toContain('/profile')
+    expect(embed.description).toContain('/pvp')
+    expect(embed.description).toContain('/pve')
+    expect(embed.description).toContain('/guide')
+    expect(embed.description).toContain('/commands')
+    const withNote = onboardingEmbed(
+      { ...defaultUser(), language: 'en' },
+      'Now press the same button again to continue.',
+    ).toJSON()
+    expect(withNote.description).toContain('Now press the same button again')
+  })
+
+  test('first-use language picker offers Russian and English', () => {
+    expect(String(languagePickerEmbed().toJSON().title)).toContain('Choose language')
+    const ids = languagePickerComponents()[0]
+      .toJSON()
+      .components.map(component => component.custom_id)
+    expect(ids).toEqual(['onboarding:lang:ru', 'onboarding:lang:en'])
+  })
+
+  test('prompts a new player for language before accepting a challenge', () => {
+    expect(shouldPromptLanguage(defaultUser(), 'pvp:accept')).toBe(true)
+    expect(shouldPromptLanguage(defaultUser(), 'pvp:open:accept')).toBe(true)
+    expect(shouldPromptLanguage(defaultUser(), 'onboarding:lang:en')).toBe(false)
+    expect(shouldPromptLanguage({ ...defaultUser(), onboarded: true }, 'pvp:accept')).toBe(false)
+  })
+
   test('PvE menu has boss, training and survival buttons', () => {
     expect(pvePanelEmbed().toJSON().title).toContain('PvE')
     const buttons = pvePanelComponents()[0]
@@ -1015,6 +1049,30 @@ describe('survival mastery', () => {
   })
 })
 
+describe('battle panel language', () => {
+  test('follows the side whose turn it is', () => {
+    const battle = createBattle(
+      { userId: 'ru', name: 'Rus', character: characterByName('Noob')! },
+      { userId: 'en', name: 'Eng', character: characterByName('Jason')! },
+    )
+    const languageOf = (id: string) => (id === 'en' ? 'en' : 'ru') as 'ru' | 'en'
+    expect(battleTurnLanguage(battle, languageOf)).toBe('ru')
+    battle.turn = 1
+    expect(battleTurnLanguage(battle, languageOf)).toBe('en')
+    battle.finished = true
+    expect(battleTurnLanguage(battle, languageOf)).toBeUndefined()
+  })
+
+  test('ignores automated sides', () => {
+    const battle = createBattle(
+      { userId: 'ru', name: 'Rus', character: characterByName('Noob')! },
+      { userId: 'bot:x', name: 'Bot', character: characterByName('Jason')!, boss: true },
+    )
+    battle.turn = 1
+    expect(battleTurnLanguage(battle, () => 'ru')).toBeUndefined()
+  })
+})
+
 describe('commandDefinitions', () => {
   const commands = commandDefinitions().map(command => command.toJSON())
   const find = (name: string) => commands.find(command => command.name === name)
@@ -1043,6 +1101,20 @@ describe('commandDefinitions', () => {
     }
   })
 
+  test('exposes English aliases for Cyrillic command names', () => {
+    const aliases: Record<string, string> = {
+      профиль: 'profile',
+      пвп: 'pvp',
+      пве: 'pve',
+      дебаг: 'debug',
+      гайд: 'guide',
+      команды: 'commands',
+    }
+    for (const [russian, english] of Object.entries(aliases)) {
+      expect(find(russian)?.name_localizations?.['en-US']).toBe(english)
+    }
+  })
+
   test('removes character, boss and training commands', () => {
     for (const name of ['персонаж', 'босс', 'тренировка']) {
       expect(find(name)).toBeUndefined()
@@ -1068,6 +1140,7 @@ describe('commandDefinitions', () => {
     const command = find('пвп')
     expect(command).toBeDefined()
     expect(command?.options?.map(option => option.name)).toEqual(['соперник'])
+    expect(command?.options?.[0]?.name_localizations?.['en-US']).toBe('opponent')
     const setup = {
       ownerId: '1',
       ownerName: 'Rsepicus',
@@ -1100,6 +1173,7 @@ describe('commandDefinitions', () => {
   test('profile has an optional user option and no subcommands', () => {
     const profile = find('профиль')
     expect(profile?.options?.[0]?.name).toBe('пользователь')
+    expect(profile?.options?.[0]?.name_localizations?.['en-US']).toBe('user')
     expect(profile?.options?.[0]?.required).toBeFalsy()
   })
 

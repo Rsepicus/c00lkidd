@@ -408,9 +408,41 @@ const EXACT: Record<string, string> = {
   'Выживший': 'Survivor',
   'HEX-код цвета': 'HEX color code',
   'Пока нет боёв.': 'No battles yet.',
+  '**Босс** — недельный PvE-босс: solo, со своим напарником или в кооперативе с другим игроком.':
+    '**Boss** — weekly PvE boss: solo, with your partner or co-op with another player.',
+  '**Тренировка** — бой с ботом без наград и статистики; можно выбрать героя бота и формат.':
+    '**Training** — a battle against a bot with no rewards or stats; choose the bot character and format.',
+  '**Выживание** — забег по волнам. Каждая волна сильнее: у врага +25 HP и +2 атаки. Между волнами восстанавливается 25% HP, награда копится за каждую пройденную волну. После поражения или кнопки «Забрать награду» забег заканчивается.':
+    '**Survival** — a wave run. Each wave is stronger: the enemy gets +25 HP and +2 attack. Between waves you restore 25% HP, and the reward grows for every cleared wave. The run ends after a loss or when you press “Claim reward”.',
+  'Выживание': 'Survival',
+  'Забрать награду': 'Claim reward',
+  'Следующая волна': 'Next wave',
+  'Следующий раунд': 'Next round',
+  'Реванш серии': 'Series rematch',
+  'Забег окончен': 'Run ended',
+  'Наград за этот забег нет.': 'No reward for this run.',
+  'Этот забег уже окончен.': 'This run is already over.',
+  'Это чужой забег.': 'This run belongs to someone else.',
+  '🌐 Choose language / Выбери язык': '🌐 Choose language / Выбери язык',
+  'Pick the interface language. You can change it later with `/settings`.\nAfter choosing, repeat the action you started.\nВыбери язык интерфейса. Потом его можно сменить в `/settings`.\nПотом повтори действие, которое начал.':
+    'Pick the interface language. You can change it later with `/settings`.\nAfter choosing, repeat the action you started.\nВыбери язык интерфейса. Потом его можно сменить в `/settings`.\nПотом повтори действие, которое начал.',
+  'Выбери язык интерфейса. Потом его можно сменить в `/settings`.':
+    'Pick the interface language. You can change it later with `/settings`.',
+  'Потом повтори действие, которое начал.': 'Then repeat the action you started.',
 }
 
 const PATTERNS: Array<[RegExp, string]> = [
+  [/^Выживание · волна (\d+) · награда за забег: (\d+)$/, 'Survival · wave $1 · run reward: $2'],
+  [/^Волна (\d+) · (.+)$/, 'Wave $1 · $2'],
+  [/^Волна \*\*(\d+)\*\* пройдена\. HP: \*\*(\d+)\/(\d+)\*\*\.$/, 'Wave **$1** cleared. HP: **$2/$3**.'],
+  [/^Награда за забег: \*\*(\d+)\*\* (.+)$/, 'Run reward: **$1** $2'],
+  [/^Забег окончен на волне \*\*(\d+)\*\*\.$/, 'Run ended on wave **$1**.'],
+  [/^Волна: \*\*(\d+)\*\*\. Награда: \*\*\+(\d+)\*\* (.+)$/, 'Wave: **$1**. Reward: **+$2** $3'],
+  [/^Награда: \*\*\+(\d+)\*\* (.+)$/, 'Reward: **+$1** $2'],
+  [/^Опыт: \*\*\+(\d+) XP\*\*\.$/, 'XP: **+$1 XP**.'],
+  [/^Серия \*\*Bo(\d)\*\* · счёт \*\*(\d+):(\d+)\*\*$/, 'Series **Bo$1** · score **$2:$3**'],
+  [/^Раунд (\d+): \*\*(.+)\*\* · счёт \*\*(.+)\*\*\.$/, 'Round $1: **$2** · score **$3**.'],
+  [/^Серия окончена: \*\*(.+)\*\* побеждает \*\*(.+)\*\*\.$/, 'Series over: **$1** wins **$2**.'],
   [/Выиграй (\d+) PvP-боёв за неделю/, 'Win $1 PvP battles this week'],
   [/Сыграй (\d+) PvP-боёв за неделю/, 'Play $1 PvP battles this week'],
   [/Нанеси (\d+) урона за неделю/, 'Deal $1 damage this week'],
@@ -1007,6 +1039,15 @@ const PHRASES: Array<[string, string]> = [
   }),
 ].sort((left, right) => right[0].length - left[0].length)
 
+const COMMAND_EN: Record<string, string> = {
+  '/профиль': '/profile',
+  '/пвп': '/pvp',
+  '/пве': '/pve',
+  '/дебаг': '/debug',
+  '/гайд': '/guide',
+  '/команды': '/commands',
+}
+
 function translateLine(input: string, language: Language): string {
   const exact = EXACT[input]
   if (exact) return exact
@@ -1019,9 +1060,11 @@ function translateLine(input: string, language: Language): string {
     }
   }
 
-  // Keep real slash-command names (for example /пве) untranslated.
+  // Keep real slash-command names, but expose English aliases in English text.
   const commands: string[] = []
   result = result.replace(/\/[А-Яа-яЁё-]+/g, command => {
+    const english = language === 'en' ? COMMAND_EN[command] : undefined
+    if (english) return english
     commands.push(command)
     return `\uE000${commands.length - 1}\uE001`
   })
