@@ -515,6 +515,10 @@ function restoreBattleState(snapshot: BattleSnapshot, client: Client): void {
 
   for (const [id, battle] of battles) {
     if (battle.finished) continue
+    if (isPveBattle(id)) {
+      battleDeadlines.delete(id)
+      continue
+    }
     const deadline = battleDeadlines.get(id)
     const remaining = deadline ? Math.max(1000, deadline - Date.now()) : BATTLE_TURN_MS
     if (!deadline) battleDeadlines.set(id, Date.now() + remaining)
@@ -3497,6 +3501,15 @@ function isAutomatedSide(side: Side): boolean {
   )
 }
 
+function isPveBattle(messageId: string): boolean {
+  return (
+    trainingBattles.has(messageId) ||
+    bossBattles.has(messageId) ||
+    survivalRuns.has(messageId) ||
+    bossRushRuns.has(messageId)
+  )
+}
+
 export function battleTurnLanguage(
   battle: Battle,
   languageOf: (userId: string) => UserData['language'] = userId => userOf(userId).language,
@@ -3524,7 +3537,7 @@ function stopBattleTimer(messageId: string): void {
 
 function armBattleTimer(client: Client, messageId: string, battle: Battle): number | undefined {
   stopBattleTimer(messageId)
-  if (battle.finished) {
+  if (battle.finished || isPveBattle(messageId)) {
     persistBattleState()
     return undefined
   }
@@ -3645,7 +3658,7 @@ async function handleBattleTimeout(client: Client, messageId: string): Promise<v
   clearTurnPing(client, messageId)
 
   const battle = battles.get(messageId)
-  if (!battle || battle.finished) return
+  if (!battle || battle.finished || isPveBattle(messageId)) return
   const side = battle.sides[battle.turn]
   if (!side || isAutomatedSide(side)) return
   setActiveLanguage(userOf(side.userId).language)
