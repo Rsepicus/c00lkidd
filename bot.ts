@@ -68,13 +68,18 @@ import {
 } from './boss-rush'
 import {
   TOWER_FLOORS,
+  TOWER_UPGRADES,
   advanceTowerRun,
+  applyTowerUpgrades,
   createTowerBattle,
   createTowerRun,
   towerFloor,
   towerReward,
+  towerRewardMultiplier,
   towerRunSummary,
+  towerUpgradeChoices,
   type TowerRun,
+  type TowerUpgradeId,
 } from './tower'
 import {
   TRIALS,
@@ -1806,8 +1811,7 @@ export function pvePanelEmbed(): EmbedBuilder {
         '**Босс** — босс дня: solo, со своим напарником или в кооперативе с другим игроком.',
         '**Тренировка** — бой с ботами без наград и статистики; можно выбрать героев и способности обеих сторон.',
         '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.',
-        '**Выживание** — забег по волнам. Каждая волна сильнее: у врага +25 HP и +2 атаки. Между волнами восстанавливается 25% HP, награда копится за каждую пройденную волну. После поражения или кнопки «Забрать награду» забег заканчивается.',
-        '**Башня** — 10 этажей по два усиленных противника. Играешь своей парой, награда за каждый пройденный этаж.',
+        '**Выживание/Башня** — волны с растущими врагами или 10 этажей башни. В башне после каждого этажа выбирается одно из трёх усилений, в выживании награда копится за волны.',
         '**Испытания** — особые цели для каждого персонажа за опыт мастерства.',
       ].join('\n\n'),
     )
@@ -1827,23 +1831,17 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setLabel(sword ? 'Тренировка' : '⚔️ Тренировка')
     .setStyle(ButtonStyle.Primary)
   if (sword) trainingButton.setEmoji(sword)
-  const survivalButton = new ButtonBuilder()
-    .setCustomId('pve:survival')
-    .setLabel('Выживание')
+  const towerEmoji = emojiData('tower')
+  const modesButton = new ButtonBuilder()
+    .setCustomId('pve:modes')
+    .setLabel(towerEmoji ? 'Выживание/Башня' : '🗼 Выживание/Башня')
     .setStyle(ButtonStyle.Secondary)
-  const skull = emojiData('skull')
-  if (skull) survivalButton.setEmoji(skull)
+  if (towerEmoji) modesButton.setEmoji(towerEmoji)
   const rushButton = new ButtonBuilder()
     .setCustomId('pve:bossrush')
     .setLabel('Boss Rush')
     .setStyle(ButtonStyle.Danger)
   if (boss) rushButton.setEmoji(boss)
-  const towerEmoji = emojiData('tower')
-  const towerButton = new ButtonBuilder()
-    .setCustomId('pve:tower')
-    .setLabel(towerEmoji ? 'Башня' : '🗼 Башня')
-    .setStyle(ButtonStyle.Primary)
-  if (towerEmoji) towerButton.setEmoji(towerEmoji)
   const trialsEmoji = emojiData('trials')
   const trialsButton = new ButtonBuilder()
     .setCustomId('pve:trials')
@@ -1852,12 +1850,50 @@ export function pvePanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
   if (trialsEmoji) trialsButton.setEmoji(trialsEmoji)
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      survivalButton,
+      modesButton,
       bossButton,
       rushButton,
       trainingButton,
     ),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(towerButton, trialsButton),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(trialsButton),
+  ]
+}
+
+export function pveModesEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.battle)
+    .setTitle(`${emojiText('tower', '🗼')} Выживание и башня`)
+    .setDescription(
+      [
+        '**Выживание** — забег по волнам. Каждая волна сильнее, между волнами восстанавливается 25% HP, награда копится за пройденные волны.',
+        '**Башня** — 10 этажей по два усиленных противника. После каждого этажа выбирается одно из трёх усилений на следующий бой.',
+      ].join('\n\n'),
+    )
+    .setFooter({ text: 'Forsaken Simulator' })
+}
+
+export function pveModesComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  const skull = emojiData('skull')
+  const survivalButton = new ButtonBuilder()
+    .setCustomId('pve:survival')
+    .setLabel('Выживание')
+    .setStyle(ButtonStyle.Secondary)
+  if (skull) survivalButton.setEmoji(skull)
+  const towerEmoji = emojiData('tower')
+  const towerButton = new ButtonBuilder()
+    .setCustomId('pve:tower')
+    .setLabel(towerEmoji ? 'Башня' : '🗼 Башня')
+    .setStyle(ButtonStyle.Primary)
+  if (towerEmoji) towerButton.setEmoji(towerEmoji)
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      survivalButton,
+      towerButton,
+      new ButtonBuilder()
+        .setCustomId('pve:menu')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
   ]
 }
 
@@ -1868,6 +1904,7 @@ export function towerPanelEmbed(): EmbedBuilder {
     .setDescription(
       [
         `${TOWER_FLOORS} этажей, на каждом — двое противников с растущими HP и атакой.`,
+        'После каждого этажа — выбор одного из трёх усилений на следующий бой.',
         `За победу на этаже: ${towerReward(1)} → ${towerReward(TOWER_FLOORS)} ${emojiText('points', '🪙')} по этажам.`,
         'Играешь своей парой: герой и напарник. Поражение заканчивает забег.',
         'Мастерство начисляется, PvP-статистика и квесты — нет.',
@@ -1891,19 +1928,27 @@ export function towerPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
   ]
 }
 
-function towerNextComponents(): ActionRowBuilder<ButtonBuilder>[] {
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
+export function towerUpgradeComponents(
+  choices: TowerUpgradeId[],
+): ActionRowBuilder<ButtonBuilder>[] {
+  const row = new ActionRowBuilder<ButtonBuilder>()
+  for (const id of choices) {
+    const upgrade = TOWER_UPGRADES[id]
+    if (!upgrade) continue
+    row.addComponents(
       new ButtonBuilder()
-        .setCustomId('tower:next')
-        .setLabel('Следующий этаж')
+        .setCustomId(`tower:upgrade:${id}`)
+        .setLabel(upgrade.name)
         .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('pve:menu')
-        .setLabel('В меню PvE')
-        .setStyle(ButtonStyle.Secondary),
-    ),
-  ]
+    )
+  }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId('pve:menu')
+      .setLabel('В меню PvE')
+      .setStyle(ButtonStyle.Secondary),
+  )
+  return [row]
 }
 
 function towerAgainComponents(): ActionRowBuilder<ButtonBuilder>[] {
@@ -4557,7 +4602,7 @@ function finishBattleState(
     let user = userOf(ownerId)
     let reward = 0
     if (won) {
-      reward = towerReward(run.floor)
+      reward = Math.round(towerReward(run.floor) * towerRewardMultiplier(run))
       user = grantCoins(user, reward)
     }
     const playerSides = battle.sides.filter(
@@ -4580,6 +4625,8 @@ function finishBattleState(
     persist()
     towerRuns.set(messageId, { ownerId, run: nextRun })
     rememberPveOwner(messageId, ownerId)
+    const choices =
+      nextRun.status === 'active' ? towerUpgradeChoices(nextRun.seed, run.floor) : []
     note = [
       notePrefix,
       `Башня · этаж ${run.floor}/${TOWER_FLOORS}: ` +
@@ -4587,6 +4634,11 @@ function finishBattleState(
       reward > 0 ? `Награда: **+${reward}** ${emojiText('points', '🪙')}.` : '',
       `Пройдено этажей: **${summary.floorsCleared}/${summary.totalFloors}**.`,
       nextRun.status === 'active' ? `Следующий этаж: **${nextRun.floor}**.` : '',
+      choices.length > 0
+        ? `Выбери усиление: ${choices
+            .map(id => `**${TOWER_UPGRADES[id].name}** (${TOWER_UPGRADES[id].description})`)
+            .join(' · ')}.`
+        : '',
       nextRun.status === 'completed' ? 'Башня пройдена!' : '',
       nextRun.status === 'failed' ? 'Забег окончен.' : '',
       ...towerNotes,
@@ -4594,7 +4646,7 @@ function finishBattleState(
       .filter(Boolean)
       .join('\n')
     components =
-      nextRun.status === 'active' ? towerNextComponents() : towerAgainComponents()
+      choices.length > 0 ? towerUpgradeComponents(choices) : towerAgainComponents()
   } else if (trialState) {
     const ownerId = trialState.ownerId
     const trialDef = TRIALS.find(candidate => candidate.id === trialState.trialId)
@@ -7315,7 +7367,9 @@ export function towerBattle(
   run: TowerRun,
 ): Battle {
   const floor = towerFloor(run.floor, run.seed)
-  return createTowerBattle(floor, teamEntries(user, ownerId, displayName))
+  const battle = createTowerBattle(floor, teamEntries(user, ownerId, displayName))
+  applyTowerUpgrades(battle, run)
+  return battle
 }
 
 export function trialBattle(
@@ -7413,6 +7467,24 @@ async function handleTowerButton(interaction: ButtonInteraction): Promise<void> 
   const ownerId = state?.ownerId ?? pveOwners.get(messageId)
   if (!ownerId || interaction.user.id !== ownerId) {
     await replyError(interaction, 'Это чужой забег.')
+    return
+  }
+  if (interaction.customId.startsWith('tower:upgrade:')) {
+    if (!state || state.run.status !== 'active') {
+      await replyError(interaction, 'Забег уже окончен.')
+      return
+    }
+    const upgrade = interaction.customId.slice('tower:upgrade:'.length) as TowerUpgradeId
+    const choices = towerUpgradeChoices(state.run.seed, state.run.floor - 1)
+    if (!choices.includes(upgrade)) {
+      await replyError(interaction, 'Это усиление недоступно.')
+      return
+    }
+    const nextRun: TowerRun = {
+      ...state.run,
+      upgrades: [...(state.run.upgrades ?? []), upgrade],
+    }
+    await launchTowerBattle(interaction, ownerId, nextRun, messageId)
     return
   }
   if (interaction.customId === 'tower:next') {
@@ -7560,6 +7632,17 @@ async function handlePveButton(interaction: ButtonInteraction): Promise<void> {
     return
   }
   const user = userOf(ownerId)
+  if (interaction.customId === 'pve:modes') {
+    trainingSetups.delete(interaction.message.id)
+    bossRushRuns.delete(interaction.message.id)
+    towerRuns.delete(interaction.message.id)
+    trialRuns.delete(interaction.message.id)
+    await interaction.update({
+      embeds: [pveModesEmbed()],
+      components: pveModesComponents(),
+    })
+    return
+  }
   if (interaction.customId === 'pve:tower') {
     towerRuns.delete(interaction.message.id)
     trialRuns.delete(interaction.message.id)

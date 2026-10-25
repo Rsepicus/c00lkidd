@@ -27,6 +27,26 @@ export const TOWER_REWARDS = [
   50, 80, 115, 155, 200, 255, 320, 395, 480, 600,
 ] as const
 
+export type TowerUpgradeId = 'power' | 'vitality' | 'guard' | 'dodge' | 'fortune'
+
+export type TowerUpgrade = {
+  id: TowerUpgradeId
+  name: string
+  description: string
+}
+
+export const TOWER_UPGRADES: Record<TowerUpgradeId, TowerUpgrade> = {
+  power: { id: 'power', name: 'Сила', description: '+3 атаки обоим бойцам.' },
+  vitality: {
+    id: 'vitality',
+    name: 'Живучесть',
+    description: '+20 максимального HP обоим бойцам.',
+  },
+  guard: { id: 'guard', name: 'Щит', description: 'Начинать бой с 30% щита.' },
+  dodge: { id: 'dodge', name: 'Уворот', description: '+10% уворота.' },
+  fortune: { id: 'fortune', name: 'Удача', description: '+15% монет за этаж.' },
+}
+
 export type TowerFloor = {
   floor: number
   enemies: FighterEntry[]
@@ -43,6 +63,7 @@ export type TowerRun = {
   floor: number
   cleared: number
   status: TowerRunStatus
+  upgrades: TowerUpgradeId[]
 }
 
 export type TowerSummary = {
@@ -150,6 +171,55 @@ export function createTowerRun(seed: number): TowerRun {
     floor: 1,
     cleared: 0,
     status: 'active',
+    upgrades: [],
+  }
+}
+
+function countUpgrades(upgrades: TowerUpgradeId[]): Record<TowerUpgradeId, number> {
+  const counts: Record<TowerUpgradeId, number> = {
+    power: 0,
+    vitality: 0,
+    guard: 0,
+    dodge: 0,
+    fortune: 0,
+  }
+  for (const upgrade of upgrades) {
+    if (upgrade in counts) counts[upgrade] += 1
+  }
+  return counts
+}
+
+/** Three distinct upgrades offered after clearing `floor`. */
+export function towerUpgradeChoices(seed: number, floor: number): TowerUpgradeId[] {
+  const normalizedSeed = normalizeSeed(seed)
+  const rng = floorRng(normalizedSeed, (Math.max(1, Math.floor(floor)) + TOWER_FLOORS) * 101)
+  const pool = Object.keys(TOWER_UPGRADES) as TowerUpgradeId[]
+  const choices: TowerUpgradeId[] = []
+  while (choices.length < 3 && pool.length > 0) {
+    const index = Math.floor(rng() * pool.length)
+    choices.push(pool.splice(index, 1)[0])
+  }
+  return choices
+}
+
+export function towerRewardMultiplier(run: TowerRun): number {
+  return 1 + 0.15 * countUpgrades(run.upgrades ?? []).fortune
+}
+
+/** Applies the run's upgrades to the player's two fighters for the next floor. */
+export function applyTowerUpgrades(battle: Battle, run: TowerRun): void {
+  const counts = countUpgrades(run.upgrades ?? [])
+  for (const side of battle.sides) {
+    if (side.team !== 0 || side.fake || side.minion) continue
+    const attack = side.character.attack + 3 * counts.power
+    const maxHp = side.character.hp + 20 * counts.vitality
+    side.character = { ...side.character, attack, hp: maxHp }
+    side.maxHp = maxHp
+    side.hp = maxHp
+    const shield = Math.min(60, 30 * counts.guard)
+    if (shield > 0) side.shield = shield
+    const bonusDodge = Math.min(0.4, 0.1 * counts.dodge)
+    if (bonusDodge > 0) side.bonusDodge = (side.bonusDodge ?? 0) + bonusDodge
   }
 }
 

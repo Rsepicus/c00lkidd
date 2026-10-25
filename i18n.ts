@@ -208,6 +208,25 @@ const EXACT: Record<string, string> = {
   'Ещё забег': 'Another run',
   '**Башня** — 10 этажей по два усиленных противника. Играешь своей парой, награда за каждый пройденный этаж.':
     '**Tower** — 10 floors with two buffed opponents each. Fight with your own pair and earn a reward per floor.',
+  '**Выживание/Башня** — волны с растущими врагами или 10 этажей башни. В башне после каждого этажа выбирается одно из трёх усилений, в выживании награда копится за волны.':
+    '**Survival/Tower** — waves of growing enemies or 10 tower floors. The tower offers one of three upgrades after every floor; survival rewards stack per wave.',
+  'Выживание/Башня': 'Survival/Tower',
+  'Выживание и башня': 'Survival and Tower',
+  '**Выживание** — забег по волнам. Каждая волна сильнее, между волнами восстанавливается 25% HP, награда копится за пройденные волны.':
+    '**Survival** — a wave run. Each wave is stronger, you restore 25% HP between waves, and rewards stack per cleared wave.',
+  '**Башня** — 10 этажей по два усиленных противника. После каждого этажа выбирается одно из трёх усилений на следующий бой.':
+    '**Tower** — 10 floors with two buffed opponents. After each floor you pick one of three upgrades for the next fight.',
+  'После каждого этажа — выбор одного из трёх усилений на следующий бой.':
+    'After each floor choose one of three upgrades for the next fight.',
+  'Сила': 'Power',
+  'Живучесть': 'Vitality',
+  'Щит': 'Shield',
+  'Удача': 'Luck',
+  '+3 атаки обоим бойцам.': '+3 attack for both fighters.',
+  '+20 максимального HP обоим бойцам.': '+20 max HP for both fighters.',
+  'Начинать бой с 30% щита.': 'Start each fight with a 30% shield.',
+  '+10% уворота.': '+10% dodge.',
+  '+15% монет за этаж.': '+15% coins per floor.',
   '**Испытания** — особые цели для каждого персонажа за опыт мастерства.':
     '**Trials** — special goals for every character, rewarding mastery XP.',
   '10 этажей, на каждом — двое противников с растущими HP и атакой.':

@@ -8,13 +8,18 @@ import {
 import type { FighterEntry } from './pvp'
 import {
   TOWER_FLOORS,
+  TOWER_UPGRADES,
   advanceTowerRun,
+  applyTowerUpgrades,
   createTowerBattle,
   createTowerRun,
   towerFloor,
   towerReward,
+  towerRewardMultiplier,
   towerRunSummary,
   towerSummary,
+  towerUpgradeChoices,
+  type TowerUpgradeId,
 } from './tower'
 
 const SEED = 20261025
@@ -210,6 +215,7 @@ describe('tower runs', () => {
       floor: 1,
       cleared: 0,
       status: 'active',
+      upgrades: [],
     })
     expect(createTowerRun(SEED)).toEqual(run)
     expect(createTowerRun(SEED).floor).toBe(1)
@@ -312,5 +318,45 @@ describe('tower rewards and summary', () => {
       rewardEarned: 2650,
     })
     expect(towerSummary).toBe(towerRunSummary)
+  })
+})
+
+describe('tower upgrades', () => {
+  test('offers three distinct deterministic upgrades after a floor', () => {
+    for (let floorNumber = 1; floorNumber < TOWER_FLOORS; floorNumber++) {
+      const first = towerUpgradeChoices(SEED, floorNumber)
+      expect(first).toHaveLength(3)
+      expect(new Set(first).size).toBe(3)
+      expect(first.every(id => id in TOWER_UPGRADES)).toBe(true)
+      expect(towerUpgradeChoices(SEED, floorNumber)).toEqual(first)
+    }
+  })
+
+  test('applies power, vitality, guard and dodge to both player fighters', () => {
+    const upgrades: TowerUpgradeId[] = ['power', 'vitality', 'guard', 'dodge']
+    const run = { ...createTowerRun(SEED), upgrades }
+    const battle = createTowerBattle(towerFloor(1, SEED), playerEntries())
+    const before = battle.sides
+      .filter(side => side.team === 0)
+      .map(side => ({ attack: side.character.attack, hp: side.character.hp }))
+
+    applyTowerUpgrades(battle, run)
+
+    const players = battle.sides.filter(side => side.team === 0)
+    players.forEach((side, index) => {
+      expect(side.character.attack).toBe(before[index].attack + 3)
+      expect(side.maxHp).toBe(before[index].hp + 20)
+      expect(side.hp).toBe(side.maxHp)
+      expect(side.shield).toBe(30)
+      expect(side.bonusDodge).toBeCloseTo(0.1)
+    })
+  })
+
+  test('fortune increases the reward for each floor', () => {
+    const base = createTowerRun(SEED)
+    expect(towerRewardMultiplier(base)).toBe(1)
+
+    const upgrades: TowerUpgradeId[] = ['fortune', 'fortune']
+    expect(towerRewardMultiplier({ ...base, upgrades })).toBeCloseTo(1.3)
   })
 })

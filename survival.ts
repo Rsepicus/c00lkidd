@@ -24,7 +24,7 @@ export function survivalEnemyStats(wave: number): SurvivalStats {
 }
 
 export function survivalReward(wave: number): number {
-  return Math.round((20 + survivalEnemyStats(wave).hp) * 0.9)
+  return Math.round((20 + survivalEnemyStats(wave).hp) * 0.6)
 }
 
 export function survivalHeal(maxHp: number): number {

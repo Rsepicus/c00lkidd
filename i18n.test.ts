@@ -29,6 +29,8 @@ import {
   openChallengeComponents,
   openChallengeEmbed,
   profileEmbed,
+  pveModesComponents,
+  pveModesEmbed,
   pvePanelComponents,
   pvePanelEmbed,
   pvpSetupComponents,
@@ -50,6 +52,7 @@ import {
   topEmbed,
   towerPanelComponents,
   towerPanelEmbed,
+  towerUpgradeComponents,
   trialsPanelComponents,
   trialsPanelEmbed,
 } from './bot'
@@ -232,6 +235,7 @@ describe('i18n', () => {
         characterEmbed(characterByName('Jane Doe')!, user),
         questsEmbed(user),
         pvePanelEmbed(),
+        pveModesEmbed(),
         trainingSetupEmbed(user, {
           ownerId: '42',
           mode: '2x2',
@@ -284,7 +288,9 @@ describe('i18n', () => {
         ...characterBrowserComponents(false, character, user, true),
         ...questsComponents(user),
         ...pvePanelComponents(),
+        ...pveModesComponents(),
         ...towerPanelComponents(),
+        ...towerUpgradeComponents(['power', 'vitality', 'guard']),
         ...trialsPanelComponents(),
         ...trialsPanelComponents(doneUser),
         ...trainingSetupComponents(user, {

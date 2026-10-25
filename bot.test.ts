@@ -53,6 +53,8 @@ import {
   partnerCharacter,
   profileEmbed,
   pveBossComponents,
+  pveModesComponents,
+  pveModesEmbed,
   pvePanelComponents,
   pvePanelEmbed,
   pvpSetupComponents,
@@ -83,6 +85,7 @@ import {
   towerBattle,
   towerPanelComponents,
   towerPanelEmbed,
+  towerUpgradeComponents,
   trialBattle,
   trialCharacterFor,
   trialsPanelComponents,
@@ -1007,12 +1010,12 @@ describe('embeds', () => {
     expect(shouldPromptLanguage({ ...defaultUser(), onboarded: true }, 'pvp:accept')).toBe(false)
   })
 
-  test('PvE menu has boss, training and survival buttons', () => {
+  test('PvE menu has modes, boss, training and trials buttons', () => {
     expect(pvePanelEmbed().toJSON().title).toContain('PvE')
     const buttons = pvePanelComponents()[0]
       .toJSON()
       .components.map(component => component.custom_id)
-    expect(buttons).toEqual(['pve:survival', 'pve:boss', 'pve:bossrush', 'pve:training'])
+    expect(buttons).toEqual(['pve:modes', 'pve:boss', 'pve:bossrush', 'pve:training'])
 
     const rows = pveBossComponents().map(row => row.toJSON())
     expect(rows[0].components.map(component => component.custom_id)).toEqual([
@@ -1023,14 +1026,17 @@ describe('embeds', () => {
     expect(rows[1].components[0].custom_id).toBe('pve:boss:invite')
   })
 
-  test('PvE menu opens the tower and trials on a second row', () => {
+  test('PvE menu opens the modes panel and trials', () => {
     const rows = pvePanelComponents().map(row => row.toJSON())
     expect(rows).toHaveLength(2)
-    expect(rows[1].components.map(component => component.custom_id)).toEqual([
-      'pve:tower',
-      'pve:trials',
-    ])
+    expect(rows[1].components.map(component => component.custom_id)).toEqual(['pve:trials'])
     expect(rows[1].components.every(component => component.emoji)).toBe(true)
+
+    const modes = pveModesComponents()[0]
+      .toJSON()
+      .components.map(component => component.custom_id)
+    expect(modes).toEqual(['pve:survival', 'pve:tower', 'pve:menu'])
+    expect(String(pveModesEmbed().toJSON().title)).toContain('Выживание')
   })
 
   test('Tower panel shows ten floors and offers a start button', () => {
@@ -1056,6 +1062,44 @@ describe('embeds', () => {
     expect(enemySides).toHaveLength(2)
     expect(playerSides.every(side => side.userId === '123456789012345678')).toBe(true)
     expect(enemySides.every(side => side.userId.startsWith('bot:tower:'))).toBe(true)
+  })
+
+  test('tower battles apply the run upgrades to the player team', () => {
+    const baseRun = createTowerRun(7)
+    const baseBattle = towerBattle(
+      defaultUser(),
+      '123456789012345678',
+      'Player',
+      baseRun,
+    )
+    const upgradeRun = {
+      ...baseRun,
+      upgrades: ['power', 'vitality'] as ('power' | 'vitality')[],
+    }
+    const battle = towerBattle(
+      defaultUser(),
+      '123456789012345678',
+      'Player',
+      upgradeRun,
+    )
+    const before = baseBattle.sides.filter(side => side.team === 0)
+    const after = battle.sides.filter(side => side.team === 0)
+    after.forEach((side, index) => {
+      expect(side.character.attack).toBe(before[index].character.attack + 3)
+      expect(side.maxHp).toBe(before[index].maxHp + 20)
+    })
+  })
+
+  test('tower upgrade buttons offer the chosen upgrades', () => {
+    const ids = towerUpgradeComponents(['power', 'vitality', 'guard'])[0]
+      .toJSON()
+      .components.map(component => component.custom_id)
+    expect(ids).toEqual([
+      'tower:upgrade:power',
+      'tower:upgrade:vitality',
+      'tower:upgrade:guard',
+      'pve:menu',
+    ])
   })
 
   test('Trials panel lists every trial in a select menu', () => {

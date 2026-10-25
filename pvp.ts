@@ -90,6 +90,7 @@ export type Side = {
   shield: number
   dodging: boolean
   evasionChance?: number
+  bonusDodge?: number
   extraTurn: boolean
   nextAttackBonus: number
   juking: boolean
@@ -567,7 +568,8 @@ export function batteryDodgeBonusOf(side: Side): number {
 
 function jukeChance(side: Side): number {
   const stance = side.juking ? JUKE_STANCE_BONUS : 0
-  const chance = jukeBonusOf(side) + batteryDodgeBonusOf(side) + stance
+  const chance =
+    jukeBonusOf(side) + batteryDodgeBonusOf(side) + stance + (side.bonusDodge ?? 0)
   if (!side.juking) return Math.max(0, Math.min(0.9, chance))
   return Math.min(0.9, Math.max(0.05, chance))
 }
