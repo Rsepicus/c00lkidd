@@ -5869,6 +5869,12 @@ async function executeBattleAction(
   pendingTargets.delete(interaction.message.id)
   stopBattleTimer(interaction.message.id)
   const side = battle.sides[battle.turn]
+  if (action === 'special' && (side.cooldown > 0 || !specialReady(side))) {
+    // A stale button from before an automated turn can arrive after the
+    // cooldown has started; restore the panel instead of throwing.
+    await restoreActionMenu(interaction, interaction.message.id, battle)
+    return
+  }
   let result: ReturnType<typeof takeTurn>
   try {
     result = takeTurn(battle, action, Math.random, targetIndex)
@@ -6489,7 +6495,7 @@ async function startTrainingBattle(
       const opponents = pickGhostOpponents(
         store.users,
         setup.ownerId,
-        setup.mode === '2x2' ? 2 : 1,
+        1,
         Math.random,
         setup.mode,
       )
