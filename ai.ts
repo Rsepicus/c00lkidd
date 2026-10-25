@@ -262,9 +262,12 @@ function chooseEnemyTarget(
     .map((candidate, index) => ({ candidate, index }))
     .filter(({ candidate }) => candidate.team !== side.team && candidate.hp > 0)
   if (candidates.length === 0) return undefined
+  // Decoys exist to waste turns; hit a real enemy while one is standing.
+  const real = candidates.filter(({ candidate }) => !candidate.fake)
+  const pool = real.length > 0 ? real : candidates
 
   if (damage > 0) {
-    const lethal = candidates.filter(
+    const lethal = pool.filter(
       ({ candidate }) =>
         damageThroughShield(damage, candidate) >=
         candidate.hp + candidate.tempHp + candidate.shatterpoint,
@@ -278,7 +281,7 @@ function chooseEnemyTarget(
 
   const score = (candidate: Side): number =>
     control ? threatOf(candidate) * 100 : 1000 - effectiveHp(candidate)
-  return candidates.reduce((best, option) =>
+  return pool.reduce((best, option) =>
     score(option.candidate) > score(best.candidate) ? option : best,
   ).index
 }
@@ -288,7 +291,10 @@ function chooseAllyTarget(battle: Battle, side: Side): number | undefined {
     .map((candidate, index) => ({ candidate, index }))
     .filter(({ candidate }) => candidate.team === side.team && candidate.hp > 0)
   if (candidates.length === 0) return undefined
-  return candidates.reduce((best, option) =>
+  // Minions cannot really use a block; protect a real character instead.
+  const real = candidates.filter(({ candidate }) => !candidate.minion)
+  const pool = real.length > 0 ? real : candidates
+  return pool.reduce((best, option) =>
     hpRatio(option.candidate) < hpRatio(best.candidate) ? option : best,
   ).index
 }

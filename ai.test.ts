@@ -350,6 +350,24 @@ describe('target selection', () => {
     expect(chooseBotTurn(battle, () => 0).targetIndex).toBe(2)
   })
 
+  test('attacks ignore decoys while a real enemy is alive', () => {
+    const battle = teamBattle()
+    battle.sides[0].cooldown = 3
+    battle.sides[1].fake = true
+    battle.sides[1].hp = 1
+    battle.sides[3].hp = 90
+    expect(chooseBotTurn(battle, () => 0.99).targetIndex).toBe(3)
+  })
+
+  test('block does not protect a minion over a real ally', () => {
+    const battle = teamBattle(
+      character({ special: { name: 'Block', kind: 'block', power: 0, description: '' } }),
+    )
+    battle.sides[2].minion = true
+    battle.sides[2].hp = 5
+    expect(chooseBotTurn(battle, () => 0).targetIndex).toBe(0)
+  })
+
   test('self-only specials carry no target', () => {
     const battle = teamBattle(
       character({ special: { name: 'Dodge', kind: 'dodge', power: 0, description: '' } }),
