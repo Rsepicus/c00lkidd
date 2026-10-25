@@ -168,12 +168,12 @@ Spawn Protection Dusekkar действует один ход: обычный у�
 только напарник, в соло — сам Dusekkar.
 
 У каждого персонажа две способности на выбор; названия всегда английские с вики,
-персонажи сохраняют свои имена. Gashing Wound Jason — 18 урона и Bleeding
-(6 урона в начале хода цели два хода). Вторые способности используют статусы с вики:
+персонажи сохраняют свои имена. Gashing Wound Jason — 8 урона и Bleeding
+(3 урона в начале хода цели два хода). Вторые способности используют статусы с вики:
 Raging Pace — Strength (+20% урона), Corrupt Nature — −60% уворота, Digital Footprint —
-6 урона и Weakness (−20% урона, −15% уворота), Rejuvenate the Rotten — поднимает убитых врагов как AI-миньонов (стартовый 25 HP/3 атаки, из трупа 50 HP и половина атаки убитого, удары глитчат), Eviscerate — Hemorrhage (блокирует лечение;
+6 урона и Weakness (−20% урона, −15% уворота), Rejuvenate the Rotten — поднимает убитых врагов как AI-миньонов (стартовый 20 HP/2 атаки, из трупа 40 HP и половина атаки убитого, удары глитчат), Eviscerate — Hemorrhage (блокирует лечение;
 передышка снимает эффект, но не лечит HP),
-Hunter's Feast — Creatures (+25% получаемого урона), Slateskin Potion — +25 HP сверх
+Hunter's Feast — Creatures (+25% получаемого урона), Slateskin Potion — +18 HP сверх
 максимума, иммунитет к DoT и −10% уворота, Sword Switch — случайный меч SFOTH:
 SFOTH (Strength), Firebrand (Burning), Venomshank (Poison), Ice Dagger (Stun),
 Darkheart (Lifesteal), Illumina (Regeneration), Ghostwalker (невидимость/уворот),
@@ -191,9 +191,10 @@ Tripwire — Bleeding, One Shot — 50% выстрел на 24 урона и Vul
 Spawn Protection Dusekkar и Plasma Beam действуют на него самого и напарника.
 В соло все поддержки лечат/баффают самого кастера.
 Баффы поддержки тикают вместе с кастером и спадают у напарника одновременно с ним.
-**Rejuvenate the Rotten** у 1x1x1x1: стартует с 1 зарядом; каждый убитый им или его
-миньоном враг даёт +1 заряд. Способность без КД тратит все заряды и поднимает всех
-миньонов сразу. Миньоны — отдельные AI-стороны со своим ходом; в выживании живые
+**Rejuvenate the Rotten** у 1x1x1x1 (КД 3): стартует с 1 зарядом; каждый убитый им
+или его миньоном враг даёт +1 заряд. Способность тратит все заряды и поднимает всех
+миньонов сразу. Стартовый миньон — 20 HP и 2 атаки, из трупа — 40 HP и половина
+атаки убитого. Миньоны — отдельные AI-стороны со своим ходом; в выживании живые
 переносятся между волнами с текущим HP.
 **Pizza Delivery** у c00lkidd (КД 3): призывает двух отдельных AI-миньонов по 5 HP.
 Миньон в свой ход доставляет пиццу ближайшей живой цели: 7 урона в начале её хода
@@ -207,7 +208,7 @@ Spawn Protection Dusekkar и Plasma Beam действуют на него сам
 Azure использует Atropa: Seeker Bulb наносит 8 урона и накладывает 3 стака, Stigmatize — 3 и стан;
 атака Azure тратит стаки, наносит +1 урона за каждый и лечит Azure на 1 HP за
 каждые 2 стака (пассивка Atropic). Helperbot: Pulse даёт
-Regeneration и Resistance обоим союзникам, Inspiration — Haste обоим. Все способности
+Regeneration и Resistance на 1 ход обоим союзникам, Inspiration — Haste обоим. Все способности
 и персонажи имеют иконки.
 
 **Veeronica** — выжившая за 750 монет. Пассивка **Metal Frame** запрещает лечить её
@@ -221,7 +222,7 @@ Regeneration и Resistance обоим союзникам, Inspiration — Haste 
 
 **Jane Doe** — выжившая за 600 монет. Пассивка **Shatterpoint** даёт 25 отдельного
 запаса прочности, который ест урон раньше HP и восстанавливается её способностями.
-**Crystal Pitch** наносит 9 урона и даёт 2 стака **Resonance**, **Purified** даёт
+**Crystal Pitch** наносит 5 урона, даёт 2 стака **Resonance** и +4 Shatterpoint, **Purified** даёт
 Джейн и напарнику одноразовое сопротивление: следующий удар ослабляется на 20% за
 каждые 20 потерянных HP (максимум 80%). Обычная атака — **Hatchet**: тратит Resonance
 и наносит +4 урона за стак, а при 3 стаках оглушает.
@@ -238,7 +239,8 @@ Support Protocol (Helperbot). Новые пассивки: **Pizza Fury** у c00
 в меню «Сменить»: сначала выбираешь активного и второго персонажа, затем их способности.
 В карточке и меню выбора показывается класс персонажа с вики — Sentinel, Support,
 Survivalist, Trapper и т.д. — и КД способности: у большинства 2 хода, у Stigmatize,
-Gashing Wound, Corrupt Nature, Slateskin Potion, Dispenser, Subspace Tripmine и Pizza Throw — 3,
+Gashing Wound, Corrupt Nature, Pulse, Dispenser, Subspace Tripmine и Pizza Throw — 3,
+у Crystal Pitch и Slateskin Potion — 4, у Rejuvenate the Rotten — 3,
 у Blood Hunt КД нет. В выпадающих меню выбора к классу добавлена пассивка; в панели
 «Сменить» показываются название и полное описание пассивок активного и второго
 персонажа. В карточках расшифрованы и уникальные ресурсы: Resonance и Shatterpoint

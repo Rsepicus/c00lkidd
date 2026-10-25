@@ -3,7 +3,7 @@ import type { Special } from './forsaken'
 export type Language = 'ru' | 'en'
 
 const EN: Record<string, string> = {
-  'Gashing Wound': 'A series of machete strikes: 18 damage and 6 bleeding damage for 2 turns.',
+  'Gashing Wound': 'A series of machete strikes: 8 damage and 3 bleeding damage for 2 turns.',
   'Raging Pace': 'Rage: +20% damage for 2 turns.',
   'Pizza Delivery':
     'Summons two 5 HP pizza minions. On a hit, a minion burns the enemy for 7 damage at the start of their turn for 2 turns, lowers their dodge by 10%, and disappears. CD: 3 turns.',
@@ -15,15 +15,15 @@ const EN: Record<string, string> = {
   Observant: 'Fake Noli with the same HP and effects; disappears when hit. CD: 3 turns.',
   Entanglement: "Glitch: blocks the opponent's ability for 2 turns.",
   'Rejuvenate the Rotten':
-    "Necromancy: raises every killed enemy as a rotten minion. Starting minion: 25 HP and 3 attack; corpse minion: 50 HP and half the killed enemy's attack. Minion hits apply Glitch for 1 turn.",
+    "Necromancy: raises every killed enemy as a rotten minion. Starting minion: 20 HP and 2 attack; corpse minion: 40 HP and half the killed enemy's attack. Minion hits apply Glitch for 1 turn. CD: 3 turns.",
   'Mass Infection': "Poison: 6 damage at the start of the enemy's turn for 2 turns and −15% dodge.",
   'Infernal Cry': 'Cry: 6 damage, −10% enemy dodge, +1 Blood. At 2 Blood the ability becomes Blood Hunt.',
   'Blood Hunt': 'Roar: 8 damage, +15% dodge for 2 turns, and 3 empowered attacks (+3 damage, heals on hit).',
   Eviscerate: 'Evisceration: the opponent cannot heal for 2 turns; Rest clears it without healing. Builds Blood (2 charges → Blood Hunt).',
-  Ascension: 'The next attack misses; +10% dodge for 2 turns.',
+  Ascension: 'The next attack has a 75% chance to miss; +10% dodge for 2 turns.',
   Lacerate: 'Swarm: the opponent takes +25% damage for 2 turns.',
   'Bloxy Cola': '+20% dodge for 2 turns.',
-  'Slateskin Potion': 'Slateskin: +25 overheal, DoT immunity, −10% dodge for 2 turns.',
+  'Slateskin Potion': 'Slateskin: +18 overheal, DoT immunity, −10% dodge for 2 turns.',
   'Fried Chicken': 'Heals 18 HP for both allies; Shedletsky gets −10% dodge for 2 turns.',
   'Sword Switch': 'Random SFOTH sword: SFOTH — Strength, Firebrand — Burning, Venomshank — Poison, Ice Dagger — Stun, Darkheart — Lifesteal, Illumina — Regeneration, Ghostwalker — dodge, Windforce — Weakness.',
   'Pizza Throw': 'Restores 20 HP to the teammate; in solo it heals Elliot.',
@@ -44,12 +44,12 @@ const EN: Record<string, string> = {
   'One Shot': '50%: fires for 24 damage and applies Vulnerable for 2 turns; otherwise Chance gets Weakness for 2 turns.',
   Sk8: '+25% dodge for 2 turns, spends up to 15% battery. At 100% Overcharge: +35% dodge and discharge to 50%. Battery: starts at 30%, +15% at the start of each turn and +15% when resting.',
   'Activate Battery': 'Spends up to 40% battery to heal 1 HP per 2% (up to 20 HP). At 100% Overcharge: heals 25 HP and discharges to 50%. Battery: starts at 30%, +15% at the start of each turn and +15% when resting.',
-  'Crystal Pitch': '9 damage, 2 Resonance stacks and +8 Shatterpoint. Resonance: Hatchet consumes stacks for +4 damage each; 3 stacks stun.',
+  'Crystal Pitch': '5 damage, 2 Resonance stacks and +4 Shatterpoint. Resonance: Hatchet consumes stacks for +4 damage each; 3 stacks stun.',
   Purified: 'Grants one-hit resistance to Jane and her ally: the next hit is reduced by 20% for every 20 HP lost (up to 80%).',
   "Hunter's Feast": 'Creatures: the opponent takes +25% damage for 2 turns.',
   'Seeker Bulb': 'Shoots for 8 damage and applies 3 Atropa stacks.',
   Stigmatize: 'Snares: the opponent skips a turn and gains 3 Atropa stacks.',
-  Pulse: 'Regeneration (+8 HP at turn start) and Resistance (−20% damage taken) for both allies for 2 turns.',
+  Pulse: 'Regeneration (+8 HP at turn start) and Resistance (−20% damage taken) for both allies for 1 turn.',
   Inspiration: 'Haste: ability cooldowns tick twice as fast for both allies for 2 turns.',
 }
 

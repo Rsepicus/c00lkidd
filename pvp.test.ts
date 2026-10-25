@@ -156,10 +156,10 @@ describe('2 на 2', () => {
       'special',
       () => 0,
     ).battle
-    expect(pulse.sides[0].effects.regeneration).toBe(2)
-    expect(pulse.sides[2].effects.regeneration).toBe(2)
-    expect(pulse.sides[0].effects.resistance).toBe(2)
-    expect(pulse.sides[2].effects.resistance).toBe(2)
+    expect(pulse.sides[0].effects.regeneration).toBe(1)
+    expect(pulse.sides[2].effects.regeneration).toBe(1)
+    expect(pulse.sides[0].effects.resistance).toBe(1)
+    expect(pulse.sides[2].effects.resistance).toBe(1)
 
     const inspiration = characterWithSpecial(helperbot, 'Inspiration')
     const haste = takeTurn(
@@ -225,8 +225,8 @@ describe('2 на 2', () => {
     const helperbot = characterByName('Helperbot')!
     let battle = createTeamBattle(team(helperbot, heavy), opponents())
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].effects.regeneration).toBe(2)
-    expect(battle.sides[2].effects.regeneration).toBe(2)
+    expect(battle.sides[0].effects.regeneration).toBe(1)
+    expect(battle.sides[2].effects.regeneration).toBe(1)
 
     for (let turn = 0; turn < 8; turn++) {
       battle = takeTurn(battle, 'rest', () => 0).battle
@@ -762,7 +762,7 @@ describe('wiki status effects', () => {
   test('Slateskin grants overheal, DoT immunity and a dodge penalty', () => {
     let battle = battleWith(statusFighter('Slateskin Potion', 'slateskin'), heavy)
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].hp).toBe(125)
+    expect(battle.sides[0].hp).toBe(118)
     expect(battle.sides[0].effects.slateskin).toBe(2)
     expect(jukeBonusOf(battle.sides[0])).toBeCloseTo(-0.1)
   })
@@ -829,12 +829,12 @@ describe('Azure and Helperbot kits', () => {
     expect(result.battle.turn).toBe(0)
   })
 
-  test('Pulse applies Regeneration and Resistance', () => {
+  test('Pulse applies Regeneration and Resistance for 1 turn', () => {
     const helperbot = characterByName('Helperbot')!
     let battle = battleWith(helperbot, heavy)
     battle = takeTurn(battle, 'special', () => 0).battle
-    expect(battle.sides[0].effects.regeneration).toBe(2)
-    expect(battle.sides[0].effects.resistance).toBe(2)
+    expect(battle.sides[0].effects.regeneration).toBe(1)
+    expect(battle.sides[0].effects.resistance).toBe(1)
   })
 
   test('Inspiration applies Haste', () => {
@@ -875,7 +875,7 @@ describe('c00lgui copy', () => {
     battle = result.battle
     battle = takeTurn(battle, 'rest', () => 0).battle
     const copiedTurn = takeTurn(battle, 'special', () => 0).battle
-    expect(copiedTurn.sides[1].hp).toBe(82)
+    expect(copiedTurn.sides[1].hp).toBe(92)
     expect(copiedTurn.sides[1].dotKind).toBe('bleeding')
     expect(copiedTurn.sides[0].cooldown).toBe(3)
   })
@@ -947,7 +947,6 @@ describe('balance cooldowns', () => {
       ['Jason', 'Gashing Wound'],
       ['c00lkidd', 'Pizza Delivery'],
       ['c00lkidd', 'Corrupt Nature'],
-      ['Noob', 'Slateskin Potion'],
       ['Builderman', 'Dispenser'],
       ['Taph', 'Subspace Tripmine'],
       ['Noli', 'Observant'],
@@ -959,9 +958,26 @@ describe('balance cooldowns', () => {
     }
     expect(specialCooldown(characterWithSpecial(characterByName('Azure')!, 'Seeker Bulb'))).toBe(2)
     expect(specialCooldown(characterWithSpecial(characterByName('Noli')!, 'Nova'))).toBe(2)
+    expect(
+      specialCooldown(characterWithSpecial(characterByName('Noob')!, 'Slateskin Potion').special),
+    ).toBe(4)
+    expect(
+      specialCooldown(characterWithSpecial(characterByName('Jane Doe')!, 'Crystal Pitch').special),
+    ).toBe(4)
+    expect(
+      specialCooldown(characterWithSpecial(characterByName('Helperbot')!, 'Pulse').special),
+    ).toBe(3)
+    expect(
+      specialCooldown(characterWithSpecial(characterByName('Nosferatu')!, 'Ascension').special),
+    ).toBe(2)
+    expect(
+      specialCooldown(
+        characterWithSpecial(characterByName('1x1x1x1')!, 'Rejuvenate the Rotten').special,
+      ),
+    ).toBe(3)
   })
 
-  test('Gashing Wound hits for 18 and applies bleeding', () => {
+  test('Gashing Wound hits for 8 and applies bleeding', () => {
     const jason = characterWithSpecial(characterByName('Jason')!, 'Gashing Wound')
     let battle = createBattle(
       { userId: 'a', name: 'Jason', character: jason },
@@ -970,13 +986,13 @@ describe('balance cooldowns', () => {
 
     battle = takeTurn(battle, 'special', () => 0).battle
     expect(battle.sides[0].cooldown).toBe(3)
-    expect(battle.sides[1].hp).toBe(82)
+    expect(battle.sides[1].hp).toBe(92)
     expect(battle.sides[1].dotKind).toBe('bleeding')
     expect(battle.sides[1].dotTurns).toBe(2)
-    expect(battle.sides[1].dotDamage).toBe(6)
+    expect(battle.sides[1].dotDamage).toBe(3)
 
     const tick = takeTurn(battle, 'attack', () => 0).battle
-    expect(tick.sides[1].hp).toBe(76)
+    expect(tick.sides[1].hp).toBe(89)
     expect(tick.sides[1].dotTurns).toBe(1)
   })
 })
@@ -1433,6 +1449,7 @@ describe('character passives and new survivors', () => {
   test('Jason Mute makes his first attack unavoidable', () => {
     const battle = duel(characterByName('Jason')!, heavy)
     battle.sides[1].dodging = true
+    battle.sides[1].evasionChance = 0.75
     const result = takeTurn(battle, 'attack', () => 0).battle
     expect(result.sides[1].hp).toBe(86)
   })
@@ -1445,8 +1462,8 @@ describe('character passives and new survivors', () => {
     const summoned = takeTurn(battle, 'special', () => 0).battle
     const minion = summoned.sides.find(side => side.minion)
     expect(minion).toBeDefined()
-    expect(minion?.maxHp).toBe(25)
-    expect(minion?.character.attack).toBe(3)
+    expect(minion?.maxHp).toBe(20)
+    expect(minion?.character.attack).toBe(2)
     expect(summoned.sides[0].rottenCorpses).toHaveLength(0)
     expect(specialReady(summoned.sides[0])).toBe(false)
   })
@@ -1465,8 +1482,8 @@ describe('character passives and new survivors', () => {
     battle.sides[0].rottenCorpses = [{ attack: 7, source: 'Jason' }]
     const summoned = takeTurn(battle, 'special', () => 0).battle
     const minion = summoned.sides.find(side => side.minion)
-    expect(minion?.maxHp).toBe(50)
-    expect(minion?.hp).toBe(50)
+    expect(minion?.maxHp).toBe(40)
+    expect(minion?.hp).toBe(40)
     expect(minion?.character.attack).toBe(7)
   })
 
@@ -1490,7 +1507,8 @@ describe('character passives and new survivors', () => {
 
   test('Rejuvenate spends every charge and raises every corpse at once', () => {
     const battle = duel(characterByName('1x1x1x1')!, heavy)
-    expect(specialCooldown(specialOf(battle.sides[0]))).toBe(0)
+    expect(characterByName('1x1x1x1')!.attack).toBe(11)
+    expect(specialCooldown(specialOf(battle.sides[0]))).toBe(3)
     battle.sides[0].rottenCorpses = [
       { attack: 3, source: 'fresh' },
       { attack: 6, source: 'Jason' },
@@ -1499,8 +1517,8 @@ describe('character passives and new survivors', () => {
     const summoned = takeTurn(battle, 'special', () => 0).battle
     const minions = summoned.sides.filter(side => side.minion)
     expect(minions).toHaveLength(3)
-    expect(minions.map(minion => minion.maxHp)).toEqual([25, 50, 50])
-    expect(minions.map(minion => minion.character.attack)).toEqual([3, 6, 5])
+    expect(minions.map(minion => minion.maxHp)).toEqual([20, 40, 40])
+    expect(minions.map(minion => minion.character.attack)).toEqual([2, 6, 5])
     expect(summoned.sides[0].rottenCorpses).toHaveLength(0)
   })
 
@@ -1551,6 +1569,26 @@ describe('character passives and new survivors', () => {
     const infected = takeTurn(duel(infection, heavy), 'special', () => 0).battle
     expect(infected.sides[1].dotKind).toBe('poison')
     expect(jukeBonusOf(infected.sides[1])).toBeCloseTo(-0.15)
+  })
+
+  test('Ascension gives a 75% chance to evade the next hit and adds dodge', () => {
+    const battle = duel(characterByName('Nosferatu')!, heavy)
+    const ascended = takeTurn(battle, 'special', () => 0).battle
+    expect(ascended.sides[0].cooldown).toBe(2)
+    expect(ascended.sides[0].evasionChance).toBeCloseTo(0.75)
+    expect(jukeBonusOf(ascended.sides[0])).toBeCloseTo(0.1)
+
+    const dodged = takeTurn(ascended, 'attack', () => 0).battle
+    expect(dodged.sides[0].hp).toBe(100)
+    expect(dodged.sides[0].evasionChance).toBe(0)
+  })
+
+  test('Ascension can fail its evasion roll', () => {
+    const battle = duel(characterByName('Nosferatu')!, heavy)
+    const ascended = takeTurn(battle, 'special', () => 0).battle
+    const hit = takeTurn(ascended, 'attack', () => 0.99).battle
+    expect(hit.sides[0].hp).toBe(86)
+    expect(hit.sides[0].evasionChance).toBe(0)
   })
 
   test('c00lkidd Pizza Delivery summons two 5 HP pizza minions without immediate damage', () => {
@@ -1882,9 +1920,13 @@ describe('character passives and new survivors', () => {
 
   test('Jane Doe Crystal Pitch applies Resonance and Purified grants resistance', () => {
     const jane = characterByName('Jane Doe')!
-    const crystal = takeTurn(duel(jane, heavy), 'special', () => 0).battle
+    const crystalBattle = duel(jane, heavy)
+    crystalBattle.sides[0].shatterpoint = 10
+    const crystal = takeTurn(crystalBattle, 'special', () => 0).battle
     expect(crystal.sides[1].resonance).toBe(2)
-    expect(crystal.sides[1].hp).toBe(91)
+    expect(crystal.sides[1].hp).toBe(95)
+    expect(crystal.sides[0].shatterpoint).toBe(14)
+    expect(crystal.sides[0].cooldown).toBe(4)
 
     const purified = characterWithSpecial(jane, 'Purified')
     const support = createTeamBattle(allies(purified, heavy), enemies())
@@ -1991,7 +2033,7 @@ describe('LMS synergies in 2v2', () => {
     battle.turn = 2
 
     const result = takeTurn(battle, 'attack', () => 0)
-    expect(result.battle.sides[1].hp).toBe(81)
+    expect(result.battle.sides[1].hp).toBe(87)
     expect(result.events.join(' ')).toContain('Creation of Hatred')
   })
 

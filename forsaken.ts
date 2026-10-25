@@ -179,7 +179,7 @@ export const KILLERS: readonly Character[] = [
     price: 0,
     hp: 100,
     attack: 14,
-    special: { name: 'Gashing Wound', kind: 'heavy', power: 18, description: 'Серия ударов мачете: 18 урона и кровотечение 6 урона два хода.', cooldown: 3 },
+    special: { name: 'Gashing Wound', kind: 'heavy', power: 8, description: 'Серия ударов мачете: 8 урона и кровотечение 3 урона два хода.', cooldown: 3 },
     alternates: [
       { name: 'Raging Pace', kind: 'strength', power: 0, description: 'Ярость: +20% урона на 2 хода.' },
     ],
@@ -248,16 +248,16 @@ export const KILLERS: readonly Character[] = [
     power: 8,
     price: 1250,
     hp: 100,
-    attack: 17,
+    attack: 11,
     special: {
       name: 'Rejuvenate the Rotten',
       kind: 'rejuvenate',
       power: 0,
-      cooldown: 0,
+      cooldown: 3,
       description:
         'Некромантия: поднимает всех убитых врагов как гнилых миньонов. ' +
-        'Стартовый миньон: 25 HP и 3 атаки; миньон из трупа: 50 HP и половина атаки убитого. ' +
-        'Удары миньонов вешают глитч на 1 ход.',
+        'Стартовый миньон: 20 HP и 2 атаки; миньон из трупа: 40 HP и половина атаки убитого. ' +
+        'Удары миньонов вешают глитч на 1 ход. КД: 3 хода.',
     },
     alternates: [
       { name: 'Mass Infection', kind: 'poison', power: 6, description: 'Яд: 6 урона в начале хода соперника 2 хода и −15% уворота.' },
@@ -286,7 +286,7 @@ export const KILLERS: readonly Character[] = [
     price: 1922,
     hp: 100,
     attack: 13,
-    special: { name: 'Ascension', kind: 'dodge', power: 0, description: 'Следующая атака промахнётся; +10% уворота на 2 хода.' },
+    special: { name: 'Ascension', kind: 'dodge', power: 0, cooldown: 2, description: 'Следующая атака с 75% шансом промахнётся; +10% уворота на 2 хода.' },
     alternates: [
       { name: "Hunter's Feast", kind: 'creatures', power: 0, description: 'Creatures: соперник получает +25% урона 2 хода.' },
     ],
@@ -319,7 +319,7 @@ export const SURVIVORS: readonly Character[] = [
     attack: 11,
     special: { name: 'Bloxy Cola', kind: 'speed', power: 0, description: '+20% уворота на 2 хода.' },
     alternates: [
-      { name: 'Slateskin Potion', kind: 'slateskin', power: 0, description: 'Слейтскин: +25 HP сверх максимума, иммунитет к DoT и −10% уворота на 2 хода.', cooldown: 3 },
+      { name: 'Slateskin Potion', kind: 'slateskin', power: 0, description: 'Слейтскин: +18 HP сверх максимума, иммунитет к DoT и −10% уворота на 2 хода.', cooldown: 4 },
     ],
   },
   {
@@ -484,8 +484,9 @@ export const SURVIVORS: readonly Character[] = [
     special: {
       name: 'Crystal Pitch',
       kind: 'crystal',
-      power: 9,
-      description: '9 урона, 2 стака Resonance и +8 Shatterpoint. Resonance: Hatchet тратит стаки, +4 урона за стак; 3 стака оглушают.',
+      power: 5,
+      cooldown: 4,
+      description: '5 урона, 2 стака Resonance и +4 Shatterpoint. Resonance: Hatchet тратит стаки, +4 урона за стак; 3 стака оглушают.',
     },
     alternates: [
       {
@@ -505,7 +506,7 @@ export const SURVIVORS: readonly Character[] = [
     price: 650,
     hp: 100,
     attack: 12,
-    special: { name: 'Pulse', kind: 'pulse', power: 0, description: 'Regeneration (+8 HP в начале хода) и Resistance (−20% получаемого урона) обоим союзникам на 2 хода.' },
+    special: { name: 'Pulse', kind: 'pulse', power: 0, cooldown: 3, description: 'Regeneration (+8 HP в начале хода на 1 ход) и Resistance (−20% получаемого урона на 1 ход) обоим союзникам.' },
     alternates: [
       { name: 'Inspiration', kind: 'haste', power: 0, description: 'Haste: КД способностей тикает вдвое быстрее у обоих союзников 2 хода.' },
     ],

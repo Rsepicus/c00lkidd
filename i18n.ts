@@ -461,6 +461,14 @@ const PATTERNS: Array<[RegExp, string]> = [
     /^(.+) доставляет пиццу (.+), но эффект не срабатывает\.$/,
     '$1 delivers pizza to $2, but the effect fails.',
   ],
+  [
+    /^(.+) применяет «Ascension»: следующая атака с 75% шансом промахнётся\.$/,
+    '$1 uses “Ascension”: the next attack has a 75% chance to miss.',
+  ],
+  [
+    /^(.+) применяет «Pulse»: (?:обоим союзникам )?Regeneration и Resistance на 1 ход\.$/,
+    '$1 uses “Pulse”: Regeneration and Resistance for 1 turn.',
+  ],
   [/^(.+): миньоны рассыпаются\.$/, '$1: the minions crumble.'],
   [
     /^(.+) не может призвать миньонов: нет зарядов\.$/,

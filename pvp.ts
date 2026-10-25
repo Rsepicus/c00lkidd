@@ -87,6 +87,7 @@ export type Side = {
   bloodHuntCharges: number
   shield: number
   dodging: boolean
+  evasionChance?: number
   juking: boolean
   jukingTurns: number
   jukeMods: JukeMod[]
@@ -173,6 +174,7 @@ function makeSide(entry: FighterEntry, team: 0 | 1): Side {
     bloodHuntCharges: 0,
     shield: 0,
     dodging: false,
+    evasionChance: 0,
     juking: false,
     jukingTurns: 0,
     jukeMods: [],
@@ -202,7 +204,7 @@ function makeSide(entry: FighterEntry, team: 0 | 1): Side {
       !entry.boss &&
       !entry.userId.startsWith('bot:') &&
       !entry.userId.startsWith('boss:')
-        ? [{ attack: 3, source: 'fresh' }]
+        ? [{ attack: 2, source: 'fresh' }]
         : [],
     minion: false,
     pizzaMinion: false,
@@ -259,8 +261,13 @@ function addStatus(side: Side, status: StatusName, turns = 2, source?: Side): vo
   if (source) side.effectSources[status] = source.id
 }
 
-function addSupportStatus(source: Side, target: Side, status: StatusName): void {
-  addStatus(target, status, 2, source)
+function addSupportStatus(
+  source: Side,
+  target: Side,
+  status: StatusName,
+  turns = 2,
+): void {
+  addStatus(target, status, turns, source)
   if (target === source) delete target.linkedEffects[status]
   else target.linkedEffects[status] = true
 }
@@ -555,6 +562,15 @@ function dealDamage(
     events.push(`${defender.name}: галлюцинация принимает удар.`)
     return 0
   }
+  if ((defender.evasionChance ?? 0) > 0) {
+    const chance = defender.evasionChance ?? 0
+    defender.evasionChance = 0
+    if (rng() < chance) {
+      events.push(`${defender.name} уклоняется от атаки.`)
+      triggerPlead(defender, battle, events)
+      return 0
+    }
+  }
   if (defender.dodging) {
     defender.dodging = false
     events.push(`${defender.name} уклоняется от атаки.`)
@@ -794,6 +810,14 @@ function pizzaDeliveryMisses(
     events.push(`${target.name}: галлюцинация принимает удар.`)
     return true
   }
+  if ((target.evasionChance ?? 0) > 0) {
+    const chance = target.evasionChance ?? 0
+    target.evasionChance = 0
+    if (rng() < chance) {
+      events.push(`${target.name} уворачивается от доставки пиццы.`)
+      return true
+    }
+  }
   if (target.dodging) {
     target.dodging = false
     events.push(`${target.name} уклоняется от доставки пиццы.`)
@@ -960,9 +984,9 @@ function applySpecial(
       for (const corpse of corpses) {
         const fresh = corpse.source === 'fresh'
         addRottenMinion(battle, side, {
-          hp: fresh ? 25 : 50,
-          maxHp: fresh ? 25 : 50,
-          attack: fresh ? 3 : Math.max(1, corpse.attack),
+          hp: fresh ? 20 : 40,
+          maxHp: fresh ? 20 : 40,
+          attack: fresh ? 2 : Math.max(1, corpse.attack),
         })
       }
       events.push(
@@ -993,7 +1017,7 @@ function applySpecial(
       events.push(`${side.name} применяет «${special.name}».`)
       const dealt = dealDamage(side, other, special.power, events, rng, battle)
       if (special.name === 'Gashing Wound' && dealt > 0 && other.hp > 0) {
-        other.dotDamage = 6
+        other.dotDamage = 3
         other.dotTurns = 2
         other.dotKind = 'bleeding'
         other.dotSourceId = side.id
@@ -1099,7 +1123,7 @@ function applySpecial(
       if (dealt > 0 && other.hp > 0) {
         other.resonance = Math.min(3, other.resonance + 2)
         other.resonanceTurns = 2
-        const restored = restoreShatterpoint(side, 8)
+        const restored = restoreShatterpoint(side, 4)
         events.push(
           `Resonance: ${other.name} ×${other.resonance}.` +
             (restored > 0 ? ` Shatterpoint +${restored}.` : ''),
@@ -1164,8 +1188,15 @@ function applySpecial(
       break
     }
     case 'dodge':
-      side.dodging = true
-      events.push(`${side.name} применяет «${special.name}»: следующая атака промахнётся.`)
+      if (special.name === 'Ascension') {
+        side.evasionChance = Math.max(side.evasionChance ?? 0, 0.75)
+        events.push(
+          `${side.name} применяет «${special.name}»: следующая атака с 75% шансом промахнётся.`,
+        )
+      } else {
+        side.dodging = true
+        events.push(`${side.name} применяет «${special.name}»: следующая атака промахнётся.`)
+      }
       break
     case 'lifesteal':
       side.lifesteal = true
@@ -1233,7 +1264,7 @@ function applySpecial(
     case 'slateskin': {
       addStatus(side, 'slateskin')
       side.dotTurns = 0
-      const gained = healSide(side, side, 25, side.maxHp + 25)
+      const gained = healSide(side, side, 18, side.maxHp + 18)
       events.push(
         `${side.name} применяет «${special.name}»: +${gained} HP сверх максимума и иммунитет к DoT.`,
       )
@@ -1257,13 +1288,13 @@ function applySpecial(
       break
     case 'pulse':
       for (const ally of allies) {
-        addSupportStatus(side, ally, 'regeneration')
-        addSupportStatus(side, ally, 'resistance')
+        addSupportStatus(side, ally, 'regeneration', 1)
+        addSupportStatus(side, ally, 'resistance', 1)
       }
       events.push(
         `${side.name} применяет «${special.name}»: ${
           allies.length > 1 ? 'обоим союзникам' : ''
-        } Regeneration и Resistance на 2 хода.`,
+        } Regeneration и Resistance на 1 ход.`,
       )
       break
     case 'swords': {
@@ -1736,6 +1767,7 @@ export function takeTurn(
       if (side.character.name === 'Jason' && side.muteReady) {
         side.muteReady = false
         target.dodging = false
+        target.evasionChance = 0
         target.juking = false
         events.push(`Mute: первая атака ${side.name} не уворотована.`)
       }
