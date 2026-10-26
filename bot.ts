@@ -4280,8 +4280,12 @@ async function runAutomatedTurns(input: Battle, events: string[]): Promise<Battl
             llmTurn.decision.targetIndex !== undefined
               ? ` → #${llmTurn.decision.targetIndex}`
               : ''
+          const key =
+            llmTurn.keyCount > 1
+              ? ` ключ ${llmTurn.keyIndex + 1}/${llmTurn.keyCount}`
+              : ''
           console.log(
-            `[bot] LLM AI: ${who} — ${llmTurn.provider} (${llmTurn.model}): ` +
+            `[bot] LLM AI: ${who} — ${llmTurn.provider}${key} (${llmTurn.model}): ` +
               `${llmTurn.decision.action}${slot}${target}`,
           )
         } else {

@@ -6,6 +6,7 @@ import {
   llmAiEnabled,
   llmDebugEnabled,
   llmPauseMs,
+  parseApiKeys,
   parseLlmDecision,
 } from './llm-ai'
 import { createBattle } from './pvp'
@@ -27,11 +28,14 @@ function battleWith(left: string, right = 'Noob') {
 
 const originalKey = process.env.OPENROUTER_API_KEY
 const originalGroqKey = process.env.GROQ_API_KEY
+const originalGroqKeys = process.env.GROQ_API_KEYS
 afterEach(() => {
   if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY
   else process.env.OPENROUTER_API_KEY = originalKey
   if (originalGroqKey === undefined) delete process.env.GROQ_API_KEY
   else process.env.GROQ_API_KEY = originalGroqKey
+  if (originalGroqKeys === undefined) delete process.env.GROQ_API_KEYS
+  else process.env.GROQ_API_KEYS = originalGroqKeys
 })
 
 describe('LLM battle prompt', () => {
@@ -131,6 +135,7 @@ describe('LLM decision parsing', () => {
   test('does nothing without an API key', async () => {
     delete process.env.OPENROUTER_API_KEY
     delete process.env.GROQ_API_KEY
+    delete process.env.GROQ_API_KEYS
     const battle = battleWith('Noob')
     expect(await chooseLlmTurn(battle)).toBeNull()
   })
@@ -141,6 +146,14 @@ describe('LLM decision parsing', () => {
     expect(llmAiEnabled()).toBe(true)
     delete process.env.GROQ_API_KEY
     expect(llmAiEnabled()).toBe(false)
+  })
+
+  test('parses several Groq keys and drops duplicates', () => {
+    expect(parseApiKeys('a,b c\nd', undefined)).toEqual(['a', 'b', 'c', 'd'])
+    expect(parseApiKeys('a, a', 'b')).toEqual(['a', 'b'])
+    expect(parseApiKeys(undefined, '')).toEqual([])
+    process.env.GROQ_API_KEYS = 'k1,k2'
+    expect(llmAiEnabled()).toBe(true)
   })
 
   test('daily free-model limit pauses until UTC midnight', () => {

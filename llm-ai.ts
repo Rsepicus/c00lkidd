@@ -65,7 +65,7 @@ type ProviderId = 'openrouter' | 'groq'
 type Provider = {
   id: ProviderId
   label: string
-  apiKey: string
+  keys: string[]
   baseUrl: string
   model: () => Promise<string | null>
   headers: Record<string, string>
@@ -79,6 +79,8 @@ export type LlmTurn = {
   decision: BotDecision
   provider: string
   model: string
+  keyIndex: number
+  keyCount: number
 }
 
 let inFlight = 0
@@ -86,11 +88,29 @@ let discoveryBlockedUntil = 0
 let cachedOpenRouterModel: string | null = null
 let resolvePromise: Promise<string | null> | null = null
 const providerPauses = new Map<ProviderId, number>()
+const keyPauses = new Map<string, number>()
+const keyRotation = new Map<ProviderId, number>()
+
+/** Accepts comma-, space- or newline-separated keys and drops duplicates. */
+export function parseApiKeys(...values: Array<string | undefined>): string[] {
+  const keys = values
+    .flatMap(value => (value ?? '').split(/[\s,]+/))
+    .map(value => value.trim())
+    .filter(Boolean)
+  return [...new Set(keys)]
+}
+
+function openRouterKeys(): string[] {
+  const key = process.env.OPENROUTER_API_KEY?.trim()
+  return key ? [key] : []
+}
+
+function groqKeys(): string[] {
+  return parseApiKeys(process.env.GROQ_API_KEYS, process.env.GROQ_API_KEY)
+}
 
 export function llmAiEnabled(): boolean {
-  return Boolean(
-    process.env.OPENROUTER_API_KEY?.trim() || process.env.GROQ_API_KEY?.trim(),
-  )
+  return openRouterKeys().length > 0 || groqKeys().length > 0
 }
 
 export function llmDebugEnabled(): boolean {
@@ -137,18 +157,34 @@ export function llmPauseMs(
   return PAUSE_ERROR_MS
 }
 
-function pauseProvider(
+function keyStateId(provider: Provider, keyIndex: number): string {
+  return `${provider.id}:${keyIndex}`
+}
+
+function pauseKey(
   provider: Provider,
+  keyIndex: number,
   status: number,
   detail: string,
   now = Date.now(),
 ): void {
-  if (status === 404 && provider.id === 'openrouter') cachedOpenRouterModel = null
+  const keyLabel =
+    provider.keys.length > 1 ? `, ключ ${keyIndex + 1}/${provider.keys.length}` : ''
+  if (status === 404) {
+    if (provider.id === 'openrouter') cachedOpenRouterModel = null
+    providerPauses.set(
+      provider.id,
+      Math.max(providerPauses.get(provider.id) ?? 0, now + PAUSE_ERROR_MS),
+    )
+    console.warn(
+      `[bot] LLM AI (${provider.label}${keyLabel}) на паузе (404 ${detail}); ` +
+        'провайдер временно пропускается.',
+    )
+    return
+  }
   const duration = llmPauseMs(status, detail, provider.hasDailyFreeLimit, now)
-  providerPauses.set(
-    provider.id,
-    Math.max(providerPauses.get(provider.id) ?? 0, now + duration),
-  )
+  const id = keyStateId(provider, keyIndex)
+  keyPauses.set(id, Math.max(keyPauses.get(id) ?? 0, now + duration))
   const dailyLimit =
     status === 429 &&
     provider.hasDailyFreeLimit &&
@@ -156,7 +192,10 @@ function pauseProvider(
   const reason = dailyLimit
     ? 'дневной лимит бесплатных моделей исчерпан'
     : `${status || 'сеть'} ${detail}`.trim()
-  console.warn(`[bot] LLM AI (${provider.label}) на паузе (${reason}); ходы считает эвристика.`)
+  console.warn(
+    `[bot] LLM AI (${provider.label}${keyLabel}) на паузе (${reason}); ` +
+      'ключ временно пропускается.',
+  )
 }
 
 async function discoverOpenRouterModel(): Promise<string | null> {
@@ -218,25 +257,25 @@ async function resolveOpenRouterModel(): Promise<string | null> {
 }
 
 function providers(): Provider[] {
-  const openrouterKey = process.env.OPENROUTER_API_KEY?.trim()
-  const groqKey = process.env.GROQ_API_KEY?.trim()
+  const orKeys = openRouterKeys()
+  const gqKeys = groqKeys()
   const list: Provider[] = []
-  if (openrouterKey) {
+  if (orKeys.length > 0) {
     list.push({
       id: 'openrouter',
       label: 'OpenRouter',
-      apiKey: openrouterKey,
+      keys: orKeys,
       baseUrl: apiBase('OPENROUTER_BASE_URL', DEFAULT_OPENROUTER_BASE),
       model: resolveOpenRouterModel,
       headers: APP_HEADERS,
       hasDailyFreeLimit: true,
     })
   }
-  if (groqKey) {
+  if (gqKeys.length > 0) {
     list.push({
       id: 'groq',
       label: 'Groq',
-      apiKey: groqKey,
+      keys: gqKeys,
       baseUrl: apiBase('GROQ_BASE_URL', DEFAULT_GROQ_BASE),
       model: async () => process.env.GROQ_MODEL?.trim() || DEFAULT_GROQ_MODEL,
       headers: {},
@@ -250,8 +289,10 @@ function providers(): Provider[] {
 export async function warmLlmModel(): Promise<void> {
   for (const provider of providers()) {
     const model = await provider.model()
-    if (model) console.log(`[bot] LLM AI: ${provider.label} — ${model}`)
-    else {
+    if (model) {
+      const keys = provider.keys.length > 1 ? ` (ключей: ${provider.keys.length})` : ''
+      console.log(`[bot] LLM AI: ${provider.label} — ${model}${keys}`)
+    } else {
       console.warn(
         `[bot] LLM AI: ${provider.label} — модель не найдена, провайдер пропускается.`,
       )
@@ -400,6 +441,8 @@ export function parseLlmDecision(raw: string, battle: Battle): BotDecision | nul
 
 async function requestDecision(
   provider: Provider,
+  key: string,
+  keyIndex: number,
   model: string,
   battle: Battle,
 ): Promise<RequestResult> {
@@ -408,7 +451,7 @@ async function requestDecision(
       method: 'POST',
       headers: {
         ...provider.headers,
-        Authorization: `Bearer ${provider.apiKey}`,
+        Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -424,7 +467,7 @@ async function requestDecision(
     })
     if (!response.ok) {
       const detail = (await response.text().catch(() => '')).slice(0, 160)
-      pauseProvider(provider, response.status, detail)
+      pauseKey(provider, keyIndex, response.status, detail)
       return { decision: null, failed: true }
     }
     const data = (await response.json()) as {
@@ -434,14 +477,16 @@ async function requestDecision(
     if (typeof content !== 'string') return { decision: null, failed: true }
     const decision = parseLlmDecision(content, battle)
     if (!decision && llmDebugEnabled()) {
+      const keyLabel = provider.keys.length > 1 ? `, ключ ${keyIndex + 1}` : ''
       console.warn(
-        `[bot] LLM AI (${provider.label}) вернул невалидный ответ: ${content.slice(0, 120)}`,
+        `[bot] LLM AI (${provider.label}${keyLabel}) вернул невалидный ответ: ` +
+          content.slice(0, 120),
       )
     }
     return { decision, failed: false }
   } catch (error) {
     const name = error instanceof Error ? error.name : 'network error'
-    pauseProvider(provider, 0, name)
+    pauseKey(provider, keyIndex, 0, name)
     return { decision: null, failed: true }
   }
 }
@@ -456,23 +501,53 @@ export async function chooseLlmTurn(battle: Battle): Promise<LlmTurn | null> {
   if (list.length === 0) return null
   if (inFlight >= MAX_CONCURRENT) return null
 
+  let attempts = 0
   for (const provider of list) {
-    if (inFlight >= MAX_CONCURRENT) break
+    if (inFlight >= MAX_CONCURRENT || attempts >= 2) break
     if (Date.now() < (providerPauses.get(provider.id) ?? 0)) continue
     const model = await provider.model()
     // No model means this provider cannot answer; try the next one.
     if (!model) continue
-    inFlight += 1
-    try {
-      const result = await requestDecision(provider, model, battle)
-      if (result.decision) {
-        return { decision: result.decision, provider: provider.label, model }
+    const available = provider.keys
+      .map((key, index) => ({ key, index }))
+      .filter(
+        ({ index }) =>
+          Date.now() >= (keyPauses.get(keyStateId(provider, index)) ?? 0),
+      )
+    if (available.length === 0) continue
+    const rotation = keyRotation.get(provider.id) ?? 0
+    const start = rotation % available.length
+    const ordered = [...available.slice(start), ...available.slice(0, start)]
+    let used = 0
+    for (const candidate of ordered) {
+      if (attempts >= 2 || inFlight >= MAX_CONCURRENT) break
+      attempts += 1
+      used += 1
+      keyRotation.set(provider.id, rotation + used)
+      inFlight += 1
+      try {
+        const result = await requestDecision(
+          provider,
+          candidate.key,
+          candidate.index,
+          model,
+          battle,
+        )
+        if (result.decision) {
+          return {
+            decision: result.decision,
+            provider: provider.label,
+            model,
+            keyIndex: candidate.index,
+            keyCount: provider.keys.length,
+          }
+        }
+        // A valid provider response with an unusable answer: do not spend a
+        // second key or provider's quota on the same turn.
+        if (!result.failed) return null
+      } finally {
+        inFlight -= 1
       }
-      // A valid provider response with an unusable answer: do not spend a
-      // second provider's quota on the same turn.
-      if (!result.failed) return null
-    } finally {
-      inFlight -= 1
     }
   }
   return null
