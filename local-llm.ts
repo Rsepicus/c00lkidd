@@ -40,6 +40,22 @@ let restarts = 0
 let restartTimer: ReturnType<typeof setTimeout> | null = null
 let handlersRegistered = false
 
+export type LocalLlmPhase =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'extracting'
+  | 'starting'
+  | 'ready'
+  | 'error'
+
+let phase: LocalLlmPhase = 'idle'
+let phaseDetail = ''
+let receivedBytes = 0
+let totalBytes = 0
+let lastError = ''
+
 type Settings = {
   enabled: boolean
   autoSetup: boolean
@@ -78,6 +94,35 @@ export function isLocalLlmEnabled(): boolean {
 
 export function isLocalLlmReady(): boolean {
   return ready
+}
+
+export type LocalLlmStatus = {
+  enabled: boolean
+  ready: boolean
+  starting: boolean
+  phase: LocalLlmPhase
+  detail: string
+  received: number
+  total: number
+  error: string
+  dir: string
+  baseUrl: string
+}
+
+export function localLlmStatus(): LocalLlmStatus {
+  const settings = getSettings()
+  return {
+    enabled: settings.enabled,
+    ready,
+    starting,
+    phase: settings.enabled ? phase : 'disabled',
+    detail: phaseDetail,
+    received: receivedBytes,
+    total: totalBytes,
+    error: lastError,
+    dir: settings.dir,
+    baseUrl: settings.baseUrl,
+  }
 }
 
 export function localLlmBaseUrl(): string {
@@ -121,12 +166,25 @@ async function download(
 ): Promise<void> {
   mkdirSync(dirname(destination), { recursive: true })
   const part = `${destination}.part`
+  phase = 'downloading'
+  phaseDetail = label
+  receivedBytes = 0
+  totalBytes = 0
+  lastError = ''
   console.log(`[bot] Local LLM: скачиваю ${label}…`)
   const response = await fetch(url, {
     signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
   })
   if (!response.ok || !response.body) {
-    throw new Error(`${label}: HTTP ${response.status}`)
+    phase = 'error'
+    lastError = `${label}: HTTP ${response.status}`
+    throw new Error(lastError)
+  }
+  totalBytes = Number(response.headers.get('content-length')) || 0
+  if (totalBytes > 0) {
+    console.log(
+      `[bot] Local LLM: ${label} — размер ${Math.round(totalBytes / 1024 / 1024)} МБ`,
+    )
   }
   const stream = createWriteStream(part)
   const reader = response.body.getReader()
@@ -141,9 +199,16 @@ async function download(
         await new Promise<void>(resolveDrain => stream.once('drain', resolveDrain))
       }
       received += value.byteLength
+      receivedBytes = received
       if (received >= nextLog) {
+        const total = totalBytes > 0
+          ? `/${Math.round(totalBytes / 1024 / 1024)}`
+          : ''
+        const percent = totalBytes > 0
+          ? ` (${Math.round((received / totalBytes) * 100)}%)`
+          : ''
         console.log(
-          `[bot] Local LLM: ${label} — ${Math.round(received / 1024 / 1024)} МБ`,
+          `[bot] Local LLM: ${label} — ${Math.round(received / 1024 / 1024)}${total} МБ${percent}`,
         )
         nextLog += 25 * 1024 * 1024
       }
@@ -158,6 +223,8 @@ async function download(
     try {
       unlinkSync(part)
     } catch {}
+    phase = 'error'
+    lastError = error instanceof Error ? error.message : String(error)
     throw error
   }
   if (expectedSha) {
@@ -166,10 +233,14 @@ async function download(
       try {
         unlinkSync(part)
       } catch {}
-      throw new Error(`${label}: SHA-256 не совпал`)
+      phase = 'error'
+      lastError = `${label}: SHA-256 не совпал`
+      throw new Error(lastError)
     }
   }
   renameSync(part, destination)
+  phase = 'idle'
+  phaseDetail = label
   console.log(
     `[bot] Local LLM: ${label} готов (${Math.round(received / 1024 / 1024)} МБ)`,
   )
@@ -201,6 +272,8 @@ async function ensureFiles(
 
   if (!existsSync(settings.modelPath)) {
     if (!settings.autoSetup) {
+      phase = 'error'
+      lastError = `нет модели ${settings.modelPath}`
       console.warn(
         `[bot] Local LLM: нет модели ${settings.modelPath}. ` +
           'Положи GGUF вручную или включи LOCAL_LLM_AUTO_SETUP=1.',
@@ -210,6 +283,8 @@ async function ensureFiles(
     const url = process.env.LOCAL_LLM_MODEL_URL?.trim() || MODEL_URL
     const sha = process.env.LOCAL_LLM_MODEL_URL ? undefined : MODEL_SHA
     await download(url, settings.modelPath, sha, 'модель SmolLM2-135M')
+  } else {
+    console.log('[bot] Local LLM: модель уже есть:', settings.modelPath)
   }
 
   let bin = settings.configuredBin
@@ -220,6 +295,8 @@ async function ensureFiles(
   if (!bin) bin = findLlamaServer(settings.dir) ?? ''
   if (!bin) {
     if (!settings.autoSetup) {
+      phase = 'error'
+      lastError = `нет llama-server в ${settings.dir}`
       console.warn(
         `[bot] Local LLM: нет llama-server в ${settings.dir}. ` +
           'Положи бинарник вручную или включи LOCAL_LLM_AUTO_SETUP=1.',
@@ -231,7 +308,11 @@ async function ensureFiles(
       const url = process.env.LOCAL_LLM_BIN_URL?.trim() || LLAMA_SERVER_URL
       const sha = process.env.LOCAL_LLM_BIN_URL ? undefined : LLAMA_SERVER_SHA
       await download(url, tarPath, sha, 'llama.cpp (CPU)')
+    } else {
+      console.log('[bot] Local LLM: архив llama.cpp уже есть, распаковываю…')
     }
+    phase = 'extracting'
+    phaseDetail = 'llama.cpp'
     console.log('[bot] Local LLM: распаковываю llama.cpp…')
     await runCommand('tar', ['-xzf', tarPath, '-C', settings.dir])
     try {
@@ -239,6 +320,7 @@ async function ensureFiles(
     } catch {}
     bin = findLlamaServer(settings.dir) ?? ''
     if (!bin) throw new Error('llama-server не найден после распаковки')
+    console.log('[bot] Local LLM: llama-server:', bin)
   }
 
   try {
@@ -329,6 +411,8 @@ function spawnServer(
   logChild(child.stderr)
   child.on('error', error => {
     console.warn('[bot] Local LLM: не удалось запустить:', error.message)
+    phase = 'error'
+    lastError = error.message
     ready = false
     serverProcess = null
   })
@@ -336,9 +420,9 @@ function spawnServer(
     ready = false
     serverProcess = null
     if (!stopping) {
-      console.warn(
-        `[bot] Local LLM: сервер остановился (code=${code}, signal=${signal}).`,
-      )
+      phase = 'error'
+      lastError = `llama-server остановился (code=${code}, signal=${signal})`
+      console.warn(`[bot] Local LLM: ${lastError}.`)
       scheduleRestart()
     }
   })
@@ -349,35 +433,50 @@ async function waitForHealth(settings: Settings): Promise<void> {
     if (!serverProcess) return
     if (await isHealthy(settings)) {
       ready = true
+      phase = 'ready'
       restarts = 0
       console.log(`[bot] Local LLM: сервер готов — ${settings.baseUrl}`)
       return
     }
     await new Promise(resolveWait => setTimeout(resolveWait, 500))
   }
-  console.warn('[bot] Local LLM: сервер не ответил за 120 секунд.')
+  phase = 'error'
+  lastError = 'llama-server не ответил за 120 секунд'
+  console.warn(`[bot] Local LLM: ${lastError}.`)
 }
 
 export async function startLocalLlm(): Promise<void> {
   const settings = getSettings()
   if (!settings.enabled || starting || stopping) return
   starting = true
+  phase = 'checking'
+  phaseDetail = ''
+  lastError = ''
+  console.log(`[bot] Local LLM: включён, папка ${settings.dir}`)
   registerHandlers()
   try {
     if (await isHealthy(settings)) {
       ready = true
+      phase = 'ready'
       console.log(`[bot] Local LLM: уже запущен — ${settings.baseUrl}`)
       return
     }
     const files = await ensureFiles(settings)
-    if (!files) return
+    if (!files) {
+      if (phase !== 'error') {
+        phase = 'error'
+        lastError = 'файлы модели не найдены'
+      }
+      return
+    }
+    phase = 'starting'
+    phaseDetail = 'llama-server'
     spawnServer(settings, files)
     await waitForHealth(settings)
   } catch (error) {
-    console.warn(
-      '[bot] Local LLM:',
-      error instanceof Error ? error.message : error,
-    )
+    phase = 'error'
+    lastError = error instanceof Error ? error.message : String(error)
+    console.warn('[bot] Local LLM:', lastError)
   } finally {
     starting = false
   }
@@ -392,4 +491,6 @@ export function stopLocalLlm(): void {
   serverProcess?.kill('SIGTERM')
   serverProcess = null
   ready = false
+  phase = 'idle'
+  phaseDetail = ''
 }

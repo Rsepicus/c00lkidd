@@ -31,7 +31,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
 import { ARENA_BATTLES, runLlmArena, type ArenaResult } from './arena'
-import { startLocalLlm } from './local-llm'
+import { localLlmStatus, startLocalLlm } from './local-llm'
 import {
   chooseLlmTurn,
   importLlmEnv,
@@ -2708,6 +2708,38 @@ export function arenaEmbed(result: ArenaResult): EmbedBuilder {
     .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
 }
 
+function localLlmStatusLine(): string {
+  const status = localLlmStatus()
+  if (!status.enabled) return ''
+  if (status.ready) return `Локальная модель: **готова** (${status.baseUrl})`
+  if (status.phase === 'downloading') {
+    const received = Math.round(status.received / 1024 / 1024)
+    const total =
+      status.total > 0 ? `/${Math.round(status.total / 1024 / 1024)}` : ''
+    const percent =
+      status.total > 0
+        ? ` · ${Math.round((status.received / status.total) * 100)}%`
+        : ''
+    return (
+      `Локальная модель: **скачивание ${received}${total} МБ${percent}**` +
+      (status.detail ? ` — ${status.detail}` : '')
+    )
+  }
+  if (status.phase === 'extracting') {
+    return 'Локальная модель: **распаковка llama.cpp**'
+  }
+  if (status.phase === 'starting') {
+    return 'Локальная модель: **запуск llama-server**'
+  }
+  if (status.phase === 'checking') {
+    return 'Локальная модель: **проверка файлов**'
+  }
+  if (status.phase === 'error') {
+    return `Локальная модель: **ошибка** — ${status.error || status.detail || 'неизвестно'}`
+  }
+  return `Локальная модель: **${status.phase}**`
+}
+
 export function debugStatusEmbed(client?: Client): EmbedBuilder {
   const errorSize = existsSync(ERROR_LOG_PATH) ? statSync(ERROR_LOG_PATH).size : 0
   const memory = Math.round(process.memoryUsage().rss / 1024 / 1024)
@@ -2727,6 +2759,7 @@ export function debugStatusEmbed(client?: Client): EmbedBuilder {
         `Активных боёв: **${battles.size}**`,
         `Ошибок в errors.log: **${errorSize} байт**`,
         `Память: **${memory} MB**`,
+        localLlmStatusLine(),
         client?.user ? `Бот: **${client.user.tag}**` : '',
       ]
         .filter(Boolean)
