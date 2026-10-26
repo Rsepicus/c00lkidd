@@ -4,6 +4,7 @@ import {
   chooseLlmTurn,
   buildChatBody,
   buildLlmPrompt,
+  buildLocalPrompt,
   importLlmEnv,
   llmAiEnabled,
   llmDebugEnabled,
@@ -94,6 +95,37 @@ describe('LLM battle prompt', () => {
     expect(plain.reasoning_effort).toBeUndefined()
     const openrouter = buildChatBody('openrouter', 'openai/gpt-oss-20b', battle)
     expect(openrouter.reasoning).toEqual({ effort: 'low', exclude: true })
+  })
+
+  test('builds a compact prompt for the local model', () => {
+    const battle = battleWith('Guest 1337')
+    const prompt = buildLocalPrompt(battle)
+    expect(prompt).toContain('#0 Guest 1337')
+    expect(prompt).toContain('#1 Noob')
+    expect(prompt).toContain('Legal actions')
+    expect(prompt).toContain('special 0 (Block)')
+    expect(prompt).not.toContain('SecretPlayerName')
+    expect(prompt).not.toContain('SecretEnemyName')
+
+    const body = buildChatBody('local', 'local', battle)
+    expect(body.max_tokens).toBe(64)
+    expect(body.reasoning_effort).toBeUndefined()
+    expect(JSON.stringify(body.messages)).not.toContain('SecretPlayerName')
+  })
+
+  test('puts the local model first when it is enabled', () => {
+    const original = process.env.LOCAL_LLM_ENABLED
+    try {
+      delete process.env.OPENROUTER_API_KEY
+      delete process.env.GROQ_API_KEY
+      delete process.env.GROQ_API_KEYS
+      process.env.LOCAL_LLM_ENABLED = '1'
+      expect(llmProviderOrder()).toEqual(['local', 'groq', 'openrouter'])
+      expect(llmAiEnabled()).toBe(true)
+    } finally {
+      if (original === undefined) delete process.env.LOCAL_LLM_ENABLED
+      else process.env.LOCAL_LLM_ENABLED = original
+    }
   })
 
   test('counts model and heuristic turns', () => {

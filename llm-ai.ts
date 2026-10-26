@@ -1,4 +1,10 @@
 import type { BotDecision } from './ai'
+import {
+  isLocalLlmEnabled,
+  isLocalLlmReady,
+  localLlmBaseUrl,
+  localLlmTimeoutMs,
+} from './local-llm'
 import { specialDescription } from './names'
 import {
   canUseSpecialNow,
@@ -73,7 +79,14 @@ const SYSTEM_PROMPT = [
   'Omit target when the action needs none.',
 ].join('\n')
 
-export type ProviderId = 'openrouter' | 'groq'
+const LOCAL_SYSTEM_PROMPT = [
+  'You are a battle AI. Choose the strongest legal action.',
+  'Never choose a special marked NOT READY.',
+  'Enemy targets are listed; never target your own side.',
+  'Return only one JSON object, no explanation.',
+].join('\n')
+
+export type ProviderId = 'openrouter' | 'groq' | 'local'
 
 type Provider = {
   id: ProviderId
@@ -168,7 +181,14 @@ export function importLlmEnv(contents: string | null): void {
     const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
     if (!match) continue
     const name = match[1]
-    if (!name.startsWith('OPENROUTER_') && !name.startsWith('GROQ_')) continue
+    if (
+      !name.startsWith('OPENROUTER_') &&
+      !name.startsWith('GROQ_') &&
+      !name.startsWith('LOCAL_LLM_') &&
+      !name.startsWith('LLM_')
+    ) {
+      continue
+    }
     if (process.env[name] !== undefined) continue
     const value = match[2].trim().replace(/^(['"])(.*)\1$/, '$2')
     if (value) process.env[name] = value
@@ -176,7 +196,11 @@ export function importLlmEnv(contents: string | null): void {
 }
 
 export function llmAiEnabled(): boolean {
-  return openRouterKeys().length > 0 || groqKeys().length > 0
+  return (
+    openRouterKeys().length > 0 ||
+    groqKeys().length > 0 ||
+    isLocalLlmEnabled()
+  )
 }
 
 export function llmDebugEnabled(): boolean {
@@ -406,12 +430,42 @@ async function resolveGroqModel(): Promise<string | null> {
   }
 }
 
+let cachedLocalModel: string | null = null
+
+async function resolveLocalModel(): Promise<string | null> {
+  const configured = process.env.LOCAL_LLM_MODEL_NAME?.trim()
+  if (configured) return configured
+  if (cachedLocalModel) return cachedLocalModel
+  try {
+    const response = await fetch(`${localLlmBaseUrl()}/models`, {
+      signal: AbortSignal.timeout(2000),
+    })
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        data?: Array<{ id?: string }>
+      }
+      const model = payload.data?.[0]?.id
+      if (model) {
+        cachedLocalModel = model
+        return model
+      }
+    }
+  } catch {}
+  return 'local'
+}
+
 export function llmProviderOrder(): ProviderId[] {
+  const defaultOrder: ProviderId[] = isLocalLlmEnabled()
+    ? ['local', 'groq', 'openrouter']
+    : ['groq', 'openrouter']
   const configured = process.env.LLM_PROVIDER_ORDER?.trim()
-  const ids = (configured ? configured.split(',') : ['groq', 'openrouter'])
+  const ids = (configured ? configured.split(',') : defaultOrder)
     .map(value => value.trim().toLowerCase())
-    .filter((value): value is ProviderId => value === 'groq' || value === 'openrouter')
-  return ids.length > 0 ? [...new Set(ids)] : ['groq', 'openrouter']
+    .filter(
+      (value): value is ProviderId =>
+        value === 'groq' || value === 'openrouter' || value === 'local',
+    )
+  return ids.length > 0 ? [...new Set(ids)] : defaultOrder
 }
 
 function providers(): Provider[] {
@@ -440,6 +494,17 @@ function providers(): Provider[] {
       hasDailyLimit: true,
     })
   }
+  if (isLocalLlmReady()) {
+    list.push({
+      id: 'local',
+      label: 'Local',
+      keys: ['local'],
+      baseUrl: localLlmBaseUrl(),
+      model: resolveLocalModel,
+      headers: {},
+      hasDailyLimit: false,
+    })
+  }
   const order = llmProviderOrder()
   list.sort((left, right) => {
     const leftIndex = order.indexOf(left.id)
@@ -466,10 +531,16 @@ export function llmLikelyAvailable(side: Side): boolean {
 export async function warmLlmModel(): Promise<void> {
   const list = providers()
   if (list.length === 0) {
-    console.warn(
-      '[bot] LLM AI: ключи не заданы (OPENROUTER_API_KEY / GROQ_API_KEY или ' +
-        'GROQ_API_KEYS), работает эвристика.',
-    )
+    if (isLocalLlmEnabled()) {
+      console.log(
+        '[bot] LLM AI: локальная модель ещё загружается, пока работает эвристика.',
+      )
+    } else {
+      console.warn(
+        '[bot] LLM AI: ключи не заданы (OPENROUTER_API_KEY / GROQ_API_KEY или ' +
+          'GROQ_API_KEYS), работает эвристика.',
+      )
+    }
     return
   }
   const ids = new Set(list.map(provider => provider.id))
@@ -630,6 +701,56 @@ export function buildLlmPrompt(battle: Battle, recentEvents: string[] = []): str
   return lines.join('\n')
 }
 
+/** Compact prompt for the tiny local model: no long descriptions or history. */
+export function buildLocalPrompt(battle: Battle): string {
+  const side = battle.sides[battle.turn]
+  if (!side) return ''
+  const allies = battle.sides.filter(
+    member => member.team === side.team && member.id !== side.id && member.hp > 0,
+  )
+  const enemies = battle.sides.filter(
+    member => member.team !== side.team && member.hp > 0,
+  )
+  const abilities = specialSlots(side).map(index => {
+    const name = specialOf(side, index).name
+    const state = canUseSpecialNow(side, index)
+      ? 'READY'
+      : specialStateText(side, index)
+    const target = specialNeedsEnemyTarget(side, index)
+      ? 'enemy target'
+      : specialNeedsAllyTarget(side, index)
+        ? 'ally target'
+        : 'no target'
+    return `special ${index} ${name}: ${state}, ${target}`
+  })
+  const ready = specialSlots(side).filter(index =>
+    canUseSpecialNow(side, index),
+  )
+  const enemyList =
+    enemies
+      .map(enemy => `#${enemy.id} ${enemy.character.name} HP ${enemy.hp}/${enemy.maxHp}`)
+      .join('; ') || 'none'
+  const allyList =
+    allies
+      .map(ally => `#${ally.id} ${ally.character.name} HP ${ally.hp}/${ally.maxHp}`)
+      .join('; ') || 'none'
+  const legal = [
+    `attack (enemy target: ${enemies.map(enemy => `#${enemy.id}`).join(', ') || 'none'})`,
+    ...ready.map(index => `special ${index} (${specialOf(side, index).name})`),
+    'juke',
+    'rest',
+  ].join('; ')
+  return [
+    `You control #${side.id} ${side.character.name}: HP ${side.hp}/${side.maxHp}, ATK ${side.character.attack}.`,
+    `Enemies: ${enemyList}.`,
+    `Allies: ${allyList}.`,
+    `Abilities: ${abilities.join('; ')}.`,
+    `Legal actions: ${legal}.`,
+    'Never choose NOT READY. Never target your own side.',
+    'Return only JSON, for example {"action":"attack","specialIndex":0,"target":0}.',
+  ].join('\n')
+}
+
 function sideIndex(value: unknown): number | undefined {
   const numeric =
     typeof value === 'number'
@@ -730,16 +851,23 @@ export function buildChatBody(
   battle: Battle,
   recentEvents: string[] = [],
 ): Record<string, unknown> {
+  const local = providerId === 'local'
   const requestBody: Record<string, unknown> = {
     model,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildLlmPrompt(battle, recentEvents) },
+      { role: 'system', content: local ? LOCAL_SYSTEM_PROMPT : SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: local
+          ? buildLocalPrompt(battle)
+          : buildLlmPrompt(battle, recentEvents),
+      },
     ],
-    temperature: 0.2,
+    temperature: local ? 0.1 : 0.2,
     // Reasoning models spend tokens on hidden thinking before the JSON.
-    max_tokens: 512,
+    max_tokens: local ? 64 : 512,
   }
+  if (local) return requestBody
   if (providerId === 'groq') {
     if (/gpt-oss/i.test(model)) {
       // gpt-oss cannot disable reasoning; low effort plus headroom avoids an
@@ -773,7 +901,9 @@ async function requestDecision(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(timeoutMs()),
+      signal: AbortSignal.timeout(
+        provider.id === 'local' ? localLlmTimeoutMs() : timeoutMs(),
+      ),
     })
     if (!response.ok) {
       const detail = (await response.text().catch(() => '')).slice(0, 160)
@@ -821,7 +951,14 @@ async function requestDecision(
           `${validation.reason ?? 'невалидный ответ'} — ${content.slice(0, 120)}`,
       )
     }
-    return { decision, failed: false }
+    // The tiny local model often gets the shape wrong; let the next provider
+    // (Groq) try the same turn instead of giving up immediately.
+    const retryElsewhere = !decision && provider.id === 'local'
+    return {
+      decision,
+      failed: retryElsewhere,
+      providerFailed: retryElsewhere,
+    }
   } catch (error) {
     const name = error instanceof Error ? error.name : 'network error'
     pauseKey(provider, keyIndex, 0, name)

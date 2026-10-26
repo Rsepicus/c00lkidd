@@ -31,6 +31,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
 import { ARENA_BATTLES, runLlmArena, type ArenaResult } from './arena'
+import { startLocalLlm } from './local-llm'
 import {
   chooseLlmTurn,
   importLlmEnv,
@@ -9053,6 +9054,7 @@ async function main(): Promise<void> {
   const envPath = join(dirname(fileURLToPath(import.meta.url)), '.env')
   const envContents = existsSync(envPath) ? readFileSync(envPath, 'utf8') : null
   importLlmEnv(envContents)
+  void startLocalLlm()
   const token = resolveToken(process.env.DISCORD_BOT_TOKEN, envContents)
   const commands = commandDefinitions()
 

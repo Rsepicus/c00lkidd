@@ -50,6 +50,7 @@ jobs:
             i18n.ts
             llm-ai.ts
             loadouts.ts
+            local-llm.ts
             matchmaking.ts
             names.ts
             progress.ts
