@@ -18,8 +18,7 @@ import {
  * rate limit falls back to the heuristic, so battles never stall.
  */
 
-const COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions'
-const MODELS_URL = 'https://openrouter.ai/api/v1/models'
+const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 const APP_HEADERS = {
   'HTTP-Referer': 'https://github.com/Rsepicus/c00lkidd',
   'X-Title': 'Forsaken Simulator',
@@ -70,6 +69,11 @@ function llmScope(): 'all' | 'boss' {
   return process.env.OPENROUTER_SCOPE === 'boss' ? 'boss' : 'all'
 }
 
+function apiBase(): string {
+  const configured = process.env.OPENROUTER_BASE_URL?.trim()
+  return (configured || DEFAULT_BASE_URL).replace(/\/+$/, '')
+}
+
 function timeoutMs(): number {
   const configured = Number(process.env.OPENROUTER_TIMEOUT_MS)
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS
@@ -83,7 +87,7 @@ function pause(reason: string, ms: number): void {
 async function discoverFreeModel(): Promise<string | null> {
   if (Date.now() < discoveryBlockedUntil) return null
   try {
-    const response = await fetch(MODELS_URL, {
+    const response = await fetch(`${apiBase()}/models`, {
       headers: APP_HEADERS,
       signal: AbortSignal.timeout(4000),
     })
@@ -289,7 +293,7 @@ export async function chooseLlmTurn(battle: Battle): Promise<BotDecision | null>
   if (Date.now() < pausedUntil) return null
   if (inFlight >= MAX_CONCURRENT) return null
   const side = battle.sides[battle.turn]
-  if (!side || battle.finished) return null
+  if (!side || battle.finished || side.hp <= 0) return null
   if (side.minion || side.fake) return null
   if (side.stunned) return null
   if (llmScope() === 'boss' && !side.boss) return null
@@ -299,7 +303,7 @@ export async function chooseLlmTurn(battle: Battle): Promise<BotDecision | null>
   inFlight += 1
   try {
     const prompt = buildLlmPrompt(battle)
-    const response = await fetch(COMPLETIONS_URL, {
+    const response = await fetch(`${apiBase()}/chat/completions`, {
       method: 'POST',
       headers: {
         ...APP_HEADERS,
