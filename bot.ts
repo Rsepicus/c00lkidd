@@ -1862,7 +1862,6 @@ export function bossPanelEmbed(user: UserData, now = Date.now()): EmbedBuilder {
   const week = isoWeekKey(now)
   const day = isoDayKey(now)
   const boss = bossForDay(day)
-  const solo = bossCharacterForDay('1x1', day)
   const duo = bossCharacterForDay('2x2', day)
   const specials = [boss.special, ...(boss.alternates ?? [])]
   const specialIcons = specials.map(special => abilityEmojiText(boss.name, special.name))
@@ -1886,8 +1885,7 @@ export function bossPanelEmbed(user: UserData, now = Date.now()): EmbedBuilder {
     .setTitle(`${emojiText('boss', '👑')} Босс дня: ${characterLabel(boss.name)}`)
     .setDescription(
       `День **${day}** · неделя **${week}**. Босс использует **обе** свои способности, у каждой свой кулдаун.\n` +
-        `${emojiText('hp', '❤️')} 1 на 1: **${solo.hp} HP** · атака **${solo.attack}**\n` +
-        `${emojiText('hp', '❤️')} 2 на 2: **${duo.hp} HP** · атака **${duo.attack}**`,
+        `${emojiText('hp', '❤️')} 2 на 1: **${duo.hp} HP** · атака **${duo.attack}**`,
     )
     .addFields(
       {
@@ -1911,25 +1909,19 @@ export function bossPanelEmbed(user: UserData, now = Date.now()): EmbedBuilder {
 }
 
 export function bossPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
-  const sword = emojiData('swordwhite')
   const duo = emojiData('duo')
-  const solo = new ButtonBuilder()
-    .setCustomId('boss:start:1x1')
-    .setLabel(sword ? '1 на 1' : '⚔️ 1 на 1')
-    .setStyle(ButtonStyle.Danger)
-  if (sword) solo.setEmoji(sword)
   const partner = new ButtonBuilder()
     .setCustomId('boss:start:2x2')
-    .setLabel(duo ? 'С напарником' : '👥 С напарником')
+    .setLabel(duo ? '2 на 1 · с напарником' : '👥 2 на 1 · с напарником')
     .setStyle(ButtonStyle.Primary)
   if (duo) partner.setEmoji(duo)
   const coop = new ButtonBuilder()
     .setCustomId('boss:coop')
-    .setLabel(duo ? 'С игроком' : '👥 С игроком')
+    .setLabel(duo ? '2 на 1 · с игроком' : '👥 2 на 1 · с игроком')
     .setStyle(ButtonStyle.Secondary)
   if (duo) coop.setEmoji(duo)
 
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(solo, partner, coop)]
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(partner, coop)]
 }
 
 export function pvePanelEmbed(): EmbedBuilder {
@@ -1938,7 +1930,7 @@ export function pvePanelEmbed(): EmbedBuilder {
     .setTitle(`${emojiText('swordwhite', '⚔️')} PvE`)
     .setDescription(
       [
-        '**Босс/Boss Rush** — босс дня (solo, с напарником или в кооперативе) или пять боссов подряд.',
+        '**Босс/Boss Rush** — босс дня (2 на 1: с напарником или в кооперативе) или пять боссов подряд.',
         '**Тренировка** — бой с ботами без наград и статистики; можно выбрать героев и способности обеих сторон.',
         '**Выживание/Башня** — волны с растущими врагами или 10 этажей башни. В башне после каждого этажа выбирается одно из трёх усилений, в выживании награда копится за волны.',
         '**Испытания** — особые цели для каждого персонажа за опыт мастерства.',
@@ -1988,7 +1980,7 @@ export function pveBossModesEmbed(): EmbedBuilder {
     .setTitle(`${emojiText('boss', '👑')} Босс и Boss Rush`)
     .setDescription(
       [
-        '**Босс дня** — один босс с обеими способностями. Можно драться solo, со своим напарником или в кооперативе с другим игроком.',
+        '**Босс дня** — один босс с обеими способностями. Бой всегда 2 на 1: активный герой с напарником из профиля или в кооперативе с другим игроком.',
         '**Boss Rush** — пять боссов подряд. После победы восстанавливается 25% HP, награда растёт с каждым этапом.',
       ].join('\n\n'),
     )
@@ -2277,7 +2269,7 @@ export function bossRushPanelEmbed(): EmbedBuilder {
     .setTitle(`${emojiText('boss', '👑')} Boss Rush`)
     .setDescription(
       [
-        `Пять боссов подряд. Между этапами восстанавливается 25% HP.`,
+        `Пять боссов подряд, каждый бой — 2 на 1. Между этапами восстанавливается 25% HP.`,
         `Награды: ${bossRushReward(1)} → ${bossRushReward(BOSS_RUSH_STAGES)} ${emojiText('points', '🪙')}.`,
         'Мастерство начисляется, PvP-статистика и квесты — нет.',
       ].join('\n\n'),
@@ -2289,12 +2281,8 @@ export function bossRushPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId('bossrush:start:1x1')
-        .setLabel('1 на 1')
-        .setStyle(ButtonStyle.Danger),
-      new ButtonBuilder()
         .setCustomId('bossrush:start:2x2')
-        .setLabel('2 на 2')
+        .setLabel('2 на 1')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('pve:menu')
@@ -2319,11 +2307,11 @@ function bossRushNextComponents(): ActionRowBuilder<ButtonBuilder>[] {
   ]
 }
 
-function bossRushAgainComponents(mode: BossMode): ActionRowBuilder<ButtonBuilder>[] {
+function bossRushAgainComponents(): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`bossrush:start:${mode}`)
+        .setCustomId('bossrush:start:2x2')
         .setLabel('Ещё забег')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
@@ -2820,10 +2808,10 @@ export function bossCoopRematchComponents(): ActionRowBuilder<ButtonBuilder>[] {
   return [new ActionRowBuilder<ButtonBuilder>().addComponents(button)]
 }
 
-function bossRetryComponents(mode: BossMode): ActionRowBuilder<ButtonBuilder>[] {
+function bossRetryComponents(): ActionRowBuilder<ButtonBuilder>[] {
   const retry = emojiData('retry')
   const button = new ButtonBuilder()
-    .setCustomId(`boss:start:${mode}`)
+    .setCustomId('boss:start:2x2')
     .setLabel(retry ? 'Ещё раз' : '🔄 Ещё раз')
     .setStyle(ButtonStyle.Primary)
   if (retry) button.setEmoji(retry)
@@ -4830,7 +4818,7 @@ function finishBattleState(
       }
       components = bossCoopRematchComponents()
     } else {
-      components = bossRetryComponents(boss.mode)
+      components = bossRetryComponents()
     }
   } else if (bossRush) {
     const ownerId = bossRush.ownerId
@@ -4886,7 +4874,7 @@ function finishBattleState(
     components =
       nextRun.status === 'active'
         ? bossRushNextComponents()
-        : bossRushAgainComponents(run.mode)
+        : bossRushAgainComponents()
   } else if (tower) {
     const ownerId = tower.ownerId
     const run = tower.run
@@ -6528,7 +6516,9 @@ async function handleBossStart(interaction: ButtonInteraction): Promise<void> {
     return
   }
 
-  const mode: BossMode = interaction.customId.endsWith(':2x2') ? '2x2' : '1x1'
+  // Boss fights are always two heroes against the boss, even if an old
+  // 1x1 button is still present on a panel sent before the update.
+  const mode: BossMode = '2x2'
   const week = isoWeekKey()
   const day = isoDayKey()
   const user = userOf(interaction.user.id)
@@ -6539,19 +6529,9 @@ async function handleBossStart(interaction: ButtonInteraction): Promise<void> {
     character: boss,
     boss: true,
   }
-  const battle =
-    mode === '2x2'
-      ? createTeamBattle(teamEntries(user, interaction.user.id, interaction.user.displayName), [
-          bossEntry,
-        ])
-      : createBattle(
-          {
-            userId: interaction.user.id,
-            name: interaction.user.displayName,
-            character: activeCharacter(user),
-          },
-          bossEntry,
-        )
+  const battle = createTeamBattle(teamEntries(user, interaction.user.id, interaction.user.displayName), [
+    bossEntry,
+  ])
 
   await interaction.reply({
     embeds: [battleEmbed(battle)],
@@ -8208,9 +8188,8 @@ async function handleBossRushButton(interaction: ButtonInteraction): Promise<voi
     return
   }
   if (interaction.customId.startsWith('bossrush:start:')) {
-    const mode: BossMode = interaction.customId.endsWith(':2x2') ? '2x2' : '1x1'
     const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0
-    const run = createBossRush(mode, seed)
+    const run = createBossRush('2x2', seed)
     await launchBossRushBattle(interaction, ownerId, run, messageId)
   }
 }

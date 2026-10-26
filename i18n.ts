@@ -203,7 +203,7 @@ const EXACT: Record<string, string> = {
   'Противник: **тени игроков**': 'Opponent: **player shadows**',
   'Ещё бой': 'Battle again',
   'В меню PvE': 'PvE menu',
-  'Пять боссов подряд. Между этапами восстанавливается 25% HP.':
+  'Пять боссов подряд, каждый бой — 2 на 1. Между этапами восстанавливается 25% HP.':
     'Five bosses in a row. You restore 25% HP between stages.',
   'Мастерство начисляется, PvP-статистика и квесты — нет.':
     'Mastery is awarded; PvP stats and quests are not.',
@@ -508,10 +508,15 @@ const EXACT: Record<string, string> = {
   'Пока нет боёв.': 'No battles yet.',
   '**Босс** — босс дня: solo, со своим напарником или в кооперативе с другим игроком.':
     '**Boss** — boss of the day: solo, with your partner or co-op with another player.',
-  '**Босс/Boss Rush** — босс дня (solo, с напарником или в кооперативе) или пять боссов подряд.':
-    '**Boss/Boss Rush** — boss of the day (solo, with a partner or in co-op) or five bosses in a row.',
-  '**Босс дня** — один босс с обеими способностями. Можно драться solo, со своим напарником или в кооперативе с другим игроком.':
-    '**Boss of the day** — one boss with both abilities. Fight solo, with your own partner or in co-op with another player.',
+  '**Босс/Boss Rush** — босс дня (2 на 1: с напарником или в кооперативе) или пять боссов подряд.':
+    '**Boss/Boss Rush** — boss of the day (2v1: with a partner or in co-op) or five bosses in a row.',
+  '**Босс дня** — один босс с обеими способностями. Бой всегда 2 на 1: активный герой с напарником из профиля или в кооперативе с другим игроком.':
+    '**Boss of the day** — one boss with both abilities. The fight is always 2v1: your active hero with a partner from your profile, or in co-op with another player.',
+  '2 на 1': '2v1',
+  '2 на 1 · с напарником': '2v1 · with partner',
+  '2 на 1 · с игроком': '2v1 · with player',
+  '👥 2 на 1 · с напарником': '👥 2v1 · with partner',
+  '👥 2 на 1 · с игроком': '👥 2v1 · with player',
   'Босс и Boss Rush': 'Boss and Boss Rush',
   'Ищу соперника на всех серверах…': 'Searching for an opponent across all servers…',
   'Снова ищу соперника…': 'Searching for an opponent again…',

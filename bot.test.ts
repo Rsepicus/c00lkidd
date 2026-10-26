@@ -785,7 +785,7 @@ describe('embeds', () => {
     }
   })
 
-  test('boss panel shows both abilities, weekly damage and three fight buttons', () => {
+  test('boss panel is always 2v1 with both abilities and weekly damage', () => {
     const embed = bossPanelEmbed(defaultUser(), Date.UTC(2026, 0, 1)).toJSON()
     expect(embed.title).toContain('Босс дня')
     const fields = embed.fields?.map(field => field.name).join(' ') ?? ''
@@ -793,10 +793,11 @@ describe('embeds', () => {
     expect(fields).toContain('Способность 2')
     expect(fields).not.toContain('Твой рекорд')
     expect(String(embed.description)).not.toContain('Модификатор')
+    expect(String(embed.description)).toContain('2 на 1')
+    expect(String(embed.description)).not.toContain('1 на 1')
 
     const buttons = bossPanelComponents()[0].toJSON().components
     expect(buttons.map(button => button.custom_id)).toEqual([
-      'boss:start:1x1',
       'boss:start:2x2',
       'boss:coop',
     ])
@@ -1148,7 +1149,6 @@ describe('embeds', () => {
 
     const rows = pveBossComponents().map(row => row.toJSON())
     expect(rows[0].components.map(component => component.custom_id)).toEqual([
-      'boss:start:1x1',
       'boss:start:2x2',
       'boss:coop',
     ])
@@ -1462,11 +1462,10 @@ describe('embeds', () => {
     expect(trainingPlayerCharacter(defaultUser(), setup).name).toBe('Jason')
   })
 
-  test('Boss Rush panel offers both modes', () => {
+  test('Boss Rush panel starts a 2v1 run', () => {
     expect(String(bossRushPanelEmbed().toJSON().title)).toContain('Boss Rush')
     const buttons = bossRushPanelComponents()[0].toJSON().components
     expect(buttons.map(button => button.custom_id)).toEqual([
-      'bossrush:start:1x1',
       'bossrush:start:2x2',
       'pve:menu',
     ])
