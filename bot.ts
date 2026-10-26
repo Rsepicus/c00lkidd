@@ -30,7 +30,13 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
-import { chooseLlmTurn, llmAiEnabled, llmDebugEnabled, warmLlmModel } from './llm-ai'
+import {
+  chooseLlmTurn,
+  importLlmEnv,
+  llmAiEnabled,
+  llmDebugEnabled,
+  warmLlmModel,
+} from './llm-ai'
 import { simulateBalance, type BalanceSimulation } from './balance'
 import {
   loadBattleState,
@@ -8855,6 +8861,7 @@ async function main(): Promise<void> {
   setInterval(() => backupDataFiles(dirname(DATA_PATH)), 24 * 60 * 60 * 1000).unref?.()
   const envPath = join(dirname(fileURLToPath(import.meta.url)), '.env')
   const envContents = existsSync(envPath) ? readFileSync(envPath, 'utf8') : null
+  importLlmEnv(envContents)
   const token = resolveToken(process.env.DISCORD_BOT_TOKEN, envContents)
   const commands = commandDefinitions()
 

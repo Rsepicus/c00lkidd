@@ -3,6 +3,7 @@ import { characterByName } from './forsaken'
 import {
   chooseLlmTurn,
   buildLlmPrompt,
+  importLlmEnv,
   llmAiEnabled,
   llmDebugEnabled,
   llmPauseMs,
@@ -151,9 +152,49 @@ describe('LLM decision parsing', () => {
   test('parses several Groq keys and drops duplicates', () => {
     expect(parseApiKeys('a,b c\nd', undefined)).toEqual(['a', 'b', 'c', 'd'])
     expect(parseApiKeys('a, a', 'b')).toEqual(['a', 'b'])
+    expect(parseApiKeys('"a,b"')).toEqual(['a', 'b'])
     expect(parseApiKeys(undefined, '')).toEqual([])
     process.env.GROQ_API_KEYS = 'k1,k2'
     expect(llmAiEnabled()).toBe(true)
+  })
+
+  test('accepts numbered Groq key variables', () => {
+    const original1 = process.env.GROQ_API_KEY_1
+    const original2 = process.env.GROQ_API_KEY_2
+    try {
+      delete process.env.OPENROUTER_API_KEY
+      delete process.env.GROQ_API_KEY
+      delete process.env.GROQ_API_KEYS
+      process.env.GROQ_API_KEY_1 = 'one'
+      process.env.GROQ_API_KEY_2 = 'two'
+      expect(llmAiEnabled()).toBe(true)
+    } finally {
+      if (original1 === undefined) delete process.env.GROQ_API_KEY_1
+      else process.env.GROQ_API_KEY_1 = original1
+      if (original2 === undefined) delete process.env.GROQ_API_KEY_2
+      else process.env.GROQ_API_KEY_2 = original2
+    }
+  })
+
+  test('imports LLM keys from .env without overriding process env', () => {
+    const originalModel = process.env.OPENROUTER_MODEL
+    try {
+      delete process.env.OPENROUTER_MODEL
+      delete process.env.GROQ_API_KEYS
+      importLlmEnv(
+        'export OPENROUTER_MODEL="from-file"\n' +
+          'GROQ_API_KEYS="g1,g2"\n' +
+          'DISCORD_BOT_TOKEN=ignored\n',
+      )
+      expect(process.env.OPENROUTER_MODEL).toBe('from-file')
+      expect(process.env.GROQ_API_KEYS).toBe('g1,g2')
+      process.env.OPENROUTER_MODEL = 'from-env'
+      importLlmEnv('OPENROUTER_MODEL=ignored')
+      expect(process.env.OPENROUTER_MODEL).toBe('from-env')
+    } finally {
+      if (originalModel === undefined) delete process.env.OPENROUTER_MODEL
+      else process.env.OPENROUTER_MODEL = originalModel
+    }
   })
 
   test('daily free-model limit pauses until UTC midnight', () => {

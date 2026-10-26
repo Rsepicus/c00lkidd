@@ -43,7 +43,10 @@ const PREFERRED_FREE_MODELS = [
   'google/gemini-2.0-flash-exp:free',
   'mistralai/mistral-small-3.1-24b-instruct:free',
 ]
-const EXCLUDED_MODEL = /(embed|whisper|tts|rerank|moderation|image|code|coder|math|reason)/i
+const EXCLUDED_MODEL =
+  /(embed|whisper|tts|rerank|moderation|image|code|coder|math|reason|deepseek-r1|qwq)/i
+const KNOWN_MODEL_HINT =
+  /(llama|qwen|deepseek|mistral|gemini|gpt-oss|glm|kimi|minimax|granite|command|phi)/i
 
 const SYSTEM_PROMPT = [
   'You are the combat AI of a turn-based Discord game.',
@@ -94,8 +97,13 @@ const keyRotation = new Map<ProviderId, number>()
 /** Accepts comma-, space- or newline-separated keys and drops duplicates. */
 export function parseApiKeys(...values: Array<string | undefined>): string[] {
   const keys = values
-    .flatMap(value => (value ?? '').split(/[\s,]+/))
-    .map(value => value.trim())
+    .flatMap(value =>
+      (value ?? '')
+        .trim()
+        .replace(/^(['"])(.*)\1$/, '$2')
+        .split(/[\s,]+/),
+    )
+    .map(value => value.trim().replace(/^(['"])(.*)\1$/, '$2'))
     .filter(Boolean)
   return [...new Set(keys)]
 }
@@ -106,7 +114,35 @@ function openRouterKeys(): string[] {
 }
 
 function groqKeys(): string[] {
-  return parseApiKeys(process.env.GROQ_API_KEYS, process.env.GROQ_API_KEY)
+  // Support the documented names plus common numbered variants such as
+  // GROQ_API_KEY_1 / GROQ_API_KEY_2.
+  const numbered = Object.entries(process.env)
+    .filter(([name, value]) => /^GROQ_(?:API_)?KEY_?\d*$/.test(name) && value)
+    .map(([, value]) => value)
+  return parseApiKeys(
+    process.env.GROQ_API_KEYS,
+    process.env.GROQ_API_KEY,
+    process.env.GROQ_KEYS,
+    ...numbered,
+  )
+}
+
+/**
+ * Imports LLM settings from the bot's .env file. Bun normally loads .env, but
+ * the bot may run with a different cwd on a panel host; the Discord token is
+ * already read manually for the same reason. Existing process env wins.
+ */
+export function importLlmEnv(contents: string | null): void {
+  if (!contents) return
+  for (const line of contents.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
+    if (!match) continue
+    const name = match[1]
+    if (!name.startsWith('OPENROUTER_') && !name.startsWith('GROQ_')) continue
+    if (process.env[name] !== undefined) continue
+    const value = match[2].trim().replace(/^(['"])(.*)\1$/, '$2')
+    if (value) process.env[name] = value
+  }
 }
 
 export function llmAiEnabled(): boolean {
@@ -230,7 +266,17 @@ async function discoverOpenRouterModel(): Promise<string | null> {
       if (freeIds.includes(preferred)) return preferred
     }
     const chatty = freeIds.filter(id => /(instruct|chat)/i.test(id))
-    const model = (chatty.length > 0 ? chatty : freeIds).sort()[0] ?? null
+    const known = freeIds.filter(id => KNOWN_MODEL_HINT.test(id))
+    const chattyKnown = chatty.filter(id => KNOWN_MODEL_HINT.test(id))
+    const candidates =
+      chattyKnown.length > 0
+        ? chattyKnown
+        : known.length > 0
+          ? known
+          : chatty.length > 0
+            ? chatty
+            : freeIds
+    const model = candidates.sort()[0] ?? null
     if (!model) discoveryBlockedUntil = Date.now() + 10 * 60_000
     return model
   } catch {
@@ -287,7 +333,18 @@ function providers(): Provider[] {
 
 /** Fetches model lists once so the first battle turn is not delayed. */
 export async function warmLlmModel(): Promise<void> {
-  for (const provider of providers()) {
+  const list = providers()
+  if (list.length === 0) {
+    console.warn(
+      '[bot] LLM AI: ключи не заданы (OPENROUTER_API_KEY / GROQ_API_KEY или ' +
+        'GROQ_API_KEYS), работает эвристика.',
+    )
+    return
+  }
+  const ids = new Set(list.map(provider => provider.id))
+  if (!ids.has('openrouter')) console.log('[bot] LLM AI: OpenRouter-ключ не задан.')
+  if (!ids.has('groq')) console.log('[bot] LLM AI: Groq-ключи не заданы.')
+  for (const provider of list) {
     const model = await provider.model()
     if (model) {
       const keys = provider.keys.length > 1 ? ` (ключей: ${provider.keys.length})` : ''
