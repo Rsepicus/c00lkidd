@@ -211,6 +211,12 @@ describe('2 на 2', () => {
     expect(battle.sides[1].hp).toBeLessThan(before)
   })
 
+  test('Builderman turret has a longer cooldown than the dispenser', () => {
+    const builderman = characterByName('Builderman')!
+    expect(specialCooldown(builderman.special)).toBe(4)
+    expect(specialCooldown(builderman.alternates![0])).toBe(3)
+  })
+
   test('Dispenser places a structure that heals allies on its turn', () => {
     const builderman = characterWithSpecial(characterByName('Builderman')!, 'Dispenser')
     let battle = createTeamBattle(team(builderman, heavy), opponents())

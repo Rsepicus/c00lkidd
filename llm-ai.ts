@@ -65,6 +65,11 @@ export function llmAiEnabled(): boolean {
   return Boolean(process.env.OPENROUTER_API_KEY?.trim())
 }
 
+export function llmDebugEnabled(): boolean {
+  const value = process.env.OPENROUTER_DEBUG?.trim().toLowerCase()
+  return value === '1' || value === 'true' || value === 'yes'
+}
+
 function llmScope(): 'all' | 'boss' {
   return process.env.OPENROUTER_SCOPE === 'boss' ? 'boss' : 'all'
 }

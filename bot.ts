@@ -30,7 +30,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
-import { chooseLlmTurn, llmAiEnabled, warmLlmModel } from './llm-ai'
+import { chooseLlmTurn, llmAiEnabled, llmDebugEnabled, warmLlmModel } from './llm-ai'
 import { simulateBalance, type BalanceSimulation } from './balance'
 import {
   loadBattleState,
@@ -4268,6 +4268,18 @@ async function runAutomatedTurns(input: Battle, events: string[]): Promise<Battl
     } else {
       const llmDecision = llmCalls < 3 ? await chooseLlmTurn(current) : null
       if (llmDecision) llmCalls += 1
+      if (llmDebugEnabled()) {
+        const who = `${side.character.name} #${side.id}`
+        if (llmDecision) {
+          const slot =
+            llmDecision.action === 'special' ? ` (special ${llmDecision.specialIndex})` : ''
+          const target =
+            llmDecision.targetIndex !== undefined ? ` → #${llmDecision.targetIndex}` : ''
+          console.log(`[bot] LLM AI: ${who} — модель: ${llmDecision.action}${slot}${target}`)
+        } else {
+          console.log(`[bot] LLM AI: ${who} — эвристика`)
+        }
+      }
       decision =
         llmDecision ??
         (side.boss

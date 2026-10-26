@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { characterByName } from './forsaken'
-import { chooseLlmTurn, buildLlmPrompt, parseLlmDecision } from './llm-ai'
+import {
+  chooseLlmTurn,
+  buildLlmPrompt,
+  llmDebugEnabled,
+  parseLlmDecision,
+} from './llm-ai'
 import { createBattle } from './pvp'
 
 function battleWith(left: string, right = 'Noob') {
@@ -122,5 +127,22 @@ describe('LLM decision parsing', () => {
     delete process.env.OPENROUTER_API_KEY
     const battle = battleWith('Noob')
     expect(await chooseLlmTurn(battle)).toBeNull()
+  })
+
+  test('turns on per-turn logging only for explicit debug values', () => {
+    const original = process.env.OPENROUTER_DEBUG
+    try {
+      delete process.env.OPENROUTER_DEBUG
+      expect(llmDebugEnabled()).toBe(false)
+      process.env.OPENROUTER_DEBUG = '0'
+      expect(llmDebugEnabled()).toBe(false)
+      process.env.OPENROUTER_DEBUG = '1'
+      expect(llmDebugEnabled()).toBe(true)
+      process.env.OPENROUTER_DEBUG = 'true'
+      expect(llmDebugEnabled()).toBe(true)
+    } finally {
+      if (original === undefined) delete process.env.OPENROUTER_DEBUG
+      else process.env.OPENROUTER_DEBUG = original
+    }
   })
 })
