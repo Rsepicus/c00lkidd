@@ -11,14 +11,17 @@ import {
 } from './pvp'
 
 /**
- * Optional OpenRouter-backed combat brain for automated sides.
+ * Optional LLM combat brain for automated sides.
  *
- * The heuristic in ai.ts stays the source of truth: the LLM only decides when
- * a free model answers quickly with a legal action. Any failure, timeout or
- * rate limit falls back to the heuristic, so battles never stall.
+ * OpenRouter is tried first, then Groq as a separate free fallback. The
+ * heuristic in ai.ts stays the source of truth: the LLM only decides when a
+ * provider answers quickly with a legal action. Any failure, timeout or rate
+ * limit falls back to the heuristic, so battles never stall.
  */
 
-const DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
+const DEFAULT_OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+const DEFAULT_GROQ_BASE = 'https://api.groq.com/openai/v1'
+const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile'
 const APP_HEADERS = {
   'HTTP-Referer': 'https://github.com/Rsepicus/c00lkidd',
   'X-Title': 'Forsaken Simulator',
@@ -30,8 +33,9 @@ const PAUSE_RATE_LIMIT_MS = 5 * 60_000
 const PAUSE_AUTH_MS = 15 * 60_000
 const PAUSE_ERROR_MS = 60_000
 const PAUSE_NETWORK_MS = 30_000
+const OPENROUTER_DAILY_LIMIT = 'free-models-per-day'
 
-// Chat models first: reasoning models are slow enough to be useless in a turn.
+// Chat models first: reasoning and code models are slow or bad at tactics.
 const PREFERRED_FREE_MODELS = [
   'deepseek/deepseek-chat-v3-0324:free',
   'meta-llama/llama-3.3-70b-instruct:free',
@@ -39,6 +43,7 @@ const PREFERRED_FREE_MODELS = [
   'google/gemini-2.0-flash-exp:free',
   'mistralai/mistral-small-3.1-24b-instruct:free',
 ]
+const EXCLUDED_MODEL = /(embed|whisper|tts|rerank|moderation|image|code|coder|math|reason)/i
 
 const SYSTEM_PROMPT = [
   'You are the combat AI of a turn-based Discord game.',
@@ -55,14 +60,37 @@ const SYSTEM_PROMPT = [
   'Omit target when the action needs none.',
 ].join('\n')
 
+type ProviderId = 'openrouter' | 'groq'
+
+type Provider = {
+  id: ProviderId
+  label: string
+  apiKey: string
+  baseUrl: string
+  model: () => Promise<string | null>
+  headers: Record<string, string>
+  /** OpenRouter's free-models-per-day limit can be detected in its 429 body. */
+  hasDailyFreeLimit: boolean
+}
+
+type RequestResult = { decision: BotDecision | null; failed: boolean }
+
+export type LlmTurn = {
+  decision: BotDecision
+  provider: string
+  model: string
+}
+
 let inFlight = 0
-let pausedUntil = 0
 let discoveryBlockedUntil = 0
-let cachedModel: string | null = null
+let cachedOpenRouterModel: string | null = null
 let resolvePromise: Promise<string | null> | null = null
+const providerPauses = new Map<ProviderId, number>()
 
 export function llmAiEnabled(): boolean {
-  return Boolean(process.env.OPENROUTER_API_KEY?.trim())
+  return Boolean(
+    process.env.OPENROUTER_API_KEY?.trim() || process.env.GROQ_API_KEY?.trim(),
+  )
 }
 
 export function llmDebugEnabled(): boolean {
@@ -74,25 +102,68 @@ function llmScope(): 'all' | 'boss' {
   return process.env.OPENROUTER_SCOPE === 'boss' ? 'boss' : 'all'
 }
 
-function apiBase(): string {
-  const configured = process.env.OPENROUTER_BASE_URL?.trim()
-  return (configured || DEFAULT_BASE_URL).replace(/\/+$/, '')
-}
-
 function timeoutMs(): number {
   const configured = Number(process.env.OPENROUTER_TIMEOUT_MS)
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS
 }
 
-function pause(reason: string, ms: number): void {
-  pausedUntil = Math.max(pausedUntil, Date.now() + ms)
-  console.warn(`[bot] LLM AI на паузе (${reason}); ходы считает эвристика.`)
+function apiBase(envName: string, fallback: string): string {
+  const configured = process.env[envName]?.trim()
+  return (configured || fallback).replace(/\/+$/, '')
 }
 
-async function discoverFreeModel(): Promise<string | null> {
+/** Milliseconds until the next UTC midnight, used for a daily free-model cap. */
+function msUntilUtcMidnight(now = Date.now()): number {
+  const date = new Date(now)
+  const next = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1)
+  return Math.max(60_000, next - now + 60_000)
+}
+
+/** How long a provider should stay paused after a failed request. */
+export function llmPauseMs(
+  status: number,
+  body: string,
+  hasDailyFreeLimit: boolean,
+  now = Date.now(),
+): number {
+  if (status === 401 || status === 403 || status === 402) return PAUSE_AUTH_MS
+  if (status === 429) {
+    if (hasDailyFreeLimit && body.includes(OPENROUTER_DAILY_LIMIT)) {
+      return msUntilUtcMidnight(now)
+    }
+    return PAUSE_RATE_LIMIT_MS
+  }
+  if (status === 0) return PAUSE_NETWORK_MS
+  return PAUSE_ERROR_MS
+}
+
+function pauseProvider(
+  provider: Provider,
+  status: number,
+  detail: string,
+  now = Date.now(),
+): void {
+  if (status === 404 && provider.id === 'openrouter') cachedOpenRouterModel = null
+  const duration = llmPauseMs(status, detail, provider.hasDailyFreeLimit, now)
+  providerPauses.set(
+    provider.id,
+    Math.max(providerPauses.get(provider.id) ?? 0, now + duration),
+  )
+  const dailyLimit =
+    status === 429 &&
+    provider.hasDailyFreeLimit &&
+    detail.includes(OPENROUTER_DAILY_LIMIT)
+  const reason = dailyLimit
+    ? 'дневной лимит бесплатных моделей исчерпан'
+    : `${status || 'сеть'} ${detail}`.trim()
+  console.warn(`[bot] LLM AI (${provider.label}) на паузе (${reason}); ходы считает эвристика.`)
+}
+
+async function discoverOpenRouterModel(): Promise<string | null> {
   if (Date.now() < discoveryBlockedUntil) return null
+  const baseUrl = apiBase('OPENROUTER_BASE_URL', DEFAULT_OPENROUTER_BASE)
   try {
-    const response = await fetch(`${apiBase()}/models`, {
+    const response = await fetch(`${baseUrl}/models`, {
       headers: APP_HEADERS,
       signal: AbortSignal.timeout(4000),
     })
@@ -108,7 +179,7 @@ async function discoverFreeModel(): Promise<string | null> {
     }
     const freeIds = (payload.data ?? [])
       .filter(row => typeof row.id === 'string' && row.id.endsWith(':free'))
-      .filter(row => !/(embed|whisper|tts|rerank|moderation|image)/i.test(row.id as string))
+      .filter(row => !EXCLUDED_MODEL.test(row.id as string))
       .filter(row => {
         const prompt = Number(row.pricing?.prompt)
         const completion = Number(row.pricing?.completion)
@@ -129,14 +200,14 @@ async function discoverFreeModel(): Promise<string | null> {
   }
 }
 
-async function resolveModel(): Promise<string | null> {
+async function resolveOpenRouterModel(): Promise<string | null> {
   const configured = process.env.OPENROUTER_MODEL?.trim()
   if (configured) return configured
-  if (cachedModel) return cachedModel
+  if (cachedOpenRouterModel) return cachedOpenRouterModel
   if (resolvePromise) return resolvePromise
   resolvePromise = (async () => {
-    const model = await discoverFreeModel()
-    if (model) cachedModel = model
+    const model = await discoverOpenRouterModel()
+    if (model) cachedOpenRouterModel = model
     return model
   })()
   try {
@@ -146,12 +217,46 @@ async function resolveModel(): Promise<string | null> {
   }
 }
 
-/** Fetches the free model list once so the first battle turn is not delayed. */
+function providers(): Provider[] {
+  const openrouterKey = process.env.OPENROUTER_API_KEY?.trim()
+  const groqKey = process.env.GROQ_API_KEY?.trim()
+  const list: Provider[] = []
+  if (openrouterKey) {
+    list.push({
+      id: 'openrouter',
+      label: 'OpenRouter',
+      apiKey: openrouterKey,
+      baseUrl: apiBase('OPENROUTER_BASE_URL', DEFAULT_OPENROUTER_BASE),
+      model: resolveOpenRouterModel,
+      headers: APP_HEADERS,
+      hasDailyFreeLimit: true,
+    })
+  }
+  if (groqKey) {
+    list.push({
+      id: 'groq',
+      label: 'Groq',
+      apiKey: groqKey,
+      baseUrl: apiBase('GROQ_BASE_URL', DEFAULT_GROQ_BASE),
+      model: async () => process.env.GROQ_MODEL?.trim() || DEFAULT_GROQ_MODEL,
+      headers: {},
+      hasDailyFreeLimit: false,
+    })
+  }
+  return list
+}
+
+/** Fetches model lists once so the first battle turn is not delayed. */
 export async function warmLlmModel(): Promise<void> {
-  if (!llmAiEnabled()) return
-  const model = await resolveModel()
-  if (model) console.log(`[bot] LLM AI: модель ${model}`)
-  else console.warn('[bot] LLM AI: бесплатная модель OpenRouter не найдена, работает эвристика.')
+  for (const provider of providers()) {
+    const model = await provider.model()
+    if (model) console.log(`[bot] LLM AI: ${provider.label} — ${model}`)
+    else {
+      console.warn(
+        `[bot] LLM AI: ${provider.label} — модель не найдена, провайдер пропускается.`,
+      )
+    }
+  }
 }
 
 function describeSide(side: Side, withCooldowns = false): string {
@@ -221,7 +326,8 @@ export function buildLlmPrompt(battle: Battle): string {
     'LEGAL ACTIONS:',
   ]
   if (enemies.length > 0) {
-    lines.push(`- attack: pick one enemy target from [${enemies.map(enemy => `#${enemy.id}`).join(', ')}]`)
+    const ids = enemies.map(enemy => `#${enemy.id}`).join(', ')
+    lines.push(`- attack: pick one enemy target from [${ids}]`)
   }
   lines.push('- special: only from the READY abilities above')
   lines.push('- juke: no target')
@@ -292,34 +398,24 @@ export function parseLlmDecision(raw: string, battle: Battle): BotDecision | nul
   return { action, specialIndex }
 }
 
-export async function chooseLlmTurn(battle: Battle): Promise<BotDecision | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY?.trim()
-  if (!apiKey) return null
-  if (Date.now() < pausedUntil) return null
-  if (inFlight >= MAX_CONCURRENT) return null
-  const side = battle.sides[battle.turn]
-  if (!side || battle.finished || side.hp <= 0) return null
-  if (side.minion || side.fake) return null
-  if (side.stunned) return null
-  if (llmScope() === 'boss' && !side.boss) return null
-  const model = await resolveModel()
-  if (!model) return null
-
-  inFlight += 1
+async function requestDecision(
+  provider: Provider,
+  model: string,
+  battle: Battle,
+): Promise<RequestResult> {
   try {
-    const prompt = buildLlmPrompt(battle)
-    const response = await fetch(`${apiBase()}/chat/completions`, {
+    const response = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
-        ...APP_HEADERS,
-        Authorization: `Bearer ${apiKey}`,
+        ...provider.headers,
+        Authorization: `Bearer ${provider.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
+          { role: 'user', content: buildLlmPrompt(battle) },
         ],
         temperature: 0.2,
         max_tokens: 80,
@@ -328,26 +424,56 @@ export async function chooseLlmTurn(battle: Battle): Promise<BotDecision | null>
     })
     if (!response.ok) {
       const detail = (await response.text().catch(() => '')).slice(0, 160)
-      if (response.status === 401 || response.status === 403 || response.status === 402) {
-        pause(`${response.status} ${detail}`, PAUSE_AUTH_MS)
-      } else if (response.status === 429) {
-        pause(`429 ${detail}`, PAUSE_RATE_LIMIT_MS)
-      } else {
-        if (response.status === 404) cachedModel = null
-        pause(`${response.status} ${detail}`, PAUSE_ERROR_MS)
-      }
-      return null
+      pauseProvider(provider, response.status, detail)
+      return { decision: null, failed: true }
     }
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: unknown } }>
     }
     const content = data.choices?.[0]?.message?.content
-    return typeof content === 'string' ? parseLlmDecision(content, battle) : null
+    if (typeof content !== 'string') return { decision: null, failed: true }
+    const decision = parseLlmDecision(content, battle)
+    if (!decision && llmDebugEnabled()) {
+      console.warn(
+        `[bot] LLM AI (${provider.label}) вернул невалидный ответ: ${content.slice(0, 120)}`,
+      )
+    }
+    return { decision, failed: false }
   } catch (error) {
     const name = error instanceof Error ? error.name : 'network error'
-    pause(name, PAUSE_NETWORK_MS)
-    return null
-  } finally {
-    inFlight -= 1
+    pauseProvider(provider, 0, name)
+    return { decision: null, failed: true }
   }
+}
+
+export async function chooseLlmTurn(battle: Battle): Promise<LlmTurn | null> {
+  const side = battle.sides[battle.turn]
+  if (!side || battle.finished || side.hp <= 0) return null
+  if (side.minion || side.fake) return null
+  if (side.stunned) return null
+  if (llmScope() === 'boss' && !side.boss) return null
+  const list = providers()
+  if (list.length === 0) return null
+  if (inFlight >= MAX_CONCURRENT) return null
+
+  for (const provider of list) {
+    if (inFlight >= MAX_CONCURRENT) break
+    if (Date.now() < (providerPauses.get(provider.id) ?? 0)) continue
+    const model = await provider.model()
+    // No model means this provider cannot answer; try the next one.
+    if (!model) continue
+    inFlight += 1
+    try {
+      const result = await requestDecision(provider, model, battle)
+      if (result.decision) {
+        return { decision: result.decision, provider: provider.label, model }
+      }
+      // A valid provider response with an unusable answer: do not spend a
+      // second provider's quota on the same turn.
+      if (!result.failed) return null
+    } finally {
+      inFlight -= 1
+    }
+  }
+  return null
 }

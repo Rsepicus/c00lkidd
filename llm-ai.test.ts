@@ -3,7 +3,9 @@ import { characterByName } from './forsaken'
 import {
   chooseLlmTurn,
   buildLlmPrompt,
+  llmAiEnabled,
   llmDebugEnabled,
+  llmPauseMs,
   parseLlmDecision,
 } from './llm-ai'
 import { createBattle } from './pvp'
@@ -24,9 +26,12 @@ function battleWith(left: string, right = 'Noob') {
 }
 
 const originalKey = process.env.OPENROUTER_API_KEY
+const originalGroqKey = process.env.GROQ_API_KEY
 afterEach(() => {
   if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY
   else process.env.OPENROUTER_API_KEY = originalKey
+  if (originalGroqKey === undefined) delete process.env.GROQ_API_KEY
+  else process.env.GROQ_API_KEY = originalGroqKey
 })
 
 describe('LLM battle prompt', () => {
@@ -125,8 +130,32 @@ describe('LLM decision parsing', () => {
 
   test('does nothing without an API key', async () => {
     delete process.env.OPENROUTER_API_KEY
+    delete process.env.GROQ_API_KEY
     const battle = battleWith('Noob')
     expect(await chooseLlmTurn(battle)).toBeNull()
+  })
+
+  test('Groq alone is enough to enable the LLM', () => {
+    delete process.env.OPENROUTER_API_KEY
+    process.env.GROQ_API_KEY = 'groq-key'
+    expect(llmAiEnabled()).toBe(true)
+    delete process.env.GROQ_API_KEY
+    expect(llmAiEnabled()).toBe(false)
+  })
+
+  test('daily free-model limit pauses until UTC midnight', () => {
+    const noon = Date.UTC(2026, 9, 26, 12, 0, 0)
+    const daily = llmPauseMs(
+      429,
+      '{"error":{"message":"Rate limit exceeded: free-models-per-day"}}',
+      true,
+      noon,
+    )
+    expect(daily).toBeGreaterThan(11 * 60 * 60_000)
+    expect(daily).toBeLessThanOrEqual(13 * 60 * 60_000)
+    expect(llmPauseMs(429, 'free-models-per-day', false, noon)).toBe(5 * 60_000)
+    expect(llmPauseMs(429, 'rate limited', true, noon)).toBe(5 * 60_000)
+    expect(llmPauseMs(401, 'bad key', true, noon)).toBe(15 * 60_000)
   })
 
   test('turns on per-turn logging only for explicit debug values', () => {

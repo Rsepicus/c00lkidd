@@ -4266,16 +4266,24 @@ async function runAutomatedTurns(input: Battle, events: string[]): Promise<Battl
     } else if (side.minion) {
       decision = { action: 'attack', specialIndex: 0 }
     } else {
-      const llmDecision = llmCalls < 3 ? await chooseLlmTurn(current) : null
-      if (llmDecision) llmCalls += 1
+      const llmTurn = llmCalls < 3 ? await chooseLlmTurn(current) : null
+      const llmDecision = llmTurn?.decision ?? null
+      if (llmTurn) llmCalls += 1
       if (llmDebugEnabled()) {
         const who = `${side.character.name} #${side.id}`
-        if (llmDecision) {
+        if (llmTurn) {
           const slot =
-            llmDecision.action === 'special' ? ` (special ${llmDecision.specialIndex})` : ''
+            llmTurn.decision.action === 'special'
+              ? ` (special ${llmTurn.decision.specialIndex})`
+              : ''
           const target =
-            llmDecision.targetIndex !== undefined ? ` → #${llmDecision.targetIndex}` : ''
-          console.log(`[bot] LLM AI: ${who} — модель: ${llmDecision.action}${slot}${target}`)
+            llmTurn.decision.targetIndex !== undefined
+              ? ` → #${llmTurn.decision.targetIndex}`
+              : ''
+          console.log(
+            `[bot] LLM AI: ${who} — ${llmTurn.provider} (${llmTurn.model}): ` +
+              `${llmTurn.decision.action}${slot}${target}`,
+          )
         } else {
           console.log(`[bot] LLM AI: ${who} — эвристика`)
         }
