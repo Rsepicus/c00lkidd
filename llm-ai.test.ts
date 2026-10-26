@@ -15,6 +15,7 @@ import {
   parseApiKeys,
   parseLlmDecision,
   pickGroqModel,
+  validateLlmDecision,
 } from './llm-ai'
 import { createBattle } from './pvp'
 
@@ -164,6 +165,39 @@ describe('LLM decision parsing', () => {
     expect(
       parseLlmDecision('{"action":"special","specialIndex":0,"target":0}', battle),
     ).toBeNull()
+  })
+
+  test('explains why a special is illegal', () => {
+    const battle = battleWith('Guest 1337')
+    battle.sides[0].cooldown = 2
+    const result = validateLlmDecision(
+      '{"action":"special","specialIndex":0,"target":0}',
+      battle,
+    )
+    expect(result.decision).toBeNull()
+    expect(result.reason).toContain('Block')
+    expect(result.reason).toContain('cooldown 1')
+  })
+
+  test('marks unready specials and legal actions in the prompt', () => {
+    const battle = battleWith('Guest 1337')
+    const ready = buildLlmPrompt(battle)
+    expect(ready).toContain('special 0 (Block)')
+
+    battle.sides[0].cooldown = 2
+    const cooling = buildLlmPrompt(battle)
+    expect(cooling).toContain('NOT READY — cooldown 1')
+    expect(cooling).toContain('NOT ALLOWED this turn')
+  })
+
+  test('explains missing Oblation charge', () => {
+    const battle = battleWith('Two Time')
+    const result = validateLlmDecision(
+      '{"action":"special","specialIndex":0}',
+      battle,
+    )
+    expect(result.decision).toBeNull()
+    expect(result.reason).toContain('Oblation')
   })
 
   test('only bosses may pick the second ability', () => {

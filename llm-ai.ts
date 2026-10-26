@@ -62,9 +62,10 @@ const SYSTEM_PROMPT = [
   'Choose the strongest legal action for the side you control.',
   'Rules:',
   '- attack deals attack + 0..4 damage to one living enemy.',
-  '- special uses the chosen ability and is legal only when marked READY.',
+  '- special is legal ONLY when its line says READY. NEVER choose a special that says NOT READY or shows a cooldown.',
   '- juke sets a +60% dodge stance against the next incoming attack.',
   '- rest heals about 10 HP and clears Hemorrhage.',
+  '- Enemy targets are the ids under ENEMIES. Never target your own side with attack or an enemy-target special.',
   '- Fake units are decoys: avoid them while real targets exist.',
   '- Prefer lethal damage, healing a low ally, or blocking a big incoming hit.',
   'Return ONLY one JSON object and nothing else:',
@@ -515,12 +516,38 @@ function describeSide(side: Side, withCooldowns = false): string {
   return bits.join(' · ')
 }
 
+function specialSlots(side: Side): number[] {
+  return side.boss && side.character.alternates?.[0] ? [0, 1] : [0]
+}
+
+/** Explains why a special cannot be used, so the model does not guess. */
+function specialStateText(side: Side, index: number): string {
+  if (canUseSpecialNow(side, index)) return 'READY'
+  if ((side.effects.glitch ?? 0) > 0) return 'NOT READY — blocked by GLITCH'
+  const special = specialOf(side, index)
+  if (special.kind === 'revive') {
+    if (side.oblationSpent) return 'NOT READY — second life already used'
+    if (side.oblationArmed) return 'NOT READY — second life already armed'
+    return `NOT READY — Oblation ${Math.round(side.charge)}% (need 100%)`
+  }
+  if (special.kind === 'pray' && side.charge <= 0) {
+    return 'NOT READY — no Oblation charge'
+  }
+  if (special.kind === 'battery' && side.charge < 10) {
+    return `NOT READY — battery ${Math.round(side.charge)}% (need 10%)`
+  }
+  if (special.kind === 'rejuvenate' && (side.rottenCorpses?.length ?? 0) === 0) {
+    return 'NOT READY — no rotten corpses'
+  }
+  const cooldown = cooldownAfterTick(side, index)
+  if (cooldown > 0) return `NOT READY — cooldown ${cooldown}`
+  return 'NOT READY'
+}
+
 function abilityLines(side: Side): string[] {
-  const slots = side.boss && side.character.alternates?.[0] ? [0, 1] : [0]
-  return slots.map(index => {
+  return specialSlots(side).map(index => {
     const special = specialOf(side, index)
-    const ready = canUseSpecialNow(side, index)
-    const state = ready ? 'READY' : `cooldown ${cooldownAfterTick(side, index)}`
+    const state = specialStateText(side, index)
     const target = specialNeedsEnemyTarget(side, index)
       ? 'needs an enemy target'
       : specialNeedsAllyTarget(side, index)
@@ -588,7 +615,16 @@ export function buildLlmPrompt(battle: Battle, recentEvents: string[] = []): str
     const ids = enemies.map(enemy => `#${enemy.id}`).join(', ')
     lines.push(`- attack: pick one enemy target from [${ids}]`)
   }
-  lines.push('- special: only from the READY abilities above')
+  const readySlots = specialSlots(side).filter(index =>
+    canUseSpecialNow(side, index),
+  )
+  lines.push(
+    readySlots.length > 0
+      ? `- special: ${readySlots
+          .map(index => `special ${index} (${specialOf(side, index).name})`)
+          .join(' or ')}`
+      : '- special: NOT ALLOWED this turn — no READY ability',
+  )
   lines.push('- juke: no target')
   lines.push('- rest: no target')
   return lines.join('\n')
@@ -614,47 +650,78 @@ function isLivingAlly(battle: Battle, side: Side, index: number): boolean {
   return Boolean(candidate && candidate.team === side.team && candidate.hp > 0)
 }
 
-/** Validates a model answer against the same rules the human buttons use. */
-export function parseLlmDecision(raw: string, battle: Battle): BotDecision | null {
+export type LlmValidation = {
+  decision: BotDecision | null
+  reason?: string
+}
+
+/** Validates a model answer and explains the first broken rule. */
+export function validateLlmDecision(
+  raw: string,
+  battle: Battle,
+): LlmValidation {
   const side = battle.sides[battle.turn]
-  if (!side) return null
+  if (!side) return { decision: null, reason: 'нет активной стороны' }
   const match = raw.match(/\{[\s\S]*\}/)
-  if (!match) return null
+  if (!match) return { decision: null, reason: 'в ответе нет JSON' }
   let payload: Record<string, unknown>
   try {
     payload = JSON.parse(match[0]) as Record<string, unknown>
   } catch {
-    return null
+    return { decision: null, reason: 'невалидный JSON' }
   }
 
   const action = typeof payload.action === 'string' ? payload.action.trim().toLowerCase() : ''
   if (action !== 'attack' && action !== 'special' && action !== 'juke' && action !== 'rest') {
-    return null
+    return { decision: null, reason: `неизвестное действие «${action || '—'}»` }
   }
 
   if (action === 'juke' || action === 'rest') {
-    return { action, specialIndex: 0 }
+    return { decision: { action, specialIndex: 0 } }
   }
 
   if (action === 'attack') {
     const target = sideIndex(payload.target ?? payload.targetIndex)
-    if (target !== undefined && !isLivingEnemy(battle, side, target)) return null
-    return { action, specialIndex: 0, targetIndex: target }
+    if (target !== undefined && !isLivingEnemy(battle, side, target)) {
+      return { decision: null, reason: `цель атаки #${target} не враг или мертва` }
+    }
+    return { decision: { action, specialIndex: 0, targetIndex: target } }
   }
 
   const specialIndex = sideIndex(payload.specialIndex) ?? 0
-  if (specialIndex !== 0 && !(specialIndex === 1 && side.boss)) return null
-  if (!canUseSpecialNow(side, specialIndex)) return null
+  if (specialIndex !== 0 && !(specialIndex === 1 && side.boss)) {
+    return { decision: null, reason: `неверный слот способности ${specialIndex}` }
+  }
+  if (!canUseSpecialNow(side, specialIndex)) {
+    return {
+      decision: null,
+      reason: `способность ${specialOf(side, specialIndex).name} не готова (${specialStateText(side, specialIndex)})`,
+    }
+  }
   const target = sideIndex(payload.target ?? payload.targetIndex)
   if (specialNeedsEnemyTarget(side, specialIndex)) {
-    if (target !== undefined && !isLivingEnemy(battle, side, target)) return null
-    return { action, specialIndex, targetIndex: target }
+    if (target !== undefined && !isLivingEnemy(battle, side, target)) {
+      return {
+        decision: null,
+        reason: `цель способности #${target} не враг или мертва`,
+      }
+    }
+    return { decision: { action, specialIndex, targetIndex: target } }
   }
   if (specialNeedsAllyTarget(side, specialIndex)) {
-    if (target !== undefined && !isLivingAlly(battle, side, target)) return null
-    return { action, specialIndex, targetIndex: target }
+    if (target !== undefined && !isLivingAlly(battle, side, target)) {
+      return {
+        decision: null,
+        reason: `цель способности #${target} не союзник или мертва`,
+      }
+    }
+    return { decision: { action, specialIndex, targetIndex: target } }
   }
-  return { action, specialIndex }
+  return { decision: { action, specialIndex } }
+}
+
+export function parseLlmDecision(raw: string, battle: Battle): BotDecision | null {
+  return validateLlmDecision(raw, battle).decision
 }
 
 export function buildChatBody(
@@ -743,12 +810,15 @@ async function requestDecision(
       }
       return { decision: null, failed: true, providerFailed: true }
     }
-    const decision = parseLlmDecision(content, battle)
+    const validation = validateLlmDecision(content, battle)
+    const decision = validation.decision
     if (!decision) stats.invalid += 1
     if (!decision && llmDebugEnabled()) {
+      const side = battle.sides[battle.turn]
+      const who = side ? `${side.character.name} #${side.id}` : '?'
       console.warn(
-        `[bot] LLM AI (${provider.label}${keyLabel}) вернул невалидный ответ: ` +
-          content.slice(0, 120),
+        `[bot] LLM AI (${provider.label}${keyLabel}) ${who}: ` +
+          `${validation.reason ?? 'невалидный ответ'} — ${content.slice(0, 120)}`,
       )
     }
     return { decision, failed: false }
