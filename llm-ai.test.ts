@@ -6,6 +6,7 @@ import {
   importLlmEnv,
   llmAiEnabled,
   llmDebugEnabled,
+  llmLikelyAvailable,
   llmPauseMs,
   llmProviderOrder,
   parseApiKeys,
@@ -222,14 +223,14 @@ describe('LLM decision parsing', () => {
     ).toBeGreaterThan(11 * 60 * 60_000)
   })
 
-  test('picks an available Groq chat model', () => {
+  test('picks gpt-oss-20b first among available Groq models', () => {
     expect(
       pickGroqModel([
         'whisper-large-v3',
-        'llama-3.1-8b-instant',
-        'llama-3.3-70b-versatile',
+        'openai/gpt-oss-120b',
+        'openai/gpt-oss-20b',
       ]),
-    ).toBe('llama-3.3-70b-versatile')
+    ).toBe('openai/gpt-oss-20b')
     expect(pickGroqModel(['whisper-large-v3', 'openai/gpt-oss-120b'])).toBe(
       'openai/gpt-oss-120b',
     )
@@ -237,6 +238,18 @@ describe('LLM decision parsing', () => {
       'some-new-chat-model',
     )
     expect(pickGroqModel(['whisper-large-v3'])).toBeNull()
+  })
+
+  test('reports when a provider is ready to answer', () => {
+    const battle = battleWith('Noob')
+    delete process.env.OPENROUTER_API_KEY
+    delete process.env.GROQ_API_KEY
+    delete process.env.GROQ_API_KEYS
+    expect(llmLikelyAvailable(battle.sides[0])).toBe(false)
+    process.env.GROQ_API_KEY = 'groq-key'
+    expect(llmLikelyAvailable(battle.sides[0])).toBe(true)
+    battle.sides[0].minion = true
+    expect(llmLikelyAvailable(battle.sides[0])).toBe(false)
   })
 
   test('prefers Groq over OpenRouter but allows reordering', () => {

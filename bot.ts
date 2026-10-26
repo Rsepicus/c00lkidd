@@ -35,6 +35,7 @@ import {
   importLlmEnv,
   llmAiEnabled,
   llmDebugEnabled,
+  llmLikelyAvailable,
   warmLlmModel,
 } from './llm-ai'
 import { simulateBalance, type BalanceSimulation } from './balance'
@@ -4184,7 +4185,7 @@ function isAutomatedSide(side: Side): boolean {
 /** Whether the LLM could be asked to control any living side in this battle. */
 function battleCouldUseLlm(battle: Battle): boolean {
   return battle.sides.some(
-    side => side.hp > 0 && !side.fake && !side.minion && isAutomatedSide(side),
+    side => isAutomatedSide(side) && llmLikelyAvailable(side),
   )
 }
 
@@ -7045,6 +7046,20 @@ async function executeBattleAction(
     const upcomingLlm = llmAiEnabled() && battleCouldUseLlm(result.battle)
     if (upcomingLlm && !interaction.deferred && !interaction.replied) {
       await interaction.deferUpdate()
+    }
+    if (upcomingLlm && interaction.deferred) {
+      // Remove the buttons and show that the automated side is thinking, so a
+      // slow free model does not look like a frozen battle.
+      await withBattleTurnLanguage(result.battle, async () => {
+        await interaction
+          .editReply({
+            embeds: [
+              battleEmbed(result.battle, result.events, '🤖 Нейросеть думает…'),
+            ],
+            components: [],
+          })
+          .catch(() => {})
+      })
     }
     lastTurnPingUser.set(messageId, side.userId)
     clearTurnPing(interaction.client, messageId)

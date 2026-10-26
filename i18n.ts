@@ -1128,6 +1128,7 @@ const PHRASES: Array<[string, string]> = [
   'монет': 'coins',
   'Монет': 'coins',
   'Твой ход!': 'Your turn!',
+  '🤖 Нейросеть думает…': '🤖 The AI is thinking…',
   'Бой начался!': 'Battle started!',
   'Твой ход': 'Your turn',
   'Бой начался': 'Battle started',

@@ -46,14 +46,10 @@ const PREFERRED_FREE_MODELS = [
 // Groq retires models regularly, so the list is only a preference order; the
 // actual model is resolved from GET /models with the account's key.
 const PREFERRED_GROQ_MODELS = [
-  'llama-3.3-70b-versatile',
-  'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
+  'openai/gpt-oss-120b',
+  'qwen/qwen3.6-27b',
   'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'meta-llama/llama-4-scout-17b-16e-instruct',
-  'qwen/qwen3-32b',
-  'moonshotai/kimi-k2-instruct',
-  'llama-3.1-8b-instant',
 ]
 const EXCLUDED_MODEL =
   /(embed|whisper|tts|rerank|moderation|guard|safety|image|code|coder|math|reason|deepseek-r1|qwq)/i
@@ -433,6 +429,19 @@ function providers(): Provider[] {
     return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex)
   })
   return list
+}
+
+/** Whether some provider/key can currently be asked for a turn without waiting for a pause. */
+export function llmLikelyAvailable(side: Side): boolean {
+  if (!side || side.hp <= 0 || side.minion || side.fake || side.stunned) return false
+  if (llmScope() === 'boss' && !side.boss) return false
+  const now = Date.now()
+  return providers().some(provider => {
+    if (now < (providerPauses.get(provider.id) ?? 0)) return false
+    return provider.keys.some(
+      (_, index) => now >= (keyPauses.get(keyStateId(provider, index)) ?? 0),
+    )
+  })
 }
 
 /** Fetches model lists once so the first battle turn is not delayed. */
