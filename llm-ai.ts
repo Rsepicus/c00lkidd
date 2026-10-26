@@ -21,19 +21,19 @@ import {
 
 const DEFAULT_OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const DEFAULT_GROQ_BASE = 'https://api.groq.com/openai/v1'
-const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile'
 const APP_HEADERS = {
   'HTTP-Referer': 'https://github.com/Rsepicus/c00lkidd',
   'X-Title': 'Forsaken Simulator',
   'User-Agent': 'ForsakenSimulator/1.0',
 }
-const DEFAULT_TIMEOUT_MS = 3000
+const DEFAULT_TIMEOUT_MS = 4000
 const MAX_CONCURRENT = 2
 const PAUSE_RATE_LIMIT_MS = 5 * 60_000
 const PAUSE_AUTH_MS = 15 * 60_000
 const PAUSE_ERROR_MS = 60_000
 const PAUSE_NETWORK_MS = 30_000
 const OPENROUTER_DAILY_LIMIT = 'free-models-per-day'
+const GROQ_DAILY_LIMIT = /(tokens per day|requests per day|\bTPD\b|\bRPD\b)/i
 
 // Chat models first: reasoning and code models are slow or bad at tactics.
 const PREFERRED_FREE_MODELS = [
@@ -43,8 +43,20 @@ const PREFERRED_FREE_MODELS = [
   'google/gemini-2.0-flash-exp:free',
   'mistralai/mistral-small-3.1-24b-instruct:free',
 ]
+// Groq retires models regularly, so the list is only a preference order; the
+// actual model is resolved from GET /models with the account's key.
+const PREFERRED_GROQ_MODELS = [
+  'llama-3.3-70b-versatile',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'qwen/qwen3-32b',
+  'moonshotai/kimi-k2-instruct',
+  'llama-3.1-8b-instant',
+]
 const EXCLUDED_MODEL =
-  /(embed|whisper|tts|rerank|moderation|image|code|coder|math|reason|deepseek-r1|qwq)/i
+  /(embed|whisper|tts|rerank|moderation|guard|safety|image|code|coder|math|reason|deepseek-r1|qwq)/i
 const KNOWN_MODEL_HINT =
   /(llama|qwen|deepseek|mistral|gemini|gpt-oss|glm|kimi|minimax|granite|command|phi)/i
 
@@ -72,11 +84,16 @@ type Provider = {
   baseUrl: string
   model: () => Promise<string | null>
   headers: Record<string, string>
-  /** OpenRouter's free-models-per-day limit can be detected in its 429 body. */
-  hasDailyFreeLimit: boolean
+  /** Whether a daily rate-limit message can appear in this provider's 429 body. */
+  hasDailyLimit: boolean
 }
 
-type RequestResult = { decision: BotDecision | null; failed: boolean }
+type RequestResult = {
+  decision: BotDecision | null
+  failed: boolean
+  /** A model-level failure: try another provider instead of another key. */
+  providerFailed?: boolean
+}
 
 export type LlmTurn = {
   decision: BotDecision
@@ -90,6 +107,10 @@ let inFlight = 0
 let discoveryBlockedUntil = 0
 let cachedOpenRouterModel: string | null = null
 let resolvePromise: Promise<string | null> | null = null
+let groqDiscoveryBlockedUntil = 0
+let cachedGroqModel: string | null = null
+let groqResolvePromise: Promise<string | null> | null = null
+const failedGroqModels = new Set<string>()
 const providerPauses = new Map<ProviderId, number>()
 const keyPauses = new Map<string, number>()
 const keyRotation = new Map<ProviderId, number>()
@@ -159,7 +180,9 @@ function llmScope(): 'all' | 'boss' {
 }
 
 function timeoutMs(): number {
-  const configured = Number(process.env.OPENROUTER_TIMEOUT_MS)
+  const configured = Number(
+    process.env.LLM_TIMEOUT_MS ?? process.env.OPENROUTER_TIMEOUT_MS,
+  )
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS
 }
 
@@ -179,12 +202,15 @@ function msUntilUtcMidnight(now = Date.now()): number {
 export function llmPauseMs(
   status: number,
   body: string,
-  hasDailyFreeLimit: boolean,
+  hasDailyLimit: boolean,
   now = Date.now(),
 ): number {
   if (status === 401 || status === 403 || status === 402) return PAUSE_AUTH_MS
   if (status === 429) {
-    if (hasDailyFreeLimit && body.includes(OPENROUTER_DAILY_LIMIT)) {
+    if (
+      hasDailyLimit &&
+      (body.includes(OPENROUTER_DAILY_LIMIT) || GROQ_DAILY_LIMIT.test(body))
+    ) {
       return msUntilUtcMidnight(now)
     }
     return PAUSE_RATE_LIMIT_MS
@@ -208,6 +234,7 @@ function pauseKey(
     provider.keys.length > 1 ? `, ключ ${keyIndex + 1}/${provider.keys.length}` : ''
   if (status === 404) {
     if (provider.id === 'openrouter') cachedOpenRouterModel = null
+    if (provider.id === 'groq') cachedGroqModel = null
     providerPauses.set(
       provider.id,
       Math.max(providerPauses.get(provider.id) ?? 0, now + PAUSE_ERROR_MS),
@@ -218,13 +245,13 @@ function pauseKey(
     )
     return
   }
-  const duration = llmPauseMs(status, detail, provider.hasDailyFreeLimit, now)
+  const duration = llmPauseMs(status, detail, provider.hasDailyLimit, now)
   const id = keyStateId(provider, keyIndex)
   keyPauses.set(id, Math.max(keyPauses.get(id) ?? 0, now + duration))
   const dailyLimit =
     status === 429 &&
-    provider.hasDailyFreeLimit &&
-    detail.includes(OPENROUTER_DAILY_LIMIT)
+    provider.hasDailyLimit &&
+    (detail.includes(OPENROUTER_DAILY_LIMIT) || GROQ_DAILY_LIMIT.test(detail))
   const reason = dailyLimit
     ? 'дневной лимит бесплатных моделей исчерпан'
     : `${status || 'сеть'} ${detail}`.trim()
@@ -302,6 +329,77 @@ async function resolveOpenRouterModel(): Promise<string | null> {
   }
 }
 
+export function pickGroqModel(ids: string[]): string | null {
+  const usable = ids.filter(id => !EXCLUDED_MODEL.test(id))
+  for (const preferred of PREFERRED_GROQ_MODELS) {
+    if (usable.includes(preferred)) return preferred
+  }
+  const chatty = usable.filter(id =>
+    /(instruct|versatile|instant|chat|gpt-oss|qwen|llama|kimi|mixtral)/i.test(id),
+  )
+  return (chatty[0] ?? usable.sort()[0]) ?? null
+}
+
+async function discoverGroqModel(): Promise<string | null> {
+  if (Date.now() < groqDiscoveryBlockedUntil) return null
+  const keys = groqKeys()
+  if (keys.length === 0) return null
+  const baseUrl = apiBase('GROQ_BASE_URL', DEFAULT_GROQ_BASE)
+  let failed = false
+  for (const key of keys.slice(0, 5)) {
+    try {
+      const response = await fetch(`${baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!response.ok) {
+        failed = true
+        continue
+      }
+      const payload = (await response.json()) as {
+        data?: Array<{ id?: string }>
+      }
+      const ids = (payload.data ?? [])
+        .map(row => row.id)
+        .filter((id): id is string => typeof id === 'string')
+        .filter(id => !failedGroqModels.has(id))
+      const model = pickGroqModel(ids)
+      if (model) return model
+      failed = true
+    } catch {
+      failed = true
+    }
+  }
+  groqDiscoveryBlockedUntil =
+    Date.now() + (failed ? PAUSE_NETWORK_MS : PAUSE_ERROR_MS)
+  return null
+}
+
+async function resolveGroqModel(): Promise<string | null> {
+  const configured = process.env.GROQ_MODEL?.trim()
+  if (configured) return configured
+  if (cachedGroqModel) return cachedGroqModel
+  if (groqResolvePromise) return groqResolvePromise
+  groqResolvePromise = (async () => {
+    const model = await discoverGroqModel()
+    if (model) cachedGroqModel = model
+    return model
+  })()
+  try {
+    return await groqResolvePromise
+  } finally {
+    groqResolvePromise = null
+  }
+}
+
+export function llmProviderOrder(): ProviderId[] {
+  const configured = process.env.LLM_PROVIDER_ORDER?.trim()
+  const ids = (configured ? configured.split(',') : ['groq', 'openrouter'])
+    .map(value => value.trim().toLowerCase())
+    .filter((value): value is ProviderId => value === 'groq' || value === 'openrouter')
+  return ids.length > 0 ? [...new Set(ids)] : ['groq', 'openrouter']
+}
+
 function providers(): Provider[] {
   const orKeys = openRouterKeys()
   const gqKeys = groqKeys()
@@ -314,7 +412,7 @@ function providers(): Provider[] {
       baseUrl: apiBase('OPENROUTER_BASE_URL', DEFAULT_OPENROUTER_BASE),
       model: resolveOpenRouterModel,
       headers: APP_HEADERS,
-      hasDailyFreeLimit: true,
+      hasDailyLimit: true,
     })
   }
   if (gqKeys.length > 0) {
@@ -323,11 +421,17 @@ function providers(): Provider[] {
       label: 'Groq',
       keys: gqKeys,
       baseUrl: apiBase('GROQ_BASE_URL', DEFAULT_GROQ_BASE),
-      model: async () => process.env.GROQ_MODEL?.trim() || DEFAULT_GROQ_MODEL,
+      model: resolveGroqModel,
       headers: {},
-      hasDailyFreeLimit: false,
+      hasDailyLimit: true,
     })
   }
+  const order = llmProviderOrder()
+  list.sort((left, right) => {
+    const leftIndex = order.indexOf(left.id)
+    const rightIndex = order.indexOf(right.id)
+    return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex)
+  })
   return list
 }
 
@@ -524,8 +628,16 @@ async function requestDecision(
     })
     if (!response.ok) {
       const detail = (await response.text().catch(() => '')).slice(0, 160)
+      if (response.status === 404 && provider.id === 'groq') {
+        failedGroqModels.add(model)
+        cachedGroqModel = null
+      }
       pauseKey(provider, keyIndex, response.status, detail)
-      return { decision: null, failed: true }
+      return {
+        decision: null,
+        failed: true,
+        providerFailed: response.status === 404,
+      }
     }
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: unknown } }>
@@ -602,6 +714,8 @@ export async function chooseLlmTurn(battle: Battle): Promise<LlmTurn | null> {
         // A valid provider response with an unusable answer: do not spend a
         // second key or provider's quota on the same turn.
         if (!result.failed) return null
+        // A dead model is provider-wide; another key will not fix it.
+        if (result.providerFailed) break
       } finally {
         inFlight -= 1
       }

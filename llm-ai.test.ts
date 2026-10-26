@@ -7,8 +7,10 @@ import {
   llmAiEnabled,
   llmDebugEnabled,
   llmPauseMs,
+  llmProviderOrder,
   parseApiKeys,
   parseLlmDecision,
+  pickGroqModel,
 } from './llm-ai'
 import { createBattle } from './pvp'
 
@@ -210,6 +212,44 @@ describe('LLM decision parsing', () => {
     expect(llmPauseMs(429, 'free-models-per-day', false, noon)).toBe(5 * 60_000)
     expect(llmPauseMs(429, 'rate limited', true, noon)).toBe(5 * 60_000)
     expect(llmPauseMs(401, 'bad key', true, noon)).toBe(15 * 60_000)
+    expect(
+      llmPauseMs(
+        429,
+        'Rate limit reached on tokens per day (TPD): Limit 100000',
+        true,
+        noon,
+      ),
+    ).toBeGreaterThan(11 * 60 * 60_000)
+  })
+
+  test('picks an available Groq chat model', () => {
+    expect(
+      pickGroqModel([
+        'whisper-large-v3',
+        'llama-3.1-8b-instant',
+        'llama-3.3-70b-versatile',
+      ]),
+    ).toBe('llama-3.3-70b-versatile')
+    expect(pickGroqModel(['whisper-large-v3', 'openai/gpt-oss-120b'])).toBe(
+      'openai/gpt-oss-120b',
+    )
+    expect(pickGroqModel(['whisper-large-v3', 'some-new-chat-model'])).toBe(
+      'some-new-chat-model',
+    )
+    expect(pickGroqModel(['whisper-large-v3'])).toBeNull()
+  })
+
+  test('prefers Groq over OpenRouter but allows reordering', () => {
+    const original = process.env.LLM_PROVIDER_ORDER
+    try {
+      delete process.env.LLM_PROVIDER_ORDER
+      expect(llmProviderOrder()).toEqual(['groq', 'openrouter'])
+      process.env.LLM_PROVIDER_ORDER = 'openrouter, groq'
+      expect(llmProviderOrder()).toEqual(['openrouter', 'groq'])
+    } finally {
+      if (original === undefined) delete process.env.LLM_PROVIDER_ORDER
+      else process.env.LLM_PROVIDER_ORDER = original
+    }
   })
 
   test('turns on per-turn logging only for explicit debug values', () => {
