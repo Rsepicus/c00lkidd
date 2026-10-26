@@ -30,6 +30,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
+import { ARENA_BATTLES, runLlmArena, type ArenaResult } from './arena'
 import {
   chooseLlmTurn,
   importLlmEnv,
@@ -2579,6 +2580,7 @@ export function debugPanelEmbed(): EmbedBuilder {
       [
         '**Выдать монеты** — начислить монеты себе или игроку по ID.',
         '**Тест баланса** — AI-прогон 1×1 или 2×2, при необходимости с фиксированным героем и способностью.',
+        '**Арена ИИ** — 6 зеркальных боёв: нейросеть против эвристики.',
         '**Проверка** — пинг, аптайм, команды и состояние базы.',
         '',
         'Панель видна только создателю.',
@@ -2600,6 +2602,12 @@ export function debugPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setLabel(settings ? 'Тест баланса' : '⚙️ Тест баланса')
     .setStyle(ButtonStyle.Secondary)
   if (settings) testButton.setEmoji(settings)
+  const neural = emojiData('neural')
+  const arenaButton = new ButtonBuilder()
+    .setCustomId('debug:arena')
+    .setLabel(neural ? 'Арена ИИ' : '🧠 Арена ИИ')
+    .setStyle(ButtonStyle.Secondary)
+  if (neural) arenaButton.setEmoji(neural)
   const timer = emojiData('timer')
   const statusButton = new ButtonBuilder()
     .setCustomId('debug:status')
@@ -2607,8 +2615,96 @@ export function debugPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setStyle(ButtonStyle.Secondary)
   if (timer) statusButton.setEmoji(timer)
   return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(coinsButton, testButton, statusButton),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      coinsButton,
+      testButton,
+      arenaButton,
+      statusButton,
+    ),
   ]
+}
+
+export function arenaIntroEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.battle)
+    .setTitle(`${emojiText('neural', '🧠')} Арена: нейросеть против эвристики`)
+    .setDescription(
+      [
+        `**${ARENA_BATTLES} зеркальных боёв 1 на 1.** Обе стороны играют одним и тем же персонажем; в половине боёв нейросеть ходит первой, в половине — второй.`,
+        'Персонажи: Jason, Guest 1337, Two Time.',
+        '',
+        'Один бой — примерно 10–20 запросов к модели. Весь прогон — **60–100 запросов**, заметная часть дневного лимита.',
+        'Если часть ходов уйдёт в эвристику из-за лимита или таймаута, результат будет смешанным.',
+      ].join('\n'),
+    )
+    .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
+}
+
+export function arenaIntroComponents(): ActionRowBuilder<ButtonBuilder>[] {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('debug:arena:start')
+        .setLabel(`Запустить ${ARENA_BATTLES} боёв`)
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId('debug:menu')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ]
+}
+
+export function arenaProgressEmbed(done: number, total: number): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(EMBED_COLORS.choose)
+    .setTitle(`${emojiText('neural', '🧠')} Арена ИИ`)
+    .setDescription(
+      `Идёт бой **${done}/${total}**…\nСообщение обновится после каждого боя.`,
+    )
+    .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
+}
+
+export function arenaEmbed(result: ArenaResult): EmbedBuilder {
+  const total = result.battles.length
+  const winRate = total > 0 ? Math.round((result.llmWins / total) * 100) : 0
+  const lines = result.battles.map((battle, index) => {
+    const outcome =
+      battle.winner === null
+        ? 'ничья'
+        : battle.winner === battle.llmTeam
+          ? 'победа ИИ'
+          : 'победа эвристики'
+    return (
+      `${index + 1}. **${battle.character}** · ${outcome} · ${battle.turns} ходов · ` +
+      `урон ${battle.llmDamage}:${battle.heuristicDamage}`
+    )
+  })
+  const modelText = result.models.length > 0 ? result.models.join(', ') : '—'
+  const fallbackNote =
+    result.fallbacks > 0
+      ? `⚠️ ${result.fallbacks} ходов нейросети заменила эвристика — результат смешанный.`
+      : ''
+  return new EmbedBuilder()
+    .setColor(
+      result.llmWins > result.heuristicWins
+        ? EMBED_COLORS.victory
+        : EMBED_COLORS.battle,
+    )
+    .setTitle(`${emojiText('neural', '🧠')} Арена: итог`)
+    .setDescription(
+      [
+        `**Нейросеть ${result.llmWins} : ${result.heuristicWins} эвристика** · ничьих ${result.draws}`,
+        `Побед нейросети: **${winRate}%** · средняя длина боя: **${result.avgTurns.toFixed(1)}** ходов`,
+        `Урон: нейросеть **${result.llmDamage}** · эвристика **${result.heuristicDamage}**`,
+        `Ходов модели: **${result.llmDecisions}** · откатов: **${result.fallbacks}**`,
+        `Модель: ${modelText}.`,
+        ...(fallbackNote ? ['', fallbackNote] : []),
+        '',
+        ...lines,
+      ].join('\n'),
+    )
+    .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
 }
 
 export function debugStatusEmbed(client?: Client): EmbedBuilder {
@@ -8059,6 +8155,58 @@ async function handleDebugButton(interaction: ButtonInteraction): Promise<void> 
       embeds: [debugTestEmbed(setup)],
       components: debugTestComponents(setup),
     })
+    return
+  }
+  if (interaction.customId === 'debug:arena') {
+    debugTests.delete(interaction.message.id)
+    await interaction.update({
+      embeds: [arenaIntroEmbed()],
+      components: arenaIntroComponents(),
+    })
+    return
+  }
+  if (interaction.customId === 'debug:arena:start') {
+    if (!llmAiEnabled()) {
+      await replyError(
+        interaction,
+        'Ключи нейросети не заданы — арена не сможет играть за модель.',
+      )
+      return
+    }
+    await interaction.deferUpdate()
+    const backRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('debug:menu')
+        .setLabel('← Назад')
+        .setStyle(ButtonStyle.Secondary),
+    )
+    try {
+      await interaction.editReply({
+        embeds: [arenaProgressEmbed(0, ARENA_BATTLES)],
+        components: [],
+      })
+      const result = await runLlmArena({
+        onProgress: async (done, total) => {
+          await interaction
+            .editReply({
+              embeds: [arenaProgressEmbed(done, total)],
+              components: [],
+            })
+            .catch(() => {})
+        },
+      })
+      await interaction.editReply({
+        embeds: [arenaEmbed(result)],
+        components: [backRow],
+      })
+    } catch (error) {
+      await interaction.editReply({
+        content:
+          error instanceof Error ? error.message : 'Не получилось прогнать арену.',
+        embeds: [],
+        components: [backRow],
+      })
+    }
     return
   }
   if (interaction.customId === 'debug:status') {

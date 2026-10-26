@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
+import type { ArenaResult } from './arena'
 import {
   achievementsEmbed,
+  arenaEmbed,
+  arenaIntroComponents,
+  arenaIntroEmbed,
   resolveToken,
   botPresence,
   shouldPingNextTurn,
@@ -1340,12 +1344,12 @@ describe('embeds', () => {
     expect(targetIds).toContain('pvp:target:minions:sentry')
   })
 
-  test('debug panel exposes coins and balance test', () => {
+  test('debug panel exposes coins, balance test and the AI arena', () => {
     expect(debugPanelEmbed().toJSON().title).toContain('Дебаг')
     const buttons = debugPanelComponents()[0]
       .toJSON()
       .components.map(component => component.custom_id)
-    expect(buttons).toEqual(['debug:coins', 'debug:test', 'debug:status'])
+    expect(buttons).toEqual(['debug:coins', 'debug:test', 'debug:arena', 'debug:status'])
 
     const setup = {
       ownerId: '1',
@@ -1380,6 +1384,59 @@ describe('embeds', () => {
       '200',
     ])
     expect(battlesMenu.options.find(option => option.value === '50')?.default).toBe(true)
+  })
+
+  test('AI arena intro and result embeds', () => {
+    expect(String(arenaIntroEmbed().toJSON().description)).toContain('6 зеркальных')
+    expect(
+      arenaIntroComponents()[0]
+        .toJSON()
+        .components.map(component => component.custom_id),
+    ).toEqual(['debug:arena:start', 'debug:menu'])
+
+    const result: ArenaResult = {
+      battles: [
+        {
+          seed: 1,
+          character: 'Jason',
+          llmTeam: 0,
+          winner: 0,
+          turns: 12,
+          llmDamage: 140,
+          heuristicDamage: 90,
+          llmDecisions: 6,
+          fallbacks: 0,
+          models: ['Groq openai/gpt-oss-20b'],
+        },
+        {
+          seed: 1,
+          character: 'Jason',
+          llmTeam: 1,
+          winner: 0,
+          turns: 15,
+          llmDamage: 90,
+          heuristicDamage: 140,
+          llmDecisions: 7,
+          fallbacks: 0,
+          models: ['Groq openai/gpt-oss-20b'],
+        },
+      ],
+      llmWins: 1,
+      heuristicWins: 1,
+      draws: 0,
+      llmDecisions: 13,
+      fallbacks: 0,
+      avgTurns: 13.5,
+      llmDamage: 230,
+      heuristicDamage: 230,
+      models: ['Groq openai/gpt-oss-20b'],
+    }
+    const description = String(arenaEmbed(result).toJSON().description)
+    expect(description).toContain('Нейросеть 1 : 1')
+    expect(description).toContain('50%')
+    expect(description).toContain('13.5')
+    expect(description).toContain('победа ИИ')
+    expect(description).toContain('победа эвристики')
   })
 
   test('training setup offers hero, partner and bot choices', () => {

@@ -35,6 +35,7 @@ jobs:
           server-id: ${{ secrets.PTERO_SERVER_ID }}
           sources: |
             ai.ts
+            arena.ts
             backups.ts
             balance.ts
             battle-state.ts
