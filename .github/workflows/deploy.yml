@@ -47,6 +47,7 @@ jobs:
             errors.ts
             forsaken.ts
             i18n.ts
+            llm-ai.ts
             loadouts.ts
             matchmaking.ts
             names.ts

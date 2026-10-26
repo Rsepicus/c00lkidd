@@ -30,6 +30,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
+import { chooseLlmTurn, llmAiEnabled, warmLlmModel } from './llm-ai'
 import { simulateBalance, type BalanceSimulation } from './balance'
 import {
   loadBattleState,
@@ -636,6 +637,9 @@ type PendingTarget = {
   targets: number[]
 }
 const pendingTargets = new Map<string, PendingTarget>()
+// One action per battle at a time: an LLM turn can hold the resolve open for
+// seconds, and a second click during that window would replay the same turn.
+const battleActionLocks = new Set<string>()
 const hubOwners = new Map<string, string>()
 type CharacterFilter = 'all' | 'owned'
 const characterFilters = new Map<string, CharacterFilter>()
@@ -4183,6 +4187,13 @@ function isAutomatedSide(side: Side): boolean {
   )
 }
 
+/** Whether the LLM could be asked to control any living side in this battle. */
+function battleCouldUseLlm(battle: Battle): boolean {
+  return battle.sides.some(
+    side => side.hp > 0 && !side.fake && !side.minion && isAutomatedSide(side),
+  )
+}
+
 function isPveBattle(messageId: string): boolean {
   return (
     trainingBattles.has(messageId) ||
@@ -4249,24 +4260,32 @@ function resetTimeoutStrikes(messageId: string, userId: string): void {
   if (strikes.size === 0) timeoutStrikes.delete(messageId)
 }
 
-function runAutomatedTurns(input: Battle, events: string[]): Battle {
+async function runAutomatedTurns(input: Battle, events: string[]): Promise<Battle> {
   let current = input
   let guard = 0
+  let llmCalls = 0
   while (
     !current.finished &&
     isAutomatedSide(current.sides[current.turn]) &&
     guard++ < Math.max(12, current.sides.length + 12)
   ) {
     const side = current.sides[current.turn]
-    const decision: BotDecision = side.fake
-      ? { action: 'attack', specialIndex: 0 }
-      : side.structure === 'dispenser'
-        ? { action: 'special', specialIndex: 0 }
-        : side.boss
+    let decision: BotDecision
+    if (side.fake) {
+      decision = { action: 'attack', specialIndex: 0 }
+    } else if (side.structure === 'dispenser') {
+      decision = { action: 'special', specialIndex: 0 }
+    } else if (side.minion) {
+      decision = { action: 'attack', specialIndex: 0 }
+    } else {
+      const llmDecision = llmCalls < 3 ? await chooseLlmTurn(current) : null
+      if (llmDecision) llmCalls += 1
+      decision =
+        llmDecision ??
+        (side.boss
           ? chooseBossAction(current, Math.random)
-          : side.minion
-            ? { action: 'attack', specialIndex: 0 }
-            : chooseBotTurn(current, Math.random)
+          : chooseBotTurn(current, Math.random))
+    }
     const result = takeTurn(
       current,
       decision.action,
@@ -4316,10 +4335,15 @@ async function updateBattleInteraction(
 ): Promise<void> {
   await withBattleTurnLanguage(battle, async () => {
     try {
-      await interaction.update({
+      const payload = {
         embeds: [battleEmbed(battle, events, note, deadline)],
         components,
-      })
+      }
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(payload)
+      } else {
+        await interaction.update(payload)
+      }
     } catch {
       // The interaction can expire while a turn or simulation is being processed.
       // Keep the public battle message in sync even if the callback token is gone.
@@ -4377,7 +4401,7 @@ async function handleBattleTimeout(client: Client, messageId: string): Promise<v
   ]
   const result = takeTurn(battle, 'rest', Math.random)
   events.push(...result.events)
-  const current = runAutomatedTurns(result.battle, events)
+  const current = await runAutomatedTurns(result.battle, events)
   appendBattleLog(messageId, events)
 
   if (current.finished) {
@@ -6983,56 +7007,73 @@ async function executeBattleAction(
   action: Action,
   targetIndex?: number,
 ): Promise<void> {
-  pendingTargets.delete(interaction.message.id)
-  stopBattleTimer(interaction.message.id)
-  const side = battle.sides[battle.turn]
-  if (action === 'special' && !canUseSpecialNow(side)) {
-    // A stale button from before an automated turn can arrive after the
-    // cooldown has started; restore the panel instead of throwing.
-    await restoreActionMenu(interaction, interaction.message.id, battle)
+  const messageId = interaction.message.id
+  if (battleActionLocks.has(messageId)) {
+    await replyError(interaction, 'Ход уже обрабатывается.')
     return
   }
-  let result: ReturnType<typeof takeTurn>
+  battleActionLocks.add(messageId)
   try {
-    result = takeTurn(battle, action, Math.random, targetIndex)
-  } catch (error) {
-    armBattleTimer(interaction.client, interaction.message.id, battle)
-    throw error
-  }
-  const messageId = interaction.message.id
-  lastTurnPingUser.set(messageId, side.userId)
-  clearTurnPing(interaction.client, messageId)
-  let current = result.battle
-  const events = [...result.events]
-  current = runAutomatedTurns(current, events)
-  appendBattleLog(messageId, events)
+    pendingTargets.delete(messageId)
+    stopBattleTimer(messageId)
+    const side = battle.sides[battle.turn]
+    if (action === 'special' && !canUseSpecialNow(side)) {
+      // A stale button from before an automated turn can arrive after the
+      // cooldown has started; restore the panel instead of throwing.
+      await restoreActionMenu(interaction, messageId, battle)
+      return
+    }
+    let result: ReturnType<typeof takeTurn>
+    try {
+      result = takeTurn(battle, action, Math.random, targetIndex)
+    } catch (error) {
+      armBattleTimer(interaction.client, messageId, battle)
+      throw error
+    }
+    // A free LLM can take a few seconds; acknowledge the click first so Discord
+    // does not mark the interaction as failed.
+    const upcomingLlm = llmAiEnabled() && battleCouldUseLlm(result.battle)
+    if (upcomingLlm && !interaction.deferred && !interaction.replied) {
+      await interaction.deferUpdate()
+    }
+    lastTurnPingUser.set(messageId, side.userId)
+    clearTurnPing(interaction.client, messageId)
+    let current = result.battle
+    const events = [...result.events]
+    current = await runAutomatedTurns(current, events)
+    const stored = battles.get(messageId)
+    if (!stored || stored.finished) return
+    appendBattleLog(messageId, events)
 
-  if (current.finished) {
-    const finished = finishBattleState(messageId, current)
+    if (current.finished) {
+      const finished = finishBattleState(messageId, current)
+      await updateBattleInteraction(
+        interaction,
+        messageId,
+        current,
+        events,
+        finished.note,
+        finished.components,
+      )
+      return
+    }
+
+    resetTimeoutStrikes(messageId, side.userId)
+    battles.set(messageId, current)
+    const deadline = armBattleTimer(interaction.client, messageId, current)
     await updateBattleInteraction(
       interaction,
       messageId,
       current,
       events,
-      finished.note,
-      finished.components,
+      undefined,
+      battleComponents(current),
+      deadline,
     )
-    return
+    notifyNextTurn(interaction.client, current, interaction.channelId, messageId)
+  } finally {
+    battleActionLocks.delete(messageId)
   }
-
-  resetTimeoutStrikes(messageId, side.userId)
-  battles.set(messageId, current)
-  const deadline = armBattleTimer(interaction.client, messageId, current)
-  await updateBattleInteraction(
-    interaction,
-    messageId,
-    current,
-    events,
-    undefined,
-    battleComponents(current),
-    deadline,
-  )
-  notifyNextTurn(interaction.client, current, interaction.channelId, interaction.message.id)
 }
 
 function dmComponentsFor(
@@ -8823,6 +8864,7 @@ async function main(): Promise<void> {
     try {
       await readyClient.application.commands.set(commands.map(command => command.toJSON()))
       console.log(`[bot] вошёл как ${readyClient.user.tag}; команд: ${commands.length}`)
+      void warmLlmModel()
     } catch (error) {
       appendErrorLog(ERROR_LOG_PATH, error, 'register-commands')
       console.error('[bot] не удалось зарегистрировать команды:', error)
@@ -8934,9 +8976,11 @@ async function main(): Promise<void> {
           error,
         )
         if (interaction.isRepliable() && !interaction.replied) {
-          await interaction
-            .reply({ content: 'Что-то пошло не так.', flags: MessageFlags.Ephemeral })
-            .catch(() => {})
+          const options = { content: 'Что-то пошло не так.', flags: MessageFlags.Ephemeral }
+          const reply = interaction.deferred
+            ? interaction.followUp(options)
+            : interaction.reply(options)
+          await reply.catch(() => {})
         }
       }
     })
