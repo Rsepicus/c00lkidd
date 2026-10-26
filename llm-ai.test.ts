@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { characterByName } from './forsaken'
 import {
   chooseLlmTurn,
+  buildChatBody,
   buildLlmPrompt,
   importLlmEnv,
   llmAiEnabled,
@@ -78,6 +79,20 @@ describe('LLM battle prompt', () => {
     expect(prompt).not.toContain('SecretPlayerName')
     expect(prompt).not.toContain('SecretEnemyName')
     expect(prompt).not.toContain('наносит 1 урона')
+  })
+
+  test('keeps reasoning from eating the whole answer budget', () => {
+    const battle = battleWith('Noob')
+    const gpt = buildChatBody('groq', 'openai/gpt-oss-20b', battle)
+    expect(gpt.max_tokens).toBe(512)
+    expect(gpt.reasoning_effort).toBe('low')
+    expect(gpt.include_reasoning).toBe(false)
+    const qwen = buildChatBody('groq', 'qwen/qwen3.6-27b', battle)
+    expect(qwen.reasoning_effort).toBe('none')
+    const plain = buildChatBody('groq', 'some-chat-model', battle)
+    expect(plain.reasoning_effort).toBeUndefined()
+    const openrouter = buildChatBody('openrouter', 'openai/gpt-oss-20b', battle)
+    expect(openrouter.reasoning).toEqual({ effort: 'low', exclude: true })
   })
 
   test('counts model and heuristic turns', () => {

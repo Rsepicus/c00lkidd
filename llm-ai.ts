@@ -21,6 +21,7 @@ import {
 
 const DEFAULT_OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 const DEFAULT_GROQ_BASE = 'https://api.groq.com/openai/v1'
+const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-20b'
 const APP_HEADERS = {
   'HTTP-Referer': 'https://github.com/Rsepicus/c00lkidd',
   'X-Title': 'Forsaken Simulator',
@@ -52,7 +53,7 @@ const PREFERRED_GROQ_MODELS = [
   'meta-llama/llama-4-maverick-17b-128e-instruct',
 ]
 const EXCLUDED_MODEL =
-  /(embed|whisper|tts|rerank|moderation|guard|safety|image|code|coder|math|reason|deepseek-r1|qwq)/i
+  /(embed|whisper|tts|rerank|moderation|guard|safety|image|code|coder|math|reason|deepseek-r1|qwq|compound)/i
 const KNOWN_MODEL_HINT =
   /(llama|qwen|deepseek|mistral|gemini|gpt-oss|glm|kimi|minimax|granite|command|phi)/i
 
@@ -71,7 +72,7 @@ const SYSTEM_PROMPT = [
   'Omit target when the action needs none.',
 ].join('\n')
 
-type ProviderId = 'openrouter' | 'groq'
+export type ProviderId = 'openrouter' | 'groq'
 
 type Provider = {
   id: ProviderId
@@ -357,7 +358,7 @@ async function discoverGroqModel(): Promise<string | null> {
     try {
       const response = await fetch(`${baseUrl}/models`, {
         headers: { Authorization: `Bearer ${key}` },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(8000),
       })
       if (!response.ok) {
         failed = true
@@ -388,7 +389,12 @@ async function resolveGroqModel(): Promise<string | null> {
   if (cachedGroqModel) return cachedGroqModel
   if (groqResolvePromise) return groqResolvePromise
   groqResolvePromise = (async () => {
-    const model = await discoverGroqModel()
+    const discovered = await discoverGroqModel()
+    // If GET /models is temporarily unavailable, still try the known
+    // production model instead of skipping the provider entirely.
+    const fallbacks = [DEFAULT_GROQ_MODEL, ...PREFERRED_GROQ_MODELS]
+    const model =
+      discovered ?? fallbacks.find(id => !failedGroqModels.has(id)) ?? null
     if (model) cachedGroqModel = model
     return model
   })()
@@ -651,6 +657,37 @@ export function parseLlmDecision(raw: string, battle: Battle): BotDecision | nul
   return { action, specialIndex }
 }
 
+export function buildChatBody(
+  providerId: ProviderId,
+  model: string,
+  battle: Battle,
+  recentEvents: string[] = [],
+): Record<string, unknown> {
+  const requestBody: Record<string, unknown> = {
+    model,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: buildLlmPrompt(battle, recentEvents) },
+    ],
+    temperature: 0.2,
+    // Reasoning models spend tokens on hidden thinking before the JSON.
+    max_tokens: 512,
+  }
+  if (providerId === 'groq') {
+    if (/gpt-oss/i.test(model)) {
+      // gpt-oss cannot disable reasoning; low effort plus headroom avoids an
+      // empty content response with finish_reason=length.
+      requestBody.reasoning_effort = 'low'
+      requestBody.include_reasoning = false
+    } else if (/qwen3/i.test(model)) {
+      requestBody.reasoning_effort = 'none'
+    }
+  } else if (/(gpt-oss|qwen3|deepseek-r1)/i.test(model)) {
+    requestBody.reasoning = { effort: 'low', exclude: true }
+  }
+  return requestBody
+}
+
 async function requestDecision(
   provider: Provider,
   key: string,
@@ -660,6 +697,7 @@ async function requestDecision(
   recentEvents: string[],
 ): Promise<RequestResult> {
   try {
+    const requestBody = buildChatBody(provider.id, model, battle, recentEvents)
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -667,15 +705,7 @@ async function requestDecision(
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildLlmPrompt(battle, recentEvents) },
-        ],
-        temperature: 0.2,
-        max_tokens: 80,
-      }),
+      body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(timeoutMs()),
     })
     if (!response.ok) {
@@ -695,14 +725,27 @@ async function requestDecision(
       choices?: Array<{ message?: { content?: unknown } }>
     }
     const content = data.choices?.[0]?.message?.content
-    if (typeof content !== 'string') {
+    const keyLabel = provider.keys.length > 1 ? `, ключ ${keyIndex + 1}` : ''
+    if (typeof content !== 'string' || content.trim() === '') {
       stats.invalid += 1
-      return { decision: null, failed: true }
+      if (llmDebugEnabled()) {
+        console.warn(
+          `[bot] LLM AI (${provider.label}${keyLabel}) вернул пустой ответ ` +
+            `(${model}); пробую другого провайдера.`,
+        )
+      }
+      // Other keys use the same model, so another provider is the only useful
+      // fallback. Remember a Groq model that returns no content so discovery
+      // can pick another one.
+      if (provider.id === 'groq') {
+        failedGroqModels.add(model)
+        cachedGroqModel = null
+      }
+      return { decision: null, failed: true, providerFailed: true }
     }
     const decision = parseLlmDecision(content, battle)
     if (!decision) stats.invalid += 1
     if (!decision && llmDebugEnabled()) {
-      const keyLabel = provider.keys.length > 1 ? `, ключ ${keyIndex + 1}` : ''
       console.warn(
         `[bot] LLM AI (${provider.label}${keyLabel}) вернул невалидный ответ: ` +
           content.slice(0, 120),
