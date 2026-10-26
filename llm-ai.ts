@@ -110,6 +110,17 @@ const failedGroqModels = new Set<string>()
 const providerPauses = new Map<ProviderId, number>()
 const keyPauses = new Map<string, number>()
 const keyRotation = new Map<ProviderId, number>()
+const stats = { model: 0, heuristic: 0, invalid: 0 }
+
+export function llmStats(): { model: number; heuristic: number; invalid: number } {
+  return { ...stats }
+}
+
+/** Called once per automated turn, whether the model or the fallback answered. */
+export function noteLlmTurn(usedModel: boolean): void {
+  if (usedModel) stats.model += 1
+  else stats.heuristic += 1
+}
 
 /** Accepts comma-, space- or newline-separated keys and drops duplicates. */
 export function parseApiKeys(...values: Array<string | undefined>): string[] {
@@ -513,7 +524,36 @@ function abilityLines(side: Side): string[] {
   })
 }
 
-export function buildLlmPrompt(battle: Battle): string {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Replaces Discord display names with side ids so no identities reach the model. */
+function recentLogLines(battle: Battle, events: string[]): string[] {
+  if (events.length === 0) return []
+  const names = new Map<string, string>()
+  for (const side of battle.sides) {
+    const name = side.name?.trim()
+    if (!name || names.has(name)) continue
+    names.set(name, `#${side.id} (${side.character.name})`)
+  }
+  const ordered = [...names.keys()].sort((left, right) => right.length - left.length)
+  const pattern =
+    ordered.length > 0
+      ? new RegExp(
+          `(?<![\\p{L}\\p{N}_])(${ordered.map(escapeRegExp).join('|')})(?![\\p{L}\\p{N}_])`,
+          'gu',
+        )
+      : null
+  return events.slice(-6).map(line => {
+    const clean = pattern
+      ? line.replace(pattern, match => names.get(match) ?? match)
+      : line
+    return clean.length > 160 ? `${clean.slice(0, 157)}…` : clean
+  })
+}
+
+export function buildLlmPrompt(battle: Battle, recentEvents: string[] = []): string {
   const side = battle.sides[battle.turn]
   if (!side) return ''
   const allies = battle.sides.filter(
@@ -522,6 +562,7 @@ export function buildLlmPrompt(battle: Battle): string {
   const enemies = battle.sides.filter(
     member => member.team !== side.team && member.hp > 0,
   )
+  const recent = recentLogLines(battle, recentEvents)
   const lines = [
     `Turn ${battle.clock}. You control ${describeSide(side, true)}.`,
     '',
@@ -533,6 +574,7 @@ export function buildLlmPrompt(battle: Battle): string {
     '',
     'ENEMIES:',
     ...(enemies.length > 0 ? enemies.map(enemy => describeSide(enemy)) : ['none']),
+    ...(recent.length > 0 ? ['', 'RECENT LOG:', ...recent.map(line => `- ${line}`)] : []),
     '',
     'LEGAL ACTIONS:',
   ]
@@ -615,6 +657,7 @@ async function requestDecision(
   keyIndex: number,
   model: string,
   battle: Battle,
+  recentEvents: string[],
 ): Promise<RequestResult> {
   try {
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
@@ -628,7 +671,7 @@ async function requestDecision(
         model,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildLlmPrompt(battle) },
+          { role: 'user', content: buildLlmPrompt(battle, recentEvents) },
         ],
         temperature: 0.2,
         max_tokens: 80,
@@ -652,8 +695,12 @@ async function requestDecision(
       choices?: Array<{ message?: { content?: unknown } }>
     }
     const content = data.choices?.[0]?.message?.content
-    if (typeof content !== 'string') return { decision: null, failed: true }
+    if (typeof content !== 'string') {
+      stats.invalid += 1
+      return { decision: null, failed: true }
+    }
     const decision = parseLlmDecision(content, battle)
+    if (!decision) stats.invalid += 1
     if (!decision && llmDebugEnabled()) {
       const keyLabel = provider.keys.length > 1 ? `, ключ ${keyIndex + 1}` : ''
       console.warn(
@@ -669,7 +716,10 @@ async function requestDecision(
   }
 }
 
-export async function chooseLlmTurn(battle: Battle): Promise<LlmTurn | null> {
+export async function chooseLlmTurn(
+  battle: Battle,
+  recentEvents: string[] = [],
+): Promise<LlmTurn | null> {
   const side = battle.sides[battle.turn]
   if (!side || battle.finished || side.hp <= 0) return null
   if (side.minion || side.fake) return null
@@ -710,6 +760,7 @@ export async function chooseLlmTurn(battle: Battle): Promise<LlmTurn | null> {
           candidate.index,
           model,
           battle,
+          recentEvents,
         )
         if (result.decision) {
           return {

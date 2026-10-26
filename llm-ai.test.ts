@@ -9,6 +9,8 @@ import {
   llmLikelyAvailable,
   llmPauseMs,
   llmProviderOrder,
+  llmStats,
+  noteLlmTurn,
   parseApiKeys,
   parseLlmDecision,
   pickGroqModel,
@@ -62,6 +64,29 @@ describe('LLM battle prompt', () => {
     const prompt = buildLlmPrompt(battle)
     expect(prompt).toContain('ability cd 2')
     expect(prompt).not.toContain('ability cd 3')
+  })
+
+  test('adds a sanitized recent log to the prompt', () => {
+    const battle = battleWith('Guest 1337')
+    const lines = Array.from(
+      { length: 8 },
+      (_, index) => `SecretPlayerName наносит ${index + 1} урона: SecretEnemyName.`,
+    )
+    const prompt = buildLlmPrompt(battle, lines)
+    expect(prompt).toContain('RECENT LOG:')
+    expect(prompt).toContain('#0 (Guest 1337) наносит 8 урона: #1 (Noob).')
+    expect(prompt).not.toContain('SecretPlayerName')
+    expect(prompt).not.toContain('SecretEnemyName')
+    expect(prompt).not.toContain('наносит 1 урона')
+  })
+
+  test('counts model and heuristic turns', () => {
+    const before = llmStats()
+    noteLlmTurn(true)
+    noteLlmTurn(false)
+    const after = llmStats()
+    expect(after.model).toBe(before.model + 1)
+    expect(after.heuristic).toBe(before.heuristic + 1)
   })
 
   test('lists both boss abilities', () => {

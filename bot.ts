@@ -36,6 +36,8 @@ import {
   llmAiEnabled,
   llmDebugEnabled,
   llmLikelyAvailable,
+  llmStats,
+  noteLlmTurn,
   warmLlmModel,
 } from './llm-ai'
 import { simulateBalance, type BalanceSimulation } from './balance'
@@ -4255,7 +4257,11 @@ function resetTimeoutStrikes(messageId: string, userId: string): void {
   if (strikes.size === 0) timeoutStrikes.delete(messageId)
 }
 
-async function runAutomatedTurns(input: Battle, events: string[]): Promise<Battle> {
+async function runAutomatedTurns(
+  input: Battle,
+  events: string[],
+  history: string[] = [],
+): Promise<Battle> {
   let current = input
   let guard = 0
   let llmCalls = 0
@@ -4273,11 +4279,21 @@ async function runAutomatedTurns(input: Battle, events: string[]): Promise<Battl
     } else if (side.minion) {
       decision = { action: 'attack', specialIndex: 0 }
     } else {
-      const llmTurn = llmCalls < 3 ? await chooseLlmTurn(current) : null
+      const startedAt = Date.now()
+      const llmTurn =
+        llmCalls < 3
+          ? await chooseLlmTurn(current, [...history, ...events])
+          : null
+      const elapsedMs = Date.now() - startedAt
       const llmDecision = llmTurn?.decision ?? null
+      noteLlmTurn(llmTurn !== null)
       if (llmTurn) llmCalls += 1
       if (llmDebugEnabled()) {
         const who = `${side.character.name} #${side.id}`
+        const counters = llmStats()
+        const suffix =
+          ` · ${elapsedMs} мс · модель ${counters.model} / ` +
+          `эвристика ${counters.heuristic} / невалид ${counters.invalid}`
         if (llmTurn) {
           const slot =
             llmTurn.decision.action === 'special'
@@ -4293,10 +4309,10 @@ async function runAutomatedTurns(input: Battle, events: string[]): Promise<Battl
               : ''
           console.log(
             `[bot] LLM AI: ${who} — ${llmTurn.provider}${key} (${llmTurn.model}): ` +
-              `${llmTurn.decision.action}${slot}${target}`,
+              `${llmTurn.decision.action}${slot}${target}${suffix}`,
           )
         } else {
-          console.log(`[bot] LLM AI: ${who} — эвристика`)
+          console.log(`[bot] LLM AI: ${who} — эвристика${suffix}`)
         }
       }
       decision =
@@ -4420,7 +4436,11 @@ async function handleBattleTimeout(client: Client, messageId: string): Promise<v
   ]
   const result = takeTurn(battle, 'rest', Math.random)
   events.push(...result.events)
-  const current = await runAutomatedTurns(result.battle, events)
+  const current = await runAutomatedTurns(
+    result.battle,
+    events,
+    battleLogs.get(messageId) ?? [],
+  )
   appendBattleLog(messageId, events)
 
   if (current.finished) {
@@ -7054,7 +7074,11 @@ async function executeBattleAction(
         await interaction
           .editReply({
             embeds: [
-              battleEmbed(result.battle, result.events, '🤖 Нейросеть думает…'),
+              battleEmbed(
+                result.battle,
+                result.events,
+                `${emojiText('neural', '🤖')} Нейросеть думает…`,
+              ),
             ],
             components: [],
           })
@@ -7065,7 +7089,11 @@ async function executeBattleAction(
     clearTurnPing(interaction.client, messageId)
     let current = result.battle
     const events = [...result.events]
-    current = await runAutomatedTurns(current, events)
+    current = await runAutomatedTurns(
+      current,
+      events,
+      battleLogs.get(messageId) ?? [],
+    )
     const stored = battles.get(messageId)
     if (!stored || stored.finished) return
     appendBattleLog(messageId, events)

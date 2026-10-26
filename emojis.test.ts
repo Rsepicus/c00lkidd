@@ -62,8 +62,8 @@ describe('emojiText', () => {
     }
   })
 
-  test('resolves the tower and trials icons', () => {
-    for (const slug of ['tower', 'trials']) {
+  test('resolves the tower, trials and neural icons', () => {
+    for (const slug of ['tower', 'trials', 'neural']) {
       expect(emojiText(slug, 'X')).toContain(`:${slug}:`)
     }
   })
