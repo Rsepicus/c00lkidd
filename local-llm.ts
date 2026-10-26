@@ -38,6 +38,8 @@ let starting = false
 let stopping = false
 let restarts = 0
 let restartTimer: ReturnType<typeof setTimeout> | null = null
+let startRetryTimer: ReturnType<typeof setTimeout> | null = null
+let startFailures = 0
 let handlersRegistered = false
 
 export type LocalLlmPhase =
@@ -158,6 +160,13 @@ function runCommand(command: string, args: string[]): Promise<void> {
   })
 }
 
+const MAX_DOWNLOAD_ATTEMPTS = 4
+const PROGRESS_STEP = 25 * 1024 * 1024
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolveSleep => setTimeout(resolveSleep, ms))
+}
+
 async function download(
   url: string,
   destination: string,
@@ -172,78 +181,106 @@ async function download(
   totalBytes = 0
   lastError = ''
   console.log(`[bot] Local LLM: скачиваю ${label}…`)
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-  })
-  if (!response.ok || !response.body) {
-    phase = 'error'
-    lastError = `${label}: HTTP ${response.status}`
-    throw new Error(lastError)
-  }
-  totalBytes = Number(response.headers.get('content-length')) || 0
-  if (totalBytes > 0) {
-    console.log(
-      `[bot] Local LLM: ${label} — размер ${Math.round(totalBytes / 1024 / 1024)} МБ`,
-    )
-  }
-  const stream = createWriteStream(part)
-  const reader = response.body.getReader()
-  let received = 0
-  let nextLog = 25 * 1024 * 1024
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const chunk = Buffer.from(value)
-      if (!stream.write(chunk)) {
-        await new Promise<void>(resolveDrain => stream.once('drain', resolveDrain))
-      }
-      received += value.byteLength
-      receivedBytes = received
-      if (received >= nextLog) {
-        const total = totalBytes > 0
-          ? `/${Math.round(totalBytes / 1024 / 1024)}`
-          : ''
-        const percent = totalBytes > 0
-          ? ` (${Math.round((received / totalBytes) * 100)}%)`
-          : ''
-        console.log(
-          `[bot] Local LLM: ${label} — ${Math.round(received / 1024 / 1024)}${total} МБ${percent}`,
-        )
-        nextLog += 25 * 1024 * 1024
-      }
-    }
-    await new Promise<void>((resolveStream, rejectStream) => {
-      stream.on('finish', resolveStream)
-      stream.on('error', rejectStream)
-      stream.end()
-    })
-  } catch (error) {
-    stream.destroy()
+
+  for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt++) {
+    let stream: ReturnType<typeof createWriteStream> | null = null
     try {
-      unlinkSync(part)
-    } catch {}
-    phase = 'error'
-    lastError = error instanceof Error ? error.message : String(error)
-    throw error
-  }
-  if (expectedSha) {
-    const actual = await sha256File(part)
-    if (actual !== expectedSha) {
-      try {
-        unlinkSync(part)
-      } catch {}
-      phase = 'error'
-      lastError = `${label}: SHA-256 не совпал`
-      throw new Error(lastError)
+      const start = existsSync(part) ? statSync(part).size : 0
+      const headers: Record<string, string> = {}
+      if (start > 0) headers.Range = `bytes=${start}-`
+      const response = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      })
+      if (response.status === 416) {
+        try {
+          unlinkSync(part)
+        } catch {}
+        throw new Error('HTTP 416, начинаю заново')
+      }
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      const append = start > 0 && response.status === 206
+      const remaining = Number(response.headers.get('content-length')) || 0
+      totalBytes = append ? start + remaining : remaining
+      receivedBytes = append ? start : 0
+      if (attempt === 1 && totalBytes > 0) {
+        console.log(
+          `[bot] Local LLM: ${label} — размер ${Math.round(totalBytes / 1024 / 1024)} МБ`,
+        )
+      }
+      if (append) {
+        console.log(
+          `[bot] Local LLM: ${label} — продолжаю с ${Math.round(start / 1024 / 1024)} МБ`,
+        )
+      }
+      stream = createWriteStream(part, { flags: append ? 'a' : 'w' })
+      const reader = response.body.getReader()
+      let received = receivedBytes
+      let nextLog = Math.floor(received / PROGRESS_STEP) * PROGRESS_STEP + PROGRESS_STEP
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = Buffer.from(value)
+        if (!stream.write(chunk)) {
+          await new Promise<void>(resolveDrain => stream!.once('drain', resolveDrain))
+        }
+        received += chunk.length
+        receivedBytes = received
+        if (received >= nextLog) {
+          const total =
+            totalBytes > 0 ? `/${Math.round(totalBytes / 1024 / 1024)}` : ''
+          const percent =
+            totalBytes > 0
+              ? ` (${Math.round((received / totalBytes) * 100)}%)`
+              : ''
+          console.log(
+            `[bot] Local LLM: ${label} — ${Math.round(received / 1024 / 1024)}${total} МБ${percent}`,
+          )
+          nextLog += PROGRESS_STEP
+        }
+      }
+      await new Promise<void>((resolveStream, rejectStream) => {
+        stream!.on('finish', resolveStream)
+        stream!.on('error', rejectStream)
+        stream!.end()
+      })
+      if (expectedSha) {
+        const actual = await sha256File(part)
+        if (actual !== expectedSha) {
+          try {
+            unlinkSync(part)
+          } catch {}
+          throw new Error('SHA-256 не совпал')
+        }
+      }
+      renameSync(part, destination)
+      phase = 'idle'
+      phaseDetail = label
+      console.log(
+        `[bot] Local LLM: ${label} готов (${Math.round(received / 1024 / 1024)} МБ)`,
+      )
+      return
+    } catch (error) {
+      stream?.destroy()
+      lastError = error instanceof Error ? error.message : String(error)
+      if (attempt >= MAX_DOWNLOAD_ATTEMPTS) {
+        phase = 'error'
+        console.warn(
+          `[bot] Local LLM: ${label} не скачалась после ${attempt} попыток: ${lastError}`,
+        )
+        throw error
+      }
+      const delay = 2000 * attempt
+      phase = 'downloading'
+      phaseDetail = `${label} — повтор ${attempt + 1}/${MAX_DOWNLOAD_ATTEMPTS}`
+      console.warn(
+        `[bot] Local LLM: ${label} — ${lastError}; повтор ${attempt + 1}/${MAX_DOWNLOAD_ATTEMPTS} через ${Math.round(delay / 1000)} с…`,
+      )
+      await sleep(delay)
     }
   }
-  renameSync(part, destination)
-  phase = 'idle'
-  phaseDetail = label
-  console.log(
-    `[bot] Local LLM: ${label} готов (${Math.round(received / 1024 / 1024)} МБ)`,
-  )
 }
 
 function findLlamaServer(root: string): string | null {
@@ -364,6 +401,20 @@ function scheduleRestart(): void {
   restartTimer.unref?.()
 }
 
+function scheduleStartRetry(): void {
+  if (stopping || startRetryTimer || startFailures >= 3) return
+  startFailures += 1
+  const delay = 30_000 * startFailures
+  console.warn(
+    `[bot] Local LLM: повторная попытка через ${Math.round(delay / 1000)} с.`,
+  )
+  startRetryTimer = setTimeout(() => {
+    startRetryTimer = null
+    void startLocalLlm()
+  }, delay)
+  startRetryTimer.unref?.()
+}
+
 function registerHandlers(): void {
   if (handlersRegistered) return
   handlersRegistered = true
@@ -458,6 +509,7 @@ export async function startLocalLlm(): Promise<void> {
     if (await isHealthy(settings)) {
       ready = true
       phase = 'ready'
+      startFailures = 0
       console.log(`[bot] Local LLM: уже запущен — ${settings.baseUrl}`)
       return
     }
@@ -467,16 +519,19 @@ export async function startLocalLlm(): Promise<void> {
         phase = 'error'
         lastError = 'файлы модели не найдены'
       }
+      if (settings.autoSetup) scheduleStartRetry()
       return
     }
     phase = 'starting'
     phaseDetail = 'llama-server'
     spawnServer(settings, files)
     await waitForHealth(settings)
+    if (ready) startFailures = 0
   } catch (error) {
     phase = 'error'
     lastError = error instanceof Error ? error.message : String(error)
     console.warn('[bot] Local LLM:', lastError)
+    scheduleStartRetry()
   } finally {
     starting = false
   }
@@ -487,6 +542,10 @@ export function stopLocalLlm(): void {
   if (restartTimer) {
     clearTimeout(restartTimer)
     restartTimer = null
+  }
+  if (startRetryTimer) {
+    clearTimeout(startRetryTimer)
+    startRetryTimer = null
   }
   serverProcess?.kill('SIGTERM')
   serverProcess = null
