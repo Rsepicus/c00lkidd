@@ -211,6 +211,89 @@ describe('2 на 2', () => {
     expect(battle.sides[1].hp).toBeLessThan(before)
   })
 
+  test('a sentry acts right after Builderman and does not take a separate turn', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    let battle = createBattle(
+      { userId: 'a', name: 'A', character: builderman },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const turret = battle.sides.find(side => side.structure === 'sentry')!
+    expect(battle.turn).toBe(1)
+
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(0)
+
+    const ownerTurn = takeTurn(battle, 'attack', () => 0)
+    expect(ownerTurn.events.join(' ')).toContain('Sentry наносит')
+    expect(ownerTurn.battle.turn).toBe(1)
+
+    const enemyTurn = takeTurn(ownerTurn.battle, 'attack', () => 0).battle
+    expect(enemyTurn.turn).toBe(0)
+    expect(enemyTurn.sides.find(side => side.id === turret.id)?.turns).toBe(1)
+  })
+
+  test('pizza minions act after c00lkidd, not on the summoning turn', () => {
+    let battle = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('c00lkidd')! },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    expect(battle.turn).toBe(1)
+    expect(battle.sides[1].dotTurns).toBe(0)
+
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(0)
+
+    const ownerTurn = takeTurn(battle, 'attack', () => 0)
+    expect(ownerTurn.events.join(' ')).toContain('доставляет пиццу')
+    expect(ownerTurn.battle.turn).toBe(1)
+    expect(
+      ownerTurn.battle.sides.filter(side => side.pizzaMinion).every(side => side.hp === 0),
+    ).toBe(true)
+  })
+
+  test('a structure does not make its owner skip their 2v2 partner', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    let battle = createTeamBattle(
+      [
+        { userId: 'a', name: 'A', character: builderman },
+        { userId: 'a', name: 'A2', character: heavy },
+      ],
+      [
+        { userId: 'b', name: 'B', character: heavy },
+        { userId: 'b', name: 'B2', character: heavy },
+      ],
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    expect(battle.turn).toBe(1)
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(2)
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(3)
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(0)
+
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(1)
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(2)
+  })
+
+  test('an enemy turn goes to the owner, not to their structures', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
+    let battle = createBattle(
+      { userId: 'a', name: 'A', character: builderman },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.sides[battle.turn].minion).not.toBe(true)
+    expect(battle.sides[battle.turn].team).toBe(0)
+  })
+
   test('Builderman turret has a longer cooldown than the dispenser', () => {
     const builderman = characterByName('Builderman')!
     expect(specialCooldown(builderman.special)).toBe(4)
@@ -1128,6 +1211,7 @@ describe('balance cooldowns', () => {
       ['Builderman', 'Dispenser'],
       ['Taph', 'Subspace Tripmine'],
       ['Noli', 'Observant'],
+      ['007n7', 'Clone'],
     ] as const
 
     for (const [characterName, specialName] of tuned) {
@@ -1861,7 +1945,8 @@ describe('character passives and new survivors', () => {
     const battle = duel(characterByName('Nosferatu')!, heavy)
     const turn = takeTurn(battle, 'special', () => 0)
     const ascended = turn.battle
-    expect(ascended.sides[0].cooldown).toBe(4)
+    expect(ascended.sides[0].cooldown).toBe(0)
+    expect(specialOf(ascended.sides[0]).name).toBe('Dive')
     expect(ascended.sides[0].dodging).toBe(true)
 
     const dodged = takeTurn(ascended, 'attack', () => 0.99).battle
@@ -2061,6 +2146,29 @@ describe('character passives and new survivors', () => {
     battle.sides[0].hp = 50
     const result = takeTurn(battle, 'attack', () => 0).battle
     expect(result.sides[0].hp).toBe(53)
+  })
+
+  test('Ascension arms Dive for Nosferatu before the cooldown starts', () => {
+    let battle = duel(characterByName('Nosferatu')!, heavy)
+    expect(specialOf(battle.sides[0]).name).toBe('Ascension')
+    battle = takeTurn(battle, 'special', () => 0).battle
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    expect(battle.turn).toBe(0)
+    expect(specialOf(battle.sides[0]).name).toBe('Dive')
+    expect(battle.sides[0].cooldown).toBe(0)
+  })
+
+  test('Dive hits for 14, stuns, and restores the Ascension cooldown', () => {
+    let battle = duel(characterByName('Nosferatu')!, heavy)
+    battle = takeTurn(battle, 'special', () => 0).battle
+    battle = takeTurn(battle, 'attack', () => 0).battle
+    const result = takeTurn(battle, 'special', () => 0)
+    expect(result.battle.sides[1].hp).toBe(86)
+    expect(result.events.join(' ')).toContain('оглушён пике')
+    expect(result.events.join(' ')).toContain('пропускает ход')
+    expect(specialOf(result.battle.sides[0]).name).toBe('Ascension')
+    expect(result.battle.sides[0].diveReady).toBe(false)
+    expect(result.battle.sides[0].cooldown).toBe(4)
   })
 
   test('Azure Atropic adds Atropa damage and heals per two stacks', () => {

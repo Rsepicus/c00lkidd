@@ -103,6 +103,8 @@ export type Side = {
   dotSourceId: number | null
   lifesteal: boolean
   abilityUses: number
+  /** Nosferatu's follow-up: Ascension arms Dive for the next turn. */
+  diveReady: boolean
   abilityStats?: Record<string, { uses: number; damage: number; healing: number }>
   turns?: number
   rests?: number
@@ -200,6 +202,7 @@ function makeSide(entry: FighterEntry, team: 0 | 1): Side {
     dotSourceId: null,
     lifesteal: false,
     abilityUses: 0,
+    diveReady: false,
     blocking: false,
     blockTargetId: null,
     purified: false,
@@ -446,6 +449,13 @@ const BLOOD_HUNT_SPECIAL: Special = {
   cooldown: 0,
 }
 
+const DIVE_SPECIAL: Special = {
+  name: 'Dive',
+  kind: 'heavy',
+  power: 14,
+  description: 'Пике: 14 урона; при попадании цель пропускает ход. Появляется после Ascension и расходует его.',
+}
+
 export function specialCooldown(special: Special): number {
   return special.cooldown ?? SPECIAL_COOLDOWN
 }
@@ -463,6 +473,9 @@ function specialSlot(side: Side, index: number): Special {
 
 export function specialOf(side: Side, index = 0): Special {
   const base = specialSlot(side, index)
+  if (index === 0 && side.character.name === 'Nosferatu' && side.diveReady) {
+    return DIVE_SPECIAL
+  }
   if (isBloodHuntUser(side) && side.charge >= CRY_CHARGES) {
     return BLOOD_HUNT_SPECIAL
   }
@@ -1159,6 +1172,11 @@ function applySpecial(
         other.dotSourceId = side.id
         events.push(`${other.name} ${DOT_VERB.bleeding}.`)
       }
+      if (special.name === 'Dive' && dealt > 0 && other.hp > 0) {
+        if (tryStun(other, events, side)) {
+          events.push(`${other.name} оглушён пике и пропустит ход.`)
+        }
+      }
       break
     }
     case 'heal': {
@@ -1685,12 +1703,20 @@ function passTurn(battle: Battle): void {
   current.lastActed = battle.clock
 
   // Pick the living enemy who has waited the longest, so nobody in a 2v1 is skipped.
+  // Minions and structures act right after their owner, never as separate turns.
   let nextIndex = -1
   let leastRecent = Number.POSITIVE_INFINITY
   for (let step = 1; step <= battle.sides.length; step++) {
     const index = (battle.turn + step) % battle.sides.length
     const candidate = battle.sides[index]
-    if (candidate.fake || candidate.team !== enemyTeam || candidate.hp <= 0) continue
+    if (
+      candidate.fake ||
+      candidate.minion ||
+      candidate.team !== enemyTeam ||
+      candidate.hp <= 0
+    ) {
+      continue
+    }
     if (candidate.lastActed < leastRecent) {
       leastRecent = candidate.lastActed
       nextIndex = index
@@ -1740,8 +1766,19 @@ export function takeTurn(
   targetIndex?: number,
   specialIndex = 0,
 ): TurnResult {
+  return takeTurnInternal(input, action, rng, targetIndex, specialIndex, true)
+}
+
+function takeTurnInternal(
+  input: Battle,
+  action: Action,
+  rng: Rng,
+  targetIndex: number | undefined,
+  specialIndex: number,
+  advance: boolean,
+): TurnResult {
   if (input.finished) throw new Error('Бой уже окончен.')
-  const battle = structuredClone(input)
+  let battle = structuredClone(input)
   const index = battle.turn
   const side = battle.sides[index]
   if (!side || side.hp <= 0) throw new Error('Сейчас некому ходить.')
@@ -1750,6 +1787,22 @@ export function takeTurn(
   side.extraTurn = false
   side.turns = (side.turns ?? 0) + 1
   const initialHp = battle.sides.map(candidate => candidate.hp)
+  // Capture minions before the action: a structure or pizza summoned this turn
+  // waits for its owner's next turn instead of acting immediately.
+  const minionIds =
+    side.minion || !advance
+      ? []
+      : battle.sides
+          .filter(
+            candidate =>
+              candidate.minion &&
+              candidate.hp > 0 &&
+              (candidate.minionOwnerSideId === side.id ||
+                (candidate.minionOwnerSideId == null &&
+                  candidate.minionOwnerId === side.userId &&
+                  side.character.name === '1x1x1x1')),
+          )
+          .map(candidate => candidate.id)
 
   const events: string[] = []
   const notices: string[] = []
@@ -1760,6 +1813,39 @@ export function takeTurn(
     finished: battle.finished,
     winner: battle.winner,
   })
+
+  const endTurn = (): void => {
+    if (!advance || battle.finished) return
+    if (minionIds.length === 0) {
+      advanceTurn(battle, events)
+      return
+    }
+    for (const id of minionIds) {
+      const minion = battle.sides[id]
+      if (!minion || minion.hp <= 0) continue
+      battle.turn = minion.id
+      const decision = {
+        action: minion.structure === 'dispenser' ? ('special' as const) : ('attack' as const),
+        specialIndex: 0,
+      }
+      const minionTurn = takeTurnInternal(
+        battle,
+        decision.action,
+        rng,
+        undefined,
+        decision.specialIndex,
+        false,
+      )
+      battle = minionTurn.battle
+      events.push(...minionTurn.events)
+      notices.push(...minionTurn.notices)
+      if (battle.finished) return
+    }
+    // End the owner's turn from their own side so lastActed stays correct for
+    // 2v2 turn order; minions themselves are never selected by passTurn.
+    battle.turn = side.id
+    advanceTurn(battle, events)
+  }
 
   if (side.fake) throw new Error('Фейковый Ноли не ходит.')
 
@@ -1791,7 +1877,7 @@ export function takeTurn(
     side.stunned = false
     side.extraTurn = false
     events.push(`${side.name} пропускает ход.`)
-    advanceTurn(battle, events)
+    endTurn()
     return result()
   }
 
@@ -2171,8 +2257,18 @@ export function takeTurn(
           usedSpecial.name === 'Blood Hunt' || bloodHuntReady || usedSpecial.kind === 'copy'
             ? 0
             : specialCooldown(usedSpecial)
-        if (specialIndex === 1) side.secondCooldown = cooldown
-        else side.cooldown = cooldown
+        if (specialIndex === 1) {
+          side.secondCooldown = cooldown
+        } else if (side.character.name === 'Nosferatu' && usedSpecial.name === 'Ascension') {
+          side.diveReady = true
+          // Dive is the follow-up, so it must be usable on the next turn.
+          side.cooldown = 0
+        } else if (side.character.name === 'Nosferatu' && usedSpecial.name === 'Dive') {
+          side.diveReady = false
+          side.cooldown = specialCooldown(side.character.special)
+        } else {
+          side.cooldown = cooldown
+        }
       }
       break
     case 'juke': {
@@ -2212,7 +2308,7 @@ export function takeTurn(
       events.push(`${side.name} действует ещё раз (приоритет хода).`)
     } else {
       side.extraTurn = false
-      advanceTurn(battle, events)
+      endTurn()
     }
   }
   return result()

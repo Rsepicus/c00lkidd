@@ -21,6 +21,7 @@ const EN: Record<string, string> = {
   'Blood Hunt': 'Roar: 8 damage, +15% dodge for 2 turns, and 3 empowered attacks (+3 damage, heals on hit).',
   Eviscerate: 'Evisceration: 10 damage; the opponent cannot heal for 2 turns; Rest clears it without healing. Builds Blood (2 charges → Blood Hunt).',
   Ascension: 'The next enemy attack misses. CD: 4 turns.',
+  Dive: 'Dive: 14 damage; on a hit the target skips a turn. Appears after Ascension and consumes it.',
   Lacerate: 'Swarm: the opponent takes +25% damage for 2 turns.',
   'Bloxy Cola': 'Speed: +25% dodge and Strength (+20% damage) for 2 turns, removes a dodge debuff, and grants turn priority.',
   'Slateskin Potion': 'Slateskin: +22 overheal, DoT immunity and −10% dodge for 2 turns.',

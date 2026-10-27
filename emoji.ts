@@ -41,6 +41,7 @@ const ABILITY_SLUGS: Record<string, string> = {
   'Guest 666|Infernal Cry': 'infernalcry',
   'Guest 666|Blood Hunt': 'bloodhunt',
   'Nosferatu|Ascension': 'ascension',
+  'Nosferatu|Dive': 'lacerate',
   'Noob|Bloxy Cola': 'bloxycola',
   'Shedletsky|Fried Chicken': 'friedchicken',
   'Elliot|Pizza Throw': 'pizzathrow',

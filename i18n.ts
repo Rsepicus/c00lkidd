@@ -863,6 +863,7 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/^(.+) попал под обстрел турели$/, '$1 is hit by the sentry'],
   [/^(.+) подорвался на минах$/, '$1 triggered mines'],
   [/^(.+) заморожен и пропустит ход$/, '$1 is frozen and will skip a turn'],
+  [/^(.+) оглушён пике и пропустит ход\.$/, '$1 is stunned by the dive and will skip a turn.'],
   [/^(.+) сбит с ног: −20% урона$/, '$1 is knocked down: −20% damage'],
   [/^(.+) не может лечиться\.$/, "$1 can't heal."],
   [/^(.+) обездвижен\.$/, '$1 is immobilized.'],

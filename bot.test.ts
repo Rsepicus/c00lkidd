@@ -462,7 +462,7 @@ describe('embeds', () => {
     expect(forecastEmbed(battle, battle.sides[0]).toJSON().description).toContain('Plead')
   })
 
-  test('groups rotten minions in the battle and target panels', () => {
+  test('shows each rotten minion as its own target', () => {
     const battle = createBattle(
       { userId: 'a', name: 'Alice', character: characterByName('1x1x1x1')! },
       { userId: 'b', name: 'Bob', character: characterByName('Noob')! },
@@ -477,9 +477,11 @@ describe('embeds', () => {
     expect(battleStatsText(battle)).toContain('Миньоны')
     const target = targetComponents(battle, [minion.id])[0].toJSON().components[0] as {
       custom_id: string
+      label?: string
       emoji?: { name?: string }
     }
-    expect(target.custom_id).toBe('pvp:target:minions:rotten')
+    expect(target.custom_id).toBe(`pvp:target:${minion.id}`)
+    expect(target.label).toContain('Миньон 1')
     expect(target.emoji?.name).toBe('rottenminion')
   })
 
@@ -496,9 +498,11 @@ describe('embeds', () => {
     const minion = summoned.sides.find(side => side.pizzaMinion)!
     const target = targetComponents(summoned, [minion.id])[0].toJSON().components[0] as {
       custom_id: string
+      label?: string
       emoji?: { name?: string }
     }
-    expect(target.custom_id).toBe('pvp:target:minions:pizza')
+    expect(target.custom_id).toBe(`pvp:target:${minion.id}`)
+    expect(target.label).toContain('Пицца-миньон 1')
     expect(target.emoji?.name).toBe('pizzadelivery')
   })
 
@@ -514,19 +518,55 @@ describe('embeds', () => {
       maxHp: 20,
       attack: 2,
     })
-    const buttons = targetComponents(summoned, [...pizza.map(side => side.id), rotten.id])[0]
-      .toJSON()
-      .components as Array<{ custom_id: string; emoji?: { name?: string } }>
+    const targets = [...pizza.map(side => side.id), rotten.id]
+    const rows = targetComponents(summoned, targets).map(row => row.toJSON())
+    const buttons = rows.flatMap(row => row.components) as Array<{
+      custom_id: string
+      label?: string
+      emoji?: { name?: string }
+    }>
     const minionButtons = buttons.filter(button =>
-      button.custom_id.startsWith('pvp:target:minions'),
+      targets.some(index => button.custom_id === `pvp:target:${index}`),
     )
-    expect(minionButtons.map(button => button.custom_id)).toEqual([
-      'pvp:target:minions:rotten',
-      'pvp:target:minions:pizza',
+    expect(minionButtons.map(button => button.custom_id)).toEqual(
+      targets.map(index => `pvp:target:${index}`),
+    )
+    expect(minionButtons.map(button => button.label)).toEqual([
+      'Пицца-миньон 1 (8/8)',
+      'Пицца-миньон 2 (8/8)',
+      'Миньон 1 (20/20)',
     ])
-    expect(
-      minionButtons.find(button => button.custom_id === 'pvp:target:minions:pizza')?.emoji?.name,
-    ).toBe('pizzadelivery')
+    expect(minionButtons[0].emoji?.name).toBe('pizzadelivery')
+    expect(minionButtons[2].emoji?.name).toBe('rottenminion')
+  })
+
+  test('gives every turret and dispenser its own target button', () => {
+    const battle = createBattle(
+      { userId: 'a', name: 'A', character: characterByName('Builderman')! },
+      { userId: 'b', name: 'B', character: characterByName('Noob')! },
+    )
+    const sentry1 = addStructure(battle, battle.sides[0], 'sentry')
+    const sentry2 = addStructure(battle, battle.sides[0], 'sentry')
+    const dispenser1 = addStructure(battle, battle.sides[0], 'dispenser')
+    const dispenser2 = addStructure(battle, battle.sides[0], 'dispenser')
+    const targets = [sentry1.id, sentry2.id, dispenser1.id, dispenser2.id]
+    const buttons = targetComponents(battle, targets)
+      .flatMap(row => row.toJSON().components) as Array<{
+      custom_id: string
+      label?: string
+    }>
+    const minionButtons = buttons.filter(button =>
+      targets.some(index => button.custom_id === `pvp:target:${index}`),
+    )
+    expect(minionButtons.map(button => button.custom_id)).toEqual(
+      targets.map(index => `pvp:target:${index}`),
+    )
+    expect(minionButtons.map(button => button.label)).toEqual([
+      'Турель 1 (25/25)',
+      'Турель 2 (25/25)',
+      'Диспенсер 1 (25/25)',
+      'Диспенсер 2 (25/25)',
+    ])
   })
 
   test('splits target buttons across rows when a battle has many targets', () => {
@@ -551,7 +591,10 @@ describe('embeds', () => {
     for (const row of rows) expect(row.components.length).toBeLessThanOrEqual(5)
     const labels = rows.flatMap(row => row.components.map(component => component.label))
     expect(labels).toContain('Отмена')
-    expect(labels.filter(label => label?.includes('Миньоны')).length).toBe(1)
+    expect(labels.filter(label => label?.includes('Пицца-миньон')).length).toBe(2)
+    expect(labels.filter(label => label?.includes('Турель')).length).toBe(1)
+    expect(labels.filter(label => label?.includes('Диспенсер')).length).toBe(1)
+    expect(labels.filter(label => label?.includes('Миньон 1')).length).toBe(1)
   })
 
   test('character card shows the mastery milestone badge', () => {
@@ -1338,10 +1381,13 @@ describe('embeds', () => {
     const afterCast = takeTurn(battle, 'special', () => 0).battle
     const turret = afterCast.sides.find(side => side.structure === 'sentry')!
     expect(String(battleEmbed(afterCast).toJSON().description)).toContain('<:sentry:')
-    const targetIds = targetComponents(afterCast, [turret.id], 'enemy')[0]
+    const targetButtons = targetComponents(afterCast, [turret.id], 'enemy')[0]
       .toJSON()
-      .components.map(component => component.custom_id)
-    expect(targetIds).toContain('pvp:target:minions:sentry')
+      .components as Array<{ custom_id: string; label?: string }>
+    expect(targetButtons.map(component => component.custom_id)).toContain(
+      `pvp:target:${turret.id}`,
+    )
+    expect(targetButtons[0].label).toContain('Турель 1')
   })
 
   test('debug panel exposes coins, balance test and the AI arena', () => {

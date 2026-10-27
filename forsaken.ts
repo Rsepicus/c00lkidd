@@ -290,7 +290,7 @@ export const KILLERS: readonly Character[] = [
     name: 'Nosferatu',
     role: 'killer',
     class: 'Ambush',
-    ability: 'Скрытность, левитация, Ascension и Hunter\'s Feast.',
+    ability: 'Скрытность, левитация, Ascension с добиванием Dive и Hunter\'s Feast.',
     power: 7,
     price: 1922,
     hp: 100,
@@ -368,7 +368,7 @@ export const SURVIVORS: readonly Character[] = [
     price: 500,
     hp: 100,
     attack: 11,
-    special: { name: 'Clone', kind: 'dodge', power: 0, description: 'Следующая атака промахнётся; +15% уворота на 2 хода.' },
+    special: { name: 'Clone', kind: 'dodge', power: 0, cooldown: 3, description: 'Следующая атака промахнётся; +15% уворота на 2 хода.' },
     alternates: [
       { name: 'c00lgui', kind: 'copy', power: 0, description: 'Копирует способность выбранного врага до конца боя, даёт 12 временных HP; скопированная способность готова сразу.' },
     ],

@@ -4114,55 +4114,89 @@ export function targetComponents(
     if (emoji) button.setEmoji(emoji)
     buttons.push(button)
   }
-  const minionGroups = [
-    {
-      type: 'rotten',
-      targets: minionTargets.filter(
-        index => !battle.sides[index]?.pizzaMinion && !battle.sides[index]?.structure,
-      ),
-      label: 'Миньоны',
-      slug: 'rottenminion',
-      fallback: '🧟',
-    },
-    {
-      type: 'pizza',
-      targets: minionTargets.filter(index => battle.sides[index]?.pizzaMinion),
-      label: 'Пицца-миньоны',
-      slug: 'pizzadelivery',
-      fallback: '🍕',
-    },
-    {
-      type: 'sentry',
-      targets: minionTargets.filter(index => battle.sides[index]?.structure === 'sentry'),
-      label: 'Турели',
-      slug: 'sentry',
-      fallback: '🔫',
-    },
-    {
-      type: 'dispenser',
-      targets: minionTargets.filter(index => battle.sides[index]?.structure === 'dispenser'),
-      label: 'Диспенсеры',
-      slug: 'dispenser',
-      fallback: '💉',
-    },
-  ]
-  for (const group of minionGroups) {
-    if (group.targets.length === 0) continue
-    const minionEmoji = emojiData(group.slug)
-    const label = `${group.label} (${group.targets.length})`
+  const minionMeta = (side: Side): { label: string; slug: string; fallback: string } => {
+    if (side.structure === 'sentry') {
+      return { label: 'Турель', slug: 'sentry', fallback: '🔫' }
+    }
+    if (side.structure === 'dispenser') {
+      return { label: 'Диспенсер', slug: 'dispenser', fallback: '💉' }
+    }
+    if (side.pizzaMinion) {
+      return { label: 'Пицца-миньон', slug: 'pizzadelivery', fallback: '🍕' }
+    }
+    return { label: 'Миньон', slug: 'rottenminion', fallback: '🧟' }
+  }
+  const cancelButton = new ButtonBuilder()
+    .setCustomId('pvp:target:cancel')
+    .setLabel('Отмена')
+    .setStyle(ButtonStyle.Secondary)
+  const counts = new Map<string, number>()
+  const minionButtons = minionTargets.map(index => {
+    const side = battle.sides[index]
+    const meta = minionMeta(side)
+    const number = (counts.get(meta.label) ?? 0) + 1
+    counts.set(meta.label, number)
+    const minionEmoji = emojiData(meta.slug)
+    const label = `${meta.label} ${number} (${side.hp}/${side.maxHp})`
     const button = new ButtonBuilder()
-      .setCustomId(`pvp:target:minions:${group.type}`)
-      .setLabel(minionEmoji ? label : `${group.fallback} ${label}`)
+      .setCustomId(`pvp:target:${index}`)
+      .setLabel(minionEmoji ? label : `${meta.fallback} ${label}`)
       .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
     if (minionEmoji) button.setEmoji(minionEmoji)
-    buttons.push(button)
+    return button
+  })
+  // Discord allows 25 buttons. If a long fight has more targets than that,
+  // fall back to one button per minion type so the panel still fits.
+  if (buttons.length + minionButtons.length + 1 <= 25) {
+    buttons.push(...minionButtons)
+  } else {
+    const minionGroups = [
+      {
+        type: 'rotten',
+        targets: minionTargets.filter(
+          index => !battle.sides[index]?.pizzaMinion && !battle.sides[index]?.structure,
+        ),
+        label: 'Миньоны',
+        slug: 'rottenminion',
+        fallback: '🧟',
+      },
+      {
+        type: 'pizza',
+        targets: minionTargets.filter(index => battle.sides[index]?.pizzaMinion),
+        label: 'Пицца-миньоны',
+        slug: 'pizzadelivery',
+        fallback: '🍕',
+      },
+      {
+        type: 'sentry',
+        targets: minionTargets.filter(index => battle.sides[index]?.structure === 'sentry'),
+        label: 'Турели',
+        slug: 'sentry',
+        fallback: '🔫',
+      },
+      {
+        type: 'dispenser',
+        targets: minionTargets.filter(
+          index => battle.sides[index]?.structure === 'dispenser',
+        ),
+        label: 'Диспенсеры',
+        slug: 'dispenser',
+        fallback: '💉',
+      },
+    ]
+    for (const group of minionGroups) {
+      if (group.targets.length === 0) continue
+      const minionEmoji = emojiData(group.slug)
+      const label = `${group.label} (${group.targets.length})`
+      const button = new ButtonBuilder()
+        .setCustomId(`pvp:target:minions:${group.type}`)
+        .setLabel(minionEmoji ? label : `${group.fallback} ${label}`)
+        .setStyle(tone === 'ally' ? ButtonStyle.Primary : ButtonStyle.Danger)
+      if (minionEmoji) button.setEmoji(minionEmoji)
+      buttons.push(button)
+    }
   }
-  buttons.push(
-    new ButtonBuilder()
-      .setCustomId('pvp:target:cancel')
-      .setLabel('Отмена')
-      .setStyle(ButtonStyle.Secondary),
-  )
+  buttons.push(cancelButton)
   // Discord allows at most 5 buttons per row. A 2v2 fight against minions and
   // structures can produce more targets than that, so split them into rows.
   const rows: ActionRowBuilder<ButtonBuilder>[] = []
