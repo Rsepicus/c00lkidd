@@ -4,6 +4,7 @@ import {
   chooseLlmTurn,
   buildChatBody,
   buildLlmPrompt,
+  buildLocalCandidates,
   buildLocalPrompt,
   importLlmEnv,
   llmAiEnabled,
@@ -97,20 +98,31 @@ describe('LLM battle prompt', () => {
     expect(openrouter.reasoning).toEqual({ effort: 'low', exclude: true })
   })
 
-  test('builds a compact prompt for the local model', () => {
+  test('builds legal letter choices for the local model', () => {
     const battle = battleWith('Guest 1337')
-    const prompt = buildLocalPrompt(battle)
+    const candidates = buildLocalCandidates(battle)
+    expect(candidates.length).toBeGreaterThan(0)
+    expect(candidates.length).toBeLessThanOrEqual(8)
+    expect(
+      candidates.some(
+        candidate =>
+          candidate.decision.action === 'special' &&
+          candidate.decision.specialIndex === 0,
+      ),
+    ).toBe(true)
+    expect(candidates.some(candidate => candidate.decision.action === 'attack')).toBe(
+      true,
+    )
+    expect(candidates.at(-1)?.decision.action).toBe('rest')
+
+    const prompt = buildLocalPrompt(battle, candidates)
+    expect(prompt).toContain('A)')
     expect(prompt).toContain('#0 Guest 1337')
     expect(prompt).toContain('#1 Noob')
-    expect(prompt).toContain('Legal actions')
     expect(prompt).toContain('special 0 (Block)')
+    expect(prompt).toContain('Answer with one letter only')
     expect(prompt).not.toContain('SecretPlayerName')
     expect(prompt).not.toContain('SecretEnemyName')
-
-    const body = buildChatBody('local', 'local', battle)
-    expect(body.max_tokens).toBe(64)
-    expect(body.reasoning_effort).toBeUndefined()
-    expect(JSON.stringify(body.messages)).not.toContain('SecretPlayerName')
   })
 
   test('puts the local model first when it is enabled', () => {

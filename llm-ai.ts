@@ -79,13 +79,6 @@ const SYSTEM_PROMPT = [
   'Omit target when the action needs none.',
 ].join('\n')
 
-const LOCAL_SYSTEM_PROMPT = [
-  'You are a battle AI. Choose the strongest legal action.',
-  'Never choose a special marked NOT READY.',
-  'Enemy targets are listed; never target your own side.',
-  'Return only one JSON object, no explanation.',
-].join('\n')
-
 export type ProviderId = 'openrouter' | 'groq' | 'local'
 
 type Provider = {
@@ -702,52 +695,127 @@ export function buildLlmPrompt(battle: Battle, recentEvents: string[] = []): str
 }
 
 /** Compact prompt for the tiny local model: no long descriptions or history. */
-export function buildLocalPrompt(battle: Battle): string {
+export type LocalCandidate = {
+  label: string
+  decision: BotDecision
+}
+
+function candidateTargets(
+  battle: Battle,
+  side: Side,
+  kind: 'enemy' | 'ally',
+): Side[] {
+  const all = battle.sides.filter(
+    member =>
+      member.hp > 0 &&
+      (kind === 'enemy'
+        ? member.team !== side.team
+        : member.team === side.team),
+  )
+  const real = all.filter(member =>
+    kind === 'enemy' ? !member.minion && !member.fake : !member.minion,
+  )
+  return real.length > 0 ? real : all
+}
+
+/** Legal letter choices: a tiny model picks one instead of writing JSON. */
+export function buildLocalCandidates(battle: Battle): LocalCandidate[] {
   const side = battle.sides[battle.turn]
-  if (!side) return ''
+  if (!side) return []
+  const enemies = candidateTargets(battle, side, 'enemy')
+  const allies = candidateTargets(battle, side, 'ally')
+  const core: LocalCandidate[] = []
+
+  for (const index of specialSlots(side)) {
+    if (!canUseSpecialNow(side, index)) continue
+    const special = specialOf(side, index)
+    if (specialNeedsEnemyTarget(side, index)) {
+      for (const target of enemies) {
+        core.push({
+          label: `special ${index} (${special.name}) on #${target.id} ${target.character.name} (HP ${target.hp}/${target.maxHp})`,
+          decision: {
+            action: 'special',
+            specialIndex: index,
+            targetIndex: target.id,
+          },
+        })
+      }
+    } else if (specialNeedsAllyTarget(side, index)) {
+      for (const target of allies) {
+        core.push({
+          label: `special ${index} (${special.name}) on ally #${target.id} ${target.character.name} (HP ${target.hp}/${target.maxHp})`,
+          decision: {
+            action: 'special',
+            specialIndex: index,
+            targetIndex: target.id,
+          },
+        })
+      }
+    } else {
+      core.push({
+        label: `special ${index} (${special.name})`,
+        decision: { action: 'special', specialIndex: index },
+      })
+    }
+  }
+
+  for (const target of enemies) {
+    core.push({
+      label: `attack #${target.id} ${target.character.name} (HP ${target.hp}/${target.maxHp})`,
+      decision: { action: 'attack', specialIndex: 0, targetIndex: target.id },
+    })
+  }
+
+  const extras: LocalCandidate[] = [
+    {
+      label: 'juke (+60% dodge stance)',
+      decision: { action: 'juke', specialIndex: 0 },
+    },
+    {
+      label: 'rest (+10 HP, clears Hemorrhage)',
+      decision: { action: 'rest', specialIndex: 0 },
+    },
+  ]
+  return [...core.slice(0, 6), ...extras]
+}
+
+export function localCandidateLetters(count: number): string[] {
+  return Array.from({ length: count }, (_, index) =>
+    String.fromCharCode(65 + index),
+  )
+}
+
+export function buildLocalPrompt(
+  battle: Battle,
+  candidates: LocalCandidate[] = buildLocalCandidates(battle),
+): string {
+  const side = battle.sides[battle.turn]
+  if (!side || candidates.length === 0) return ''
   const allies = battle.sides.filter(
     member => member.team === side.team && member.id !== side.id && member.hp > 0,
   )
   const enemies = battle.sides.filter(
     member => member.team !== side.team && member.hp > 0,
   )
-  const abilities = specialSlots(side).map(index => {
-    const name = specialOf(side, index).name
-    const state = canUseSpecialNow(side, index)
-      ? 'READY'
-      : specialStateText(side, index)
-    const target = specialNeedsEnemyTarget(side, index)
-      ? 'enemy target'
-      : specialNeedsAllyTarget(side, index)
-        ? 'ally target'
-        : 'no target'
-    return `special ${index} ${name}: ${state}, ${target}`
-  })
-  const ready = specialSlots(side).filter(index =>
-    canUseSpecialNow(side, index),
-  )
-  const enemyList =
+  const letters = localCandidateLetters(candidates.length)
+  const enemyText =
     enemies
       .map(enemy => `#${enemy.id} ${enemy.character.name} HP ${enemy.hp}/${enemy.maxHp}`)
       .join('; ') || 'none'
-  const allyList =
+  const allyText =
     allies
       .map(ally => `#${ally.id} ${ally.character.name} HP ${ally.hp}/${ally.maxHp}`)
       .join('; ') || 'none'
-  const legal = [
-    `attack (enemy target: ${enemies.map(enemy => `#${enemy.id}`).join(', ') || 'none'})`,
-    ...ready.map(index => `special ${index} (${specialOf(side, index).name})`),
-    'juke',
-    'rest',
-  ].join('; ')
   return [
-    `You control #${side.id} ${side.character.name}: HP ${side.hp}/${side.maxHp}, ATK ${side.character.attack}.`,
-    `Enemies: ${enemyList}.`,
-    `Allies: ${allyList}.`,
-    `Abilities: ${abilities.join('; ')}.`,
-    `Legal actions: ${legal}.`,
-    'Never choose NOT READY. Never target your own side.',
-    'Return only JSON, for example {"action":"attack","specialIndex":0,"target":0}.',
+    'You are a battle AI. Pick the strongest legal option.',
+    `You: #${side.id} ${side.character.name}, HP ${side.hp}/${side.maxHp}, ATK ${side.character.attack}.`,
+    `Enemies: ${enemyText}.`,
+    `Allies: ${allyText}.`,
+    'Options:',
+    ...candidates.map(
+      (candidate, index) => `${letters[index]}) ${candidate.label}`,
+    ),
+    'Answer with one letter only:',
   ].join('\n')
 }
 
@@ -851,23 +919,16 @@ export function buildChatBody(
   battle: Battle,
   recentEvents: string[] = [],
 ): Record<string, unknown> {
-  const local = providerId === 'local'
   const requestBody: Record<string, unknown> = {
     model,
     messages: [
-      { role: 'system', content: local ? LOCAL_SYSTEM_PROMPT : SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: local
-          ? buildLocalPrompt(battle)
-          : buildLlmPrompt(battle, recentEvents),
-      },
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: buildLlmPrompt(battle, recentEvents) },
     ],
-    temperature: local ? 0.1 : 0.2,
+    temperature: 0.2,
     // Reasoning models spend tokens on hidden thinking before the JSON.
-    max_tokens: local ? 64 : 512,
+    max_tokens: 512,
   }
-  if (local) return requestBody
   if (providerId === 'groq') {
     if (/gpt-oss/i.test(model)) {
       // gpt-oss cannot disable reasoning; low effort plus headroom avoids an
@@ -883,6 +944,62 @@ export function buildChatBody(
   return requestBody
 }
 
+async function requestLocalDecision(
+  provider: Provider,
+  keyIndex: number,
+  battle: Battle,
+): Promise<RequestResult> {
+  const candidates = buildLocalCandidates(battle)
+  if (candidates.length === 0) {
+    return { decision: null, failed: true, providerFailed: true }
+  }
+  const letters = localCandidateLetters(candidates.length)
+  const grammar = `root ::= ${letters
+    .map(letter => `"${letter}"`)
+    .join(' | ')}`
+  const root = provider.baseUrl.replace(/\/v1\/?$/, '')
+  try {
+    const response = await fetch(`${root}/completion`, {
+      method: 'POST',
+      headers: { ...provider.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: buildLocalPrompt(battle, candidates),
+        grammar,
+        temperature: 0.1,
+        n_predict: 4,
+        stream: false,
+        cache_prompt: false,
+      }),
+      signal: AbortSignal.timeout(localLlmTimeoutMs()),
+    })
+    if (!response.ok) {
+      const detail = (await response.text().catch(() => '')).slice(0, 160)
+      pauseKey(provider, keyIndex, response.status, detail)
+      return { decision: null, failed: true, providerFailed: true }
+    }
+    const data = (await response.json()) as { content?: unknown }
+    const raw = typeof data.content === 'string' ? data.content : ''
+    const letter = raw.trim().toUpperCase().charAt(0)
+    const index = letters.indexOf(letter)
+    if (index < 0) {
+      stats.invalid += 1
+      if (llmDebugEnabled()) {
+        const side = battle.sides[battle.turn]
+        console.warn(
+          `[bot] LLM AI (Local) ${side ? `${side.character.name} #${side.id}` : '?'}: ` +
+            `ответ без буквы — ${JSON.stringify(raw.slice(0, 60))}`,
+        )
+      }
+      return { decision: null, failed: true, providerFailed: true }
+    }
+    return { decision: candidates[index].decision, failed: false }
+  } catch (error) {
+    const name = error instanceof Error ? error.message : 'network error'
+    pauseKey(provider, keyIndex, 0, name)
+    return { decision: null, failed: true, providerFailed: true }
+  }
+}
+
 async function requestDecision(
   provider: Provider,
   key: string,
@@ -891,6 +1008,9 @@ async function requestDecision(
   battle: Battle,
   recentEvents: string[],
 ): Promise<RequestResult> {
+  if (provider.id === 'local') {
+    return requestLocalDecision(provider, keyIndex, battle)
+  }
   try {
     const requestBody = buildChatBody(provider.id, model, battle, recentEvents)
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
