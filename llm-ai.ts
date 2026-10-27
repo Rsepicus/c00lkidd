@@ -1,4 +1,4 @@
-import type { BotDecision } from './ai'
+import { hybridizeDecision, type BotDecision } from './ai'
 import {
   isLocalLlmEnabled,
   isLocalLlmReady,
@@ -73,6 +73,7 @@ const SYSTEM_PROMPT = [
   '- rest heals about 10 HP and clears Hemorrhage.',
   '- Enemy targets are the ids under ENEMIES. Never target your own side with attack or an enemy-target special.',
   '- Fake units are decoys: avoid them while real targets exist.',
+  '- Focus Supports and bosses first when no enemy can be killed this turn.',
   '- Prefer lethal damage, healing a low ally, or blocking a big incoming hit.',
   'Return ONLY one JSON object and nothing else:',
   '{"action":"attack|special|juke|rest","specialIndex":0,"target":<side id>}',
@@ -118,9 +119,14 @@ const failedGroqModels = new Set<string>()
 const providerPauses = new Map<ProviderId, number>()
 const keyPauses = new Map<string, number>()
 const keyRotation = new Map<ProviderId, number>()
-const stats = { model: 0, heuristic: 0, invalid: 0 }
+const stats = { model: 0, heuristic: 0, invalid: 0, hybrid: 0 }
 
-export function llmStats(): { model: number; heuristic: number; invalid: number } {
+export function llmStats(): {
+  model: number
+  heuristic: number
+  invalid: number
+  hybrid: number
+} {
   return { ...stats }
 }
 
@@ -199,6 +205,11 @@ export function llmAiEnabled(): boolean {
 export function llmDebugEnabled(): boolean {
   const value = process.env.OPENROUTER_DEBUG?.trim().toLowerCase()
   return value === '1' || value === 'true' || value === 'yes'
+}
+
+/** LLM_HYBRID=1 lets the heuristic fix target priority and obvious blunders. */
+export function llmHybridEnabled(): boolean {
+  return /^(1|true|yes|on)$/i.test(process.env.LLM_HYBRID?.trim() ?? '')
 }
 
 function llmScope(): 'all' | 'boss' {
@@ -522,6 +533,12 @@ export function llmLikelyAvailable(side: Side): boolean {
 
 /** Fetches model lists once so the first battle turn is not delayed. */
 export async function warmLlmModel(): Promise<void> {
+  if (llmHybridEnabled()) {
+    console.log(
+      '[bot] LLM AI: гибрид включён — модель выбирает действие, ' +
+        'эвристика выбирает цель и страхует пустые ходы.',
+    )
+  }
   const list = providers()
   if (list.length === 0) {
     if (isLocalLlmEnabled()) {
@@ -557,6 +574,9 @@ function describeSide(side: Side, withCooldowns = false): string {
     `#${side.id} ${side.character.name}`,
     `HP ${side.hp}/${side.maxHp}`,
     `ATK ${side.character.attack}`,
+    side.character.class
+      ? `${side.character.role} · ${side.character.class}`
+      : side.character.role,
   ]
   if (side.fake) bits.push('FAKE DECOY')
   if (side.minion) {
@@ -718,11 +738,27 @@ function candidateTargets(
   return real.length > 0 ? real : all
 }
 
+function roleTag(side: Side): string {
+  if (side.boss) return ' [BOSS]'
+  return side.character.class === 'Support' ? ' [Support]' : ''
+}
+
+/** Supports and bosses are worth pressing before ordinary damage dealers. */
+function enemyPriority(side: Side): number {
+  return (
+    (side.boss ? 30 : 0) +
+    (side.character.class === 'Support' ? 20 : 0) +
+    side.character.attack
+  )
+}
+
 /** Legal letter choices: a tiny model picks one instead of writing JSON. */
 export function buildLocalCandidates(battle: Battle): LocalCandidate[] {
   const side = battle.sides[battle.turn]
   if (!side) return []
-  const enemies = candidateTargets(battle, side, 'enemy')
+  const enemies = candidateTargets(battle, side, 'enemy').sort(
+    (left, right) => enemyPriority(right) - enemyPriority(left),
+  )
   const allies = candidateTargets(battle, side, 'ally')
   const core: LocalCandidate[] = []
 
@@ -732,7 +768,7 @@ export function buildLocalCandidates(battle: Battle): LocalCandidate[] {
     if (specialNeedsEnemyTarget(side, index)) {
       for (const target of enemies) {
         core.push({
-          label: `special ${index} (${special.name}) on #${target.id} ${target.character.name} (HP ${target.hp}/${target.maxHp})`,
+          label: `special ${index} (${special.name}) on #${target.id} ${target.character.name}${roleTag(target)} (HP ${target.hp}/${target.maxHp})`,
           decision: {
             action: 'special',
             specialIndex: index,
@@ -761,21 +797,25 @@ export function buildLocalCandidates(battle: Battle): LocalCandidate[] {
 
   for (const target of enemies) {
     core.push({
-      label: `attack #${target.id} ${target.character.name} (HP ${target.hp}/${target.maxHp})`,
+      label: `attack #${target.id} ${target.character.name}${roleTag(target)} (HP ${target.hp}/${target.maxHp})`,
       decision: { action: 'attack', specialIndex: 0, targetIndex: target.id },
     })
   }
 
-  const extras: LocalCandidate[] = [
-    {
+  const extras: LocalCandidate[] = []
+  if (!side.juking) {
+    extras.push({
       label: 'juke (+60% dodge stance)',
       decision: { action: 'juke', specialIndex: 0 },
-    },
-    {
+    })
+  }
+  const bleeding = (side.effects.hemorrhage ?? 0) > 0
+  if (side.hp < side.maxHp || bleeding || side.character.name === 'Veeronica') {
+    extras.push({
       label: 'rest (+10 HP, clears Hemorrhage)',
       decision: { action: 'rest', specialIndex: 0 },
-    },
-  ]
+    })
+  }
   return [...core.slice(0, 6), ...extras]
 }
 
@@ -800,7 +840,10 @@ export function buildLocalPrompt(
   const letters = localCandidateLetters(candidates.length)
   const enemyText =
     enemies
-      .map(enemy => `#${enemy.id} ${enemy.character.name} HP ${enemy.hp}/${enemy.maxHp}`)
+      .map(
+        enemy =>
+          `#${enemy.id} ${enemy.character.name}${roleTag(enemy)} HP ${enemy.hp}/${enemy.maxHp}`,
+      )
       .join('; ') || 'none'
   const allyText =
     allies
@@ -1134,8 +1177,24 @@ export async function chooseLlmTurn(
           recentEvents,
         )
         if (result.decision) {
+          let decision = result.decision
+          if (llmHybridEnabled()) {
+            const hybrid = hybridizeDecision(battle, decision)
+            if (hybrid.reason) {
+              stats.hybrid += 1
+              if (llmDebugEnabled()) {
+                const actor = battle.sides[battle.turn]
+                console.log(
+                  `[bot] LLM AI (${provider.label}, ${model}) ` +
+                    `${actor ? `${actor.character.name} #${actor.id}` : '?'}: ` +
+                    `гибрид — ${hybrid.reason}`,
+                )
+              }
+            }
+            decision = hybrid.decision
+          }
           return {
-            decision: result.decision,
+            decision,
             provider: provider.label,
             model,
             keyIndex: candidate.index,

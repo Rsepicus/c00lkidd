@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { chooseBossAction, chooseBotAction, chooseBotTurn } from './ai'
+import {
+  chooseBossAction,
+  chooseBotAction,
+  chooseBotTurn,
+  hybridizeDecision,
+} from './ai'
 import type { Character } from './forsaken'
 import { createBattle, createTeamBattle, type Battle } from './pvp'
 
@@ -391,5 +396,103 @@ describe('target selection', () => {
     const battle = battleWith()
     battle.turn = 1
     expect(chooseBossAction(battle, () => 0).targetIndex).toBe(0)
+  })
+})
+
+describe('hybrid LLM corrections', () => {
+  function teamBattle(
+    actor: Character = character(),
+    ally: Character = character(),
+    enemy1: Character = character(),
+    enemy2: Character = character(),
+  ): Battle {
+    return createTeamBattle(
+      [
+        { userId: 'p', name: 'P', character: actor },
+        { userId: 'p', name: 'P2', character: ally },
+      ],
+      [
+        { userId: 'bot:1', name: 'E1', character: enemy1 },
+        { userId: 'bot:2', name: 'E2', character: enemy2 },
+      ],
+    )
+  }
+
+  test('retargets an attack to a support while leaving the action alone', () => {
+    const battle = teamBattle(
+      character(),
+      character(),
+      character({ name: 'Killer', attack: 20 }),
+      character({ name: 'Medic', class: 'Support', attack: 5 }),
+    )
+    const result = hybridizeDecision(battle, {
+      action: 'attack',
+      specialIndex: 0,
+      targetIndex: 1,
+    })
+    expect(result.decision.action).toBe('attack')
+    expect(result.decision.targetIndex).toBe(3)
+    expect(result.reason).toContain('цель')
+  })
+
+  test('finishes a killable enemy before focusing a support', () => {
+    const battle = teamBattle(
+      character(),
+      character(),
+      character({ name: 'Killer', attack: 20 }),
+      character({ name: 'Medic', class: 'Support', attack: 5 }),
+    )
+    battle.sides[1].hp = 5
+    const result = hybridizeDecision(battle, {
+      action: 'attack',
+      specialIndex: 0,
+      targetIndex: 3,
+    })
+    expect(result.decision.targetIndex).toBe(1)
+  })
+
+  test('replaces a rest at full HP with an attack', () => {
+    const battle = teamBattle()
+    const result = hybridizeDecision(battle, { action: 'rest', specialIndex: 0 })
+    expect(result.decision.action).toBe('attack')
+    expect(result.reason).toContain('пустой')
+  })
+
+  test('replaces a redundant juke with an attack', () => {
+    const battle = teamBattle()
+    battle.sides[0].juking = true
+    const result = hybridizeDecision(battle, { action: 'juke', specialIndex: 0 })
+    expect(result.decision.action).toBe('attack')
+    expect(result.reason).toContain('пустой')
+  })
+
+  test('attacks instead of resting when an enemy can be finished', () => {
+    const battle = teamBattle()
+    battle.sides[3].hp = 1
+    const result = hybridizeDecision(battle, { action: 'rest', specialIndex: 0 })
+    expect(result.decision.action).toBe('attack')
+    expect(result.decision.targetIndex).toBe(3)
+    expect(result.reason).toContain('недобитый')
+  })
+
+  test('keeps a rest that actually heals', () => {
+    const battle = teamBattle()
+    battle.sides[0].hp = 30
+    const result = hybridizeDecision(battle, { action: 'rest', specialIndex: 0 })
+    expect(result.decision.action).toBe('rest')
+    expect(result.reason).toBeNull()
+  })
+
+  test('retargets an ally special to the most wounded ally', () => {
+    const battle = teamBattle(
+      character({ special: { name: 'Block', kind: 'block', power: 0, description: '' } }),
+    )
+    battle.sides[2].hp = 20
+    const result = hybridizeDecision(battle, {
+      action: 'special',
+      specialIndex: 0,
+      targetIndex: 0,
+    })
+    expect(result.decision.targetIndex).toBe(2)
   })
 })

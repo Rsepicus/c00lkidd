@@ -37,6 +37,7 @@ import {
   importLlmEnv,
   llmAiEnabled,
   llmDebugEnabled,
+  llmHybridEnabled,
   llmLikelyAvailable,
   llmStats,
   noteLlmTurn,
@@ -4443,7 +4444,8 @@ async function runAutomatedTurns(
         const counters = llmStats()
         const suffix =
           ` · ${elapsedMs} мс · модель ${counters.model} / ` +
-          `эвристика ${counters.heuristic} / невалид ${counters.invalid}`
+          `эвристика ${counters.heuristic} / невалид ${counters.invalid}` +
+          (llmHybridEnabled() ? ` / гибрид ${counters.hybrid}` : '')
         if (llmTurn) {
           const slot =
             llmTurn.decision.action === 'special'

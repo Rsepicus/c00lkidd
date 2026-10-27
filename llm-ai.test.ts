@@ -9,6 +9,7 @@ import {
   importLlmEnv,
   llmAiEnabled,
   llmDebugEnabled,
+  llmHybridEnabled,
   llmLikelyAvailable,
   llmPauseMs,
   llmProviderOrder,
@@ -19,7 +20,7 @@ import {
   pickGroqModel,
   validateLlmDecision,
 } from './llm-ai'
-import { createBattle } from './pvp'
+import { createBattle, createTeamBattle } from './pvp'
 
 function battleWith(left: string, right = 'Noob') {
   return createBattle(
@@ -113,7 +114,10 @@ describe('LLM battle prompt', () => {
     expect(candidates.some(candidate => candidate.decision.action === 'attack')).toBe(
       true,
     )
-    expect(candidates.at(-1)?.decision.action).toBe('rest')
+    expect(candidates.some(candidate => candidate.decision.action === 'rest')).toBe(
+      false,
+    )
+    expect(candidates.at(-1)?.decision.action).toBe('juke')
 
     const prompt = buildLocalPrompt(battle, candidates)
     expect(prompt).toContain('A)')
@@ -123,6 +127,63 @@ describe('LLM battle prompt', () => {
     expect(prompt).toContain('Answer with one letter only')
     expect(prompt).not.toContain('SecretPlayerName')
     expect(prompt).not.toContain('SecretEnemyName')
+  })
+
+  test('offers rest only when it heals or clears Hemorrhage', () => {
+    const battle = battleWith('Guest 1337')
+    const hasRest = () =>
+      buildLocalCandidates(battle).some(
+        candidate => candidate.decision.action === 'rest',
+      )
+    expect(hasRest()).toBe(false)
+    battle.sides[0].hp = 40
+    expect(hasRest()).toBe(true)
+    battle.sides[0].hp = battle.sides[0].maxHp
+    battle.sides[0].effects.hemorrhage = 2
+    expect(hasRest()).toBe(true)
+  })
+
+  test('does not offer a juke while the juke stance is already up', () => {
+    const battle = battleWith('Guest 1337')
+    battle.sides[0].juking = true
+    expect(
+      buildLocalCandidates(battle).some(
+        candidate => candidate.decision.action === 'juke',
+      ),
+    ).toBe(false)
+  })
+
+  test('marks supports and lists their attack first', () => {
+    const battle = createTeamBattle(
+      [
+        {
+          userId: 'a',
+          name: 'A',
+          character: characterByName('Guest 1337')!,
+        },
+        { userId: 'a', name: 'A2', character: characterByName('Noob')! },
+      ],
+      [
+        { userId: 'b', name: 'B', character: characterByName('Jason')! },
+        { userId: 'b', name: 'B2', character: characterByName('Builderman')! },
+      ],
+    )
+    const candidates = buildLocalCandidates(battle)
+    const attacks = candidates.filter(
+      candidate => candidate.decision.action === 'attack',
+    )
+    expect(attacks[0]?.label).toContain('Builderman')
+    expect(attacks[0]?.label).toContain('Support')
+    expect(buildLocalPrompt(battle, candidates)).toContain('Support')
+  })
+
+  test('shows roles and classes to the remote model', () => {
+    const battle = battleWith('Guest 1337', 'Builderman')
+    const prompt = buildLlmPrompt(battle)
+    expect(prompt).toContain('survivor · Support')
+    const body = buildChatBody('groq', 'some-chat-model', battle)
+    const messages = body.messages as Array<{ content: string }>
+    expect(messages[0].content).toContain('Support')
   })
 
   test('puts the local model first when it is enabled', () => {
@@ -381,6 +442,41 @@ describe('LLM decision parsing', () => {
       if (original === undefined) delete process.env.LLM_PROVIDER_ORDER
       else process.env.LLM_PROVIDER_ORDER = original
     }
+  })
+
+  test('enables hybrid mode only with an explicit env flag', () => {
+    const original = process.env.LLM_HYBRID
+    try {
+      delete process.env.LLM_HYBRID
+      expect(llmHybridEnabled()).toBe(false)
+      for (const value of ['1', 'true', 'yes', 'on']) {
+        process.env.LLM_HYBRID = value
+        expect(llmHybridEnabled()).toBe(true)
+      }
+      for (const value of ['0', 'false', '']) {
+        process.env.LLM_HYBRID = value
+        expect(llmHybridEnabled()).toBe(false)
+      }
+    } finally {
+      if (original === undefined) delete process.env.LLM_HYBRID
+      else process.env.LLM_HYBRID = original
+    }
+  })
+
+  test('imports LLM_HYBRID from .env', () => {
+    const original = process.env.LLM_HYBRID
+    try {
+      delete process.env.LLM_HYBRID
+      importLlmEnv('LLM_HYBRID=1\n')
+      expect(process.env.LLM_HYBRID).toBe('1')
+    } finally {
+      if (original === undefined) delete process.env.LLM_HYBRID
+      else process.env.LLM_HYBRID = original
+    }
+  })
+
+  test('reports a hybrid correction counter', () => {
+    expect(llmStats()).toHaveProperty('hybrid')
   })
 
   test('turns on per-turn logging only for explicit debug values', () => {

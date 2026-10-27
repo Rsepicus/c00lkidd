@@ -343,6 +343,156 @@ function withTarget(battle: Battle, side: Side, decision: BotDecision): BotDecis
   return targetIndex === undefined ? decision : { ...decision, targetIndex }
 }
 
+/**
+ * Marks turns that cannot help: resting at full HP without Hemorrhage, juking
+ * while already in a juke stance, and resting/juking while an enemy is low
+ * enough to finish with a basic attack.
+ */
+export function decisionQuality(
+  battle: Battle,
+  side: Side,
+  decision: BotDecision,
+): { wasted: boolean; missedFinish: boolean } {
+  const resting = decision.action === 'rest'
+  const juking = decision.action === 'juke'
+  const bleeding = (side.effects.hemorrhage ?? 0) > 0
+  const restUseful =
+    side.hp < side.maxHp || bleeding || side.character.name === 'Veeronica'
+  const wasted = (resting && !restUseful) || (juking && side.juking)
+  const passive = resting || juking
+  let weakest = Number.POSITIVE_INFINITY
+  for (const enemy of battle.sides) {
+    if (enemy.team === side.team || enemy.hp <= 0 || enemy.fake) continue
+    weakest = Math.min(weakest, enemy.hp + enemy.tempHp)
+  }
+  return {
+    wasted,
+    missedFinish: passive && weakest <= side.character.attack,
+  }
+}
+
+function isPriorityEnemy(enemy: Side): boolean {
+  return enemy.boss || enemy.character.class === 'Support'
+}
+
+function highestThreat(
+  options: Array<{ candidate: Side; index: number }>,
+): number {
+  return options.reduce((best, option) =>
+    threatOf(option.candidate) > threatOf(best.candidate) ? option : best,
+  ).index
+}
+
+/** Hybrid targeting: finish kills, then press Supports and bosses. */
+function priorityEnemyTarget(
+  battle: Battle,
+  side: Side,
+  damage: number,
+): number | undefined {
+  const candidates = battle.sides
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(({ candidate }) => candidate.team !== side.team && candidate.hp > 0)
+  if (candidates.length === 0) return undefined
+  const real = candidates.filter(({ candidate }) => !candidate.fake)
+  const pool = real.length > 0 ? real : candidates
+  if (damage > 0) {
+    const lethal = pool.filter(
+      ({ candidate }) =>
+        damageThroughShield(damage, candidate) >=
+        candidate.hp + candidate.tempHp + candidate.shatterpoint,
+    )
+    if (lethal.length > 0) return highestThreat(lethal)
+  }
+  const priority = pool.filter(({ candidate }) => isPriorityEnemy(candidate))
+  if (priority.length > 0) return highestThreat(priority)
+  return chooseEnemyTarget(battle, side, damage, damage <= 0)
+}
+
+function finishingTarget(battle: Battle, side: Side): number | undefined {
+  let best: { index: number; hp: number } | undefined
+  for (const [index, enemy] of battle.sides.entries()) {
+    if (enemy.team === side.team || enemy.hp <= 0 || enemy.fake) continue
+    const effectiveHp = enemy.hp + enemy.tempHp
+    if (side.character.attack < effectiveHp) continue
+    if (!best || effectiveHp < best.hp) best = { index, hp: effectiveHp }
+  }
+  return best?.index
+}
+
+function withPriorityTarget(
+  battle: Battle,
+  side: Side,
+  decision: BotDecision,
+): BotDecision {
+  if (decision.action === 'attack') {
+    const target = priorityEnemyTarget(
+      battle,
+      side,
+      boostedDamage(side, side.character.attack),
+    )
+    return target === undefined ? decision : { ...decision, targetIndex: target }
+  }
+  if (decision.action === 'special') {
+    if (specialNeedsAllyTarget(side, decision.specialIndex)) {
+      const target = chooseAllyTarget(battle, side)
+      return target === undefined ? decision : { ...decision, targetIndex: target }
+    }
+    if (!specialNeedsEnemyTarget(side, decision.specialIndex)) return decision
+    const special = specialOf(side, decision.specialIndex)
+    const damage = boostedDamage(side, immediateDamage(special, side))
+    const target = priorityEnemyTarget(battle, side, damage)
+    return target === undefined ? decision : { ...decision, targetIndex: target }
+  }
+  return decision
+}
+
+export type HybridDecision = {
+  decision: BotDecision
+  reason: string | null
+}
+
+/**
+ * Keeps the model's chosen action but lets the heuristic fix its two known
+ * weak spots: target priority (supports/bosses/kills) and obvious blunders.
+ */
+export function hybridizeDecision(
+  battle: Battle,
+  decision: BotDecision,
+): HybridDecision {
+  const side = battle.sides[battle.turn]
+  if (!side) return { decision, reason: null }
+  const quality = decisionQuality(battle, side, decision)
+  if (quality.wasted || quality.missedFinish) {
+    const targetIndex = quality.missedFinish
+      ? finishingTarget(battle, side)
+      : undefined
+    const attack: BotDecision = { action: 'attack', specialIndex: 0 }
+    const corrected =
+      targetIndex === undefined
+        ? withPriorityTarget(battle, side, attack)
+        : { ...attack, targetIndex }
+    return {
+      decision: corrected,
+      reason: quality.missedFinish
+        ? targetIndex !== undefined
+          ? `недобитый #${targetIndex} → атака`
+          : 'недобитый враг → атака'
+        : 'пустой ход → атака',
+    }
+  }
+  if (decision.action === 'rest' || decision.action === 'juke') {
+    return { decision, reason: null }
+  }
+  const corrected = withPriorityTarget(battle, side, decision)
+  if (corrected.targetIndex === decision.targetIndex) {
+    return { decision, reason: null }
+  }
+  return {
+    decision: corrected,
+    reason: `цель #${decision.targetIndex ?? '—'} → #${corrected.targetIndex}`,
+  }
+}
+
 export function chooseBotTurn(battle: Battle, rng: Rng): BotDecision {
   const side = battle.sides[battle.turn]
   return withTarget(battle, side, {

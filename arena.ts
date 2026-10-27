@@ -1,4 +1,4 @@
-import { chooseBotTurn, type BotDecision } from './ai'
+import { chooseBotTurn, decisionQuality, type BotDecision } from './ai'
 import { characterByName, type Character } from './forsaken'
 import { chooseLlmTurn, type LlmTurn } from './llm-ai'
 import {
@@ -6,8 +6,9 @@ import {
   takeTurn,
   type Battle,
   type FighterEntry,
-  type Side,
 } from './pvp'
+
+export { decisionQuality } from './ai'
 
 /**
  * Debug arena: mirror 1v1 battles where one side is driven by the LLM and the
@@ -131,32 +132,6 @@ function healingOf(battle: Battle, team: 0 | 1): number {
   return battle.sides
     .filter(side => side.team === team)
     .reduce((sum, side) => sum + side.healingDone, 0)
-}
-
-/**
- * Marks turns that cannot help: resting at full HP without Hemorrhage, juking
- * while already in a juke stance, and resting/juking while an enemy is low
- * enough to finish with a basic attack.
- */
-export function decisionQuality(
-  battle: Battle,
-  side: Side,
-  decision: BotDecision,
-): { wasted: boolean; missedFinish: boolean } {
-  const resting = decision.action === 'rest'
-  const juking = decision.action === 'juke'
-  const bleeding = (side.effects.hemorrhage ?? 0) > 0
-  const wasted = (resting && side.hp >= side.maxHp && !bleeding) || (juking && side.juking)
-  const passive = resting || juking
-  let weakest = Number.POSITIVE_INFINITY
-  for (const enemy of battle.sides) {
-    if (enemy.team === side.team || enemy.hp <= 0) continue
-    weakest = Math.min(weakest, enemy.hp + enemy.tempHp)
-  }
-  return {
-    wasted,
-    missedFinish: passive && weakest <= side.character.attack,
-  }
 }
 
 async function runBattle(
