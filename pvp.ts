@@ -2189,7 +2189,7 @@ export function takeTurn(
           `${side.name} переводит дыхание и сбрасывает Hemorrhage, но не восстанавливает HP.`,
         )
       } else {
-        const healed = healSide(null, side, REST_HEAL)
+        const healed = healSide(side, side, REST_HEAL)
         events.push(`${side.name} переводит дыхание и восстанавливает ${healed} HP.`)
       }
       if (side.character.name === 'Veeronica') {

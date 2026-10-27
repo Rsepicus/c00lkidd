@@ -6,6 +6,7 @@ import {
   takeTurn,
   type Battle,
   type FighterEntry,
+  type Side,
 } from './pvp'
 
 /**
@@ -31,6 +32,16 @@ export type ArenaBattleResult = {
   turns: number
   llmDamage: number
   heuristicDamage: number
+  llmActions: number
+  heuristicActions: number
+  llmDamageTaken: number
+  heuristicDamageTaken: number
+  llmHealing: number
+  heuristicHealing: number
+  llmWasted: number
+  heuristicWasted: number
+  llmMissedFinishes: number
+  heuristicMissedFinishes: number
   llmDecisions: number
   fallbacks: number
   models: string[]
@@ -46,6 +57,16 @@ export type ArenaResult = {
   avgTurns: number
   llmDamage: number
   heuristicDamage: number
+  llmActions: number
+  heuristicActions: number
+  llmDamageTaken: number
+  heuristicDamageTaken: number
+  llmHealing: number
+  heuristicHealing: number
+  llmWasted: number
+  heuristicWasted: number
+  llmMissedFinishes: number
+  heuristicMissedFinishes: number
   models: string[]
 }
 
@@ -100,6 +121,44 @@ function damageOf(battle: Battle, team: 0 | 1): number {
     .reduce((sum, side) => sum + side.damageDealt, 0)
 }
 
+function damageTakenOf(battle: Battle, team: 0 | 1): number {
+  return battle.sides
+    .filter(side => side.team === team)
+    .reduce((sum, side) => sum + side.damageTaken, 0)
+}
+
+function healingOf(battle: Battle, team: 0 | 1): number {
+  return battle.sides
+    .filter(side => side.team === team)
+    .reduce((sum, side) => sum + side.healingDone, 0)
+}
+
+/**
+ * Marks turns that cannot help: resting at full HP without Hemorrhage, juking
+ * while already in a juke stance, and resting/juking while an enemy is low
+ * enough to finish with a basic attack.
+ */
+export function decisionQuality(
+  battle: Battle,
+  side: Side,
+  decision: BotDecision,
+): { wasted: boolean; missedFinish: boolean } {
+  const resting = decision.action === 'rest'
+  const juking = decision.action === 'juke'
+  const bleeding = (side.effects.hemorrhage ?? 0) > 0
+  const wasted = (resting && side.hp >= side.maxHp && !bleeding) || (juking && side.juking)
+  const passive = resting || juking
+  let weakest = Number.POSITIVE_INFINITY
+  for (const enemy of battle.sides) {
+    if (enemy.team === side.team || enemy.hp <= 0) continue
+    weakest = Math.min(weakest, enemy.hp + enemy.tempHp)
+  }
+  return {
+    wasted,
+    missedFinish: passive && weakest <= side.character.attack,
+  }
+}
+
 async function runBattle(
   chooser: ArenaLlmChooser,
   character: Character,
@@ -111,8 +170,15 @@ async function runBattle(
   let battle = createBattle(...entriesFor(character, llmTeam))
   const events: string[] = []
   const models = new Set<string>()
+  const heuristicTeam: 0 | 1 = llmTeam === 0 ? 1 : 0
   let llmDecisions = 0
   let fallbacks = 0
+  let llmActions = 0
+  let heuristicActions = 0
+  let llmWasted = 0
+  let heuristicWasted = 0
+  let llmMissedFinishes = 0
+  let heuristicMissedFinishes = 0
 
   while (!battle.finished && battle.clock < maxTurns) {
     const side = battle.sides[battle.turn]
@@ -133,6 +199,18 @@ async function runBattle(
     } else {
       decision = chooseBotTurn(battle, rng)
     }
+    if (!side.stunned) {
+      const quality = decisionQuality(battle, side, decision)
+      if (side.team === llmTeam) {
+        llmActions += 1
+        if (quality.wasted) llmWasted += 1
+        if (quality.missedFinish) llmMissedFinishes += 1
+      } else {
+        heuristicActions += 1
+        if (quality.wasted) heuristicWasted += 1
+        if (quality.missedFinish) heuristicMissedFinishes += 1
+      }
+    }
     const result = takeTurn(
       battle,
       decision.action,
@@ -152,7 +230,17 @@ async function runBattle(
     winner: battle.finished ? battle.winner : null,
     turns: battle.clock,
     llmDamage: damageOf(battle, llmTeam),
-    heuristicDamage: damageOf(battle, llmTeam === 0 ? 1 : 0),
+    heuristicDamage: damageOf(battle, heuristicTeam),
+    llmActions,
+    heuristicActions,
+    llmDamageTaken: damageTakenOf(battle, llmTeam),
+    heuristicDamageTaken: damageTakenOf(battle, heuristicTeam),
+    llmHealing: healingOf(battle, llmTeam),
+    heuristicHealing: healingOf(battle, heuristicTeam),
+    llmWasted,
+    heuristicWasted,
+    llmMissedFinishes,
+    heuristicMissedFinishes,
     llmDecisions,
     fallbacks,
     models: [...models],
@@ -201,6 +289,25 @@ export async function runArena(
         : 0,
     llmDamage: battles.reduce((sum, battle) => sum + battle.llmDamage, 0),
     heuristicDamage: battles.reduce((sum, battle) => sum + battle.heuristicDamage, 0),
+    llmActions: battles.reduce((sum, battle) => sum + battle.llmActions, 0),
+    heuristicActions: battles.reduce((sum, battle) => sum + battle.heuristicActions, 0),
+    llmDamageTaken: battles.reduce((sum, battle) => sum + battle.llmDamageTaken, 0),
+    heuristicDamageTaken: battles.reduce(
+      (sum, battle) => sum + battle.heuristicDamageTaken,
+      0,
+    ),
+    llmHealing: battles.reduce((sum, battle) => sum + battle.llmHealing, 0),
+    heuristicHealing: battles.reduce((sum, battle) => sum + battle.heuristicHealing, 0),
+    llmWasted: battles.reduce((sum, battle) => sum + battle.llmWasted, 0),
+    heuristicWasted: battles.reduce((sum, battle) => sum + battle.heuristicWasted, 0),
+    llmMissedFinishes: battles.reduce(
+      (sum, battle) => sum + battle.llmMissedFinishes,
+      0,
+    ),
+    heuristicMissedFinishes: battles.reduce(
+      (sum, battle) => sum + battle.heuristicMissedFinishes,
+      0,
+    ),
     models: [...models],
   }
 }

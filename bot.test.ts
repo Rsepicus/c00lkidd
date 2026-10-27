@@ -1404,6 +1404,16 @@ describe('embeds', () => {
           turns: 12,
           llmDamage: 140,
           heuristicDamage: 90,
+          llmActions: 6,
+          heuristicActions: 6,
+          llmDamageTaken: 90,
+          heuristicDamageTaken: 140,
+          llmHealing: 10,
+          heuristicHealing: 20,
+          llmWasted: 1,
+          heuristicWasted: 2,
+          llmMissedFinishes: 0,
+          heuristicMissedFinishes: 1,
           llmDecisions: 6,
           fallbacks: 0,
           models: ['Groq openai/gpt-oss-20b'],
@@ -1416,6 +1426,16 @@ describe('embeds', () => {
           turns: 15,
           llmDamage: 90,
           heuristicDamage: 140,
+          llmActions: 7,
+          heuristicActions: 8,
+          llmDamageTaken: 140,
+          heuristicDamageTaken: 90,
+          llmHealing: 20,
+          heuristicHealing: 10,
+          llmWasted: 2,
+          heuristicWasted: 1,
+          llmMissedFinishes: 1,
+          heuristicMissedFinishes: 0,
           llmDecisions: 7,
           fallbacks: 0,
           models: ['Groq openai/gpt-oss-20b'],
@@ -1429,6 +1449,16 @@ describe('embeds', () => {
       avgTurns: 13.5,
       llmDamage: 230,
       heuristicDamage: 230,
+      llmActions: 13,
+      heuristicActions: 14,
+      llmDamageTaken: 230,
+      heuristicDamageTaken: 230,
+      llmHealing: 30,
+      heuristicHealing: 30,
+      llmWasted: 3,
+      heuristicWasted: 3,
+      llmMissedFinishes: 1,
+      heuristicMissedFinishes: 1,
       models: ['Groq openai/gpt-oss-20b'],
     }
     const description = String(arenaEmbed(result).toJSON().description)
@@ -1437,6 +1467,10 @@ describe('embeds', () => {
     expect(description).toContain('13.5')
     expect(description).toContain('победа ИИ')
     expect(description).toContain('победа эвристики')
+    expect(description).toContain('за ход **17.7** : **16.4**')
+    expect(description).toContain('Получено урона: **230** : **230**')
+    expect(description).toContain('Пустых ходов: **3** : **3**')
+    expect(description).toContain('Порядок: нейросеть : эвристика')
   })
 
   test('training setup offers hero, partner and bot choices', () => {

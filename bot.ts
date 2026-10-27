@@ -2666,20 +2666,31 @@ export function arenaProgressEmbed(done: number, total: number): EmbedBuilder {
     .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
 }
 
+function perAction(damage: number, actions: number): string {
+  return actions > 0 ? (damage / actions).toFixed(1) : '0.0'
+}
+
 export function arenaEmbed(result: ArenaResult): EmbedBuilder {
   const total = result.battles.length
   const winRate = total > 0 ? Math.round((result.llmWins / total) * 100) : 0
-  const lines = result.battles.map((battle, index) => {
+  const lines = result.battles.flatMap((battle, index) => {
     const outcome =
       battle.winner === null
         ? 'ничья'
         : battle.winner === battle.llmTeam
           ? 'победа ИИ'
           : 'победа эвристики'
-    return (
+    return [
       `${index + 1}. **${battle.character}** · ${outcome} · ${battle.turns} ходов · ` +
-      `урон ${battle.llmDamage}:${battle.heuristicDamage}`
-    )
+        `урон ${battle.llmDamage}:${battle.heuristicDamage}`,
+      `   за ход ${perAction(battle.llmDamage, battle.llmActions)}:${perAction(
+        battle.heuristicDamage,
+        battle.heuristicActions,
+      )} · получено ${battle.llmDamageTaken}:${battle.heuristicDamageTaken} · ` +
+        `лечение ${battle.llmHealing}:${battle.heuristicHealing} · ` +
+        `пустых ${battle.llmWasted}:${battle.heuristicWasted} · ` +
+        `недобитых ${battle.llmMissedFinishes}:${battle.heuristicMissedFinishes}`,
+    ]
   })
   const modelText = result.models.length > 0 ? result.models.join(', ') : '—'
   const fallbackNote =
@@ -2697,10 +2708,19 @@ export function arenaEmbed(result: ArenaResult): EmbedBuilder {
       [
         `**Нейросеть ${result.llmWins} : ${result.heuristicWins} эвристика** · ничьих ${result.draws}`,
         `Побед нейросети: **${winRate}%** · средняя длина боя: **${result.avgTurns.toFixed(1)}** ходов`,
-        `Урон: нейросеть **${result.llmDamage}** · эвристика **${result.heuristicDamage}**`,
+        `Урон: **${result.llmDamage}** : **${result.heuristicDamage}** · ` +
+          `за ход **${perAction(result.llmDamage, result.llmActions)}** : **${perAction(
+            result.heuristicDamage,
+            result.heuristicActions,
+          )}**`,
+        `Получено урона: **${result.llmDamageTaken}** : **${result.heuristicDamageTaken}** · ` +
+          `лечение: **${result.llmHealing}** : **${result.heuristicHealing}**`,
+        `Пустых ходов: **${result.llmWasted}** : **${result.heuristicWasted}** · ` +
+          `недобитых: **${result.llmMissedFinishes}** : **${result.heuristicMissedFinishes}**`,
         `Ходов модели: **${result.llmDecisions}** · откатов: **${result.fallbacks}**`,
         `Модель: ${modelText}.`,
         ...(fallbackNote ? ['', fallbackNote] : []),
+        'Порядок: нейросеть : эвристика.',
         '',
         ...lines,
       ].join('\n'),
