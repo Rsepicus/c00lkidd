@@ -26,7 +26,7 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload runtime files and restart
+      - name: Upload runtime files
         if: steps.config.outputs.configured == 'true'
         uses: rexlmanu/pterodactyl-upload-action@4bae1933575fa712463da38493f5c768232d76ab # v2.5
         with:
@@ -69,7 +69,37 @@ jobs:
             emojis-ability.json
             emojis-skins.json
           target: "./"
-          restart: true
+          restart: false
+
+      - name: Restart server
+        if: steps.config.outputs.configured == 'true'
+        env:
+          PANEL_URL: ${{ secrets.PTERO_PANEL_URL }}
+          API_KEY: ${{ secrets.PTERO_API_KEY }}
+          SERVER_ID: ${{ secrets.PTERO_SERVER_ID }}
+        run: |
+          set -uo pipefail
+          base="${PANEL_URL%/}/api/client"
+          auth="Authorization: Bearer $API_KEY"
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              -H "$auth" -H "Content-Type: application/json" \
+              -H "Accept: application/json" \
+              -d '{"signal":"restart"}' "$base/servers/$SERVER_ID/power" || true)
+            echo "restart attempt $attempt: HTTP $code"
+            if [ "$code" = "204" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Restart conflicted; falling back to stop/start."
+          curl -s -o /dev/null -X POST -H "$auth" -H "Content-Type: application/json" \
+            -H "Accept: application/json" -d '{"signal":"stop"}' \
+            "$base/servers/$SERVER_ID/power" || true
+          sleep 8
+          curl -s -o /dev/null -X POST -H "$auth" -H "Content-Type: application/json" \
+            -H "Accept: application/json" -d '{"signal":"start"}' \
+            "$base/servers/$SERVER_ID/power" || true
 
       - name: Verify deployment target
         if: steps.config.outputs.configured == 'true'
