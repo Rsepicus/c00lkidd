@@ -8,9 +8,10 @@ import {
   readdirSync,
   renameSync,
   statSync,
+  symlinkSync,
   unlinkSync,
 } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 
 /**
  * Optional tiny local model hosted next to the bot.
@@ -283,7 +284,8 @@ async function download(
   }
 }
 
-function findLlamaServer(root: string): string | null {
+function findLlamaServer(root: string, requireLibs = false): string | null {
+  const servers: string[] = []
   const stack = [root]
   while (stack.length > 0) {
     const directory = stack.pop()!
@@ -295,11 +297,99 @@ function findLlamaServer(root: string): string | null {
     }
     for (const entry of entries) {
       const full = join(directory, entry.name)
-      if (entry.isFile() && entry.name === 'llama-server') return full
+      if (entry.isFile() && entry.name === 'llama-server') servers.push(full)
       if (entry.isDirectory()) stack.push(full)
     }
   }
-  return null
+  if (!requireLibs) return servers[0] ?? null
+
+  const libs = findLibraryDirs(root)
+  repairSonameLinks(libs)
+  if (!hasLlamaCommon(libs)) return null
+  // Prefer a binary whose own directory contains libraries; all dirs still go
+  // into LD_LIBRARY_PATH.
+  return servers.find(server => hasLlamaCommon(findLibraryDirs(dirname(server)))) ??
+    servers[0] ??
+    null
+}
+
+/** Finds every directory with a shared library, not just the binary folder. */
+function findLibraryDirs(root: string): string[] {
+  const dirs = new Set<string>()
+  const stack = [root]
+  while (stack.length > 0) {
+    const directory = stack.pop()!
+    let entries
+    try {
+      entries = readdirSync(directory, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    let hasLibrary = false
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        stack.push(join(directory, entry.name))
+        continue
+      }
+      if (/\.so(\.|$)/.test(entry.name)) hasLibrary = true
+    }
+    if (hasLibrary) dirs.add(directory)
+  }
+  return [...dirs]
+}
+
+function hasLlamaCommon(dirs: string[]): boolean {
+  return dirs.some(directory => {
+    try {
+      return readdirSync(directory).some(name => /^libllama-common\.so/.test(name))
+    } catch {
+      return false
+    }
+  })
+}
+
+/**
+ * The release archive normally contains soname symlinks. Some panel file
+ * managers lose them while migrating a server, leaving only libfoo.so.0.0.0.
+ * Recreate the libfoo.so.0 links the loader asks for.
+ */
+function repairSonameLinks(dirs: string[]): void {
+  for (const directory of dirs) {
+    let names: string[]
+    try {
+      names = readdirSync(directory)
+    } catch {
+      continue
+    }
+    const present = new Set(names)
+    for (const name of names) {
+      const match = name.match(/^(lib.+)\.so\.(\d+)(?:\.\d+)*$/)
+      if (!match) continue
+      const soname = `${match[1]}.so.${match[2]}`
+      if (present.has(soname)) continue
+      try {
+        symlinkSync(name, join(directory, soname))
+        console.log(`[bot] Local LLM: восстановил библиотеку ${soname} → ${name}`)
+        present.add(soname)
+      } catch (error) {
+        console.warn(
+          `[bot] Local LLM: не удалось создать ${soname}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+  }
+}
+
+function libraryPathFor(bin: string, root: string): string {
+  const dirs = [dirname(bin), ...findLibraryDirs(root)]
+  return [
+    ...new Set(
+      [...dirs, process.env.LD_LIBRARY_PATH ?? '']
+        .map(value => value.trim())
+        .filter(Boolean),
+    ),
+  ].join(delimiter)
 }
 
 async function ensureFiles(
@@ -329,36 +419,77 @@ async function ensureFiles(
     console.warn(`[bot] Local LLM: LOCAL_LLM_BIN не найден: ${bin}`)
     bin = ''
   }
-  if (!bin) bin = findLlamaServer(settings.dir) ?? ''
-  if (!bin) {
-    if (!settings.autoSetup) {
-      phase = 'error'
-      lastError = `нет llama-server в ${settings.dir}`
+  if (!bin) bin = findLlamaServer(settings.dir, true) ?? ''
+  if (bin) {
+    const libs = [
+      ...new Set([
+        ...findLibraryDirs(settings.dir),
+        ...findLibraryDirs(dirname(bin)),
+      ]),
+    ]
+    repairSonameLinks(libs)
+    if (hasLlamaCommon(libs)) {
+      console.log('[bot] Local LLM: llama-server и библиотеки на месте:', bin)
+      return { bin, model: settings.modelPath }
+    }
+  } else {
+    const found = findLlamaServer(settings.dir)
+    if (found) {
       console.warn(
-        `[bot] Local LLM: нет llama-server в ${settings.dir}. ` +
-          'Положи бинарник вручную или включи LOCAL_LLM_AUTO_SETUP=1.',
+        '[bot] Local LLM: llama-server есть, но libllama-common.so не найден — ' +
+          'переустанавливаю llama.cpp.',
       )
-      return null
+      bin = found
     }
-    const tarPath = join(settings.dir, 'llama-server.tar.gz')
-    if (!existsSync(tarPath)) {
-      const url = process.env.LOCAL_LLM_BIN_URL?.trim() || LLAMA_SERVER_URL
-      const sha = process.env.LOCAL_LLM_BIN_URL ? undefined : LLAMA_SERVER_SHA
-      await download(url, tarPath, sha, 'llama.cpp (CPU)')
-    } else {
-      console.log('[bot] Local LLM: архив llama.cpp уже есть, распаковываю…')
-    }
-    phase = 'extracting'
-    phaseDetail = 'llama.cpp'
-    console.log('[bot] Local LLM: распаковываю llama.cpp…')
+  }
+
+  if (!settings.autoSetup) {
+    phase = 'error'
+    lastError = bin
+      ? 'llama-server найден, но его библиотеки отсутствуют'
+      : `нет llama-server в ${settings.dir}`
+    console.warn(
+      `[bot] Local LLM: ${lastError}. ` +
+        'Положи бинарник с библиотеками вручную или включи LOCAL_LLM_AUTO_SETUP=1.',
+    )
+    return null
+  }
+
+  const tarPath = join(settings.dir, 'llama-server.tar.gz')
+  if (!existsSync(tarPath)) {
+    const url = process.env.LOCAL_LLM_BIN_URL?.trim() || LLAMA_SERVER_URL
+    const sha = process.env.LOCAL_LLM_BIN_URL ? undefined : LLAMA_SERVER_SHA
+    await download(url, tarPath, sha, 'llama.cpp (CPU)')
+  } else {
+    console.log('[bot] Local LLM: архив llama.cpp уже есть, распаковываю…')
+  }
+  phase = 'extracting'
+  phaseDetail = 'llama.cpp'
+  console.log('[bot] Local LLM: распаковываю llama.cpp…')
+  try {
     await runCommand('tar', ['-xzf', tarPath, '-C', settings.dir])
     try {
       unlinkSync(tarPath)
     } catch {}
-    bin = findLlamaServer(settings.dir) ?? ''
-    if (!bin) throw new Error('llama-server не найден после распаковки')
-    console.log('[bot] Local LLM: llama-server:', bin)
+  } catch (error) {
+    // A corrupt archive must not poison every retry.
+    try {
+      unlinkSync(tarPath)
+    } catch {}
+    throw error
   }
+  const libs = findLibraryDirs(settings.dir)
+  repairSonameLinks(libs)
+  bin = findLlamaServer(settings.dir, true) ?? ''
+  if (!bin) {
+    throw new Error(
+      hasLlamaCommon(libs)
+        ? 'llama-server не найден после распаковки'
+        : 'libllama-common.so не найден после распаковки',
+    )
+  }
+  console.log('[bot] Local LLM: llama-server:', bin)
+  console.log('[bot] Local LLM: библиотеки:', libs.join(', ') || 'в папке бинарника')
 
   try {
     statSync(bin)
@@ -449,12 +580,14 @@ function spawnServer(
     '--parallel',
     '1',
   ]
+  const libPath = libraryPathFor(files.bin, settings.dir)
+  if (libPath) console.log(`[bot] Local LLM: LD_LIBRARY_PATH=${libPath}`)
   console.log(
     `[bot] Local LLM: запускаю llama-server (контекст ${settings.context})…`,
   )
   const child = spawn(files.bin, args, {
     cwd: binDir,
-    env: { ...process.env, LD_LIBRARY_PATH: binDir },
+    env: { ...process.env, LD_LIBRARY_PATH: libPath },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   serverProcess = child

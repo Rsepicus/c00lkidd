@@ -2677,6 +2677,10 @@ export function arenaIntroComponents(): ActionRowBuilder<ButtonBuilder>[] {
         .setLabel(`Запустить ${ARENA_BATTLES} боёв`)
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
+        .setCustomId('debug:dataset')
+        .setLabel('Собрать датасет')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId('debug:menu')
         .setLabel('← Назад')
         .setStyle(ButtonStyle.Secondary),

@@ -1444,7 +1444,7 @@ describe('embeds', () => {
       arenaIntroComponents()[0]
         .toJSON()
         .components.map(component => component.custom_id),
-    ).toEqual(['debug:arena:start', 'debug:menu'])
+    ).toEqual(['debug:arena:start', 'debug:dataset', 'debug:menu'])
 
     const result: ArenaResult = {
       battles: [
