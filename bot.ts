@@ -2792,6 +2792,14 @@ function localLlmStatusLine(): string {
   return `Локальная модель: **${status.phase}**`
 }
 
+function buildStatusLine(): string {
+  const entry = fileURLToPath(import.meta.url)
+  const modified = existsSync(entry)
+    ? statSync(entry).mtime.toISOString()
+    : 'нет файла'
+  return `Сборка: **${modified}** · ${entry}`
+}
+
 function policyStatusLine(): string {
   if (!policyAiEnabled()) {
     return policyAvailable() ? 'Policy AI: **выключена** (модель есть)' : ''
@@ -2813,6 +2821,7 @@ export function debugStatusEmbed(client?: Client): EmbedBuilder {
     .setDescription(
       [
         '**Бот работает.**',
+        buildStatusLine(),
         `Пинг: **${pingText}**`,
         `Команд: **${commandDefinitions().length}**`,
         `Аптайм: **${formatDuration(process.uptime() * 1000)}**`,
@@ -9263,6 +9272,13 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const entryPath = fileURLToPath(import.meta.url)
+  const entryModified = existsSync(entryPath)
+    ? statSync(entryPath).mtime.toISOString()
+    : 'нет файла'
+  console.log(
+    `[bot] Запуск: ${entryPath} · cwd ${process.cwd()} · изменён ${entryModified}`,
+  )
   process.on('unhandledRejection', reason => {
     appendErrorLog(ERROR_LOG_PATH, reason, 'unhandledRejection')
     console.error('[bot] необработанный rejection:', reason)

@@ -120,6 +120,11 @@ jobs:
             | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(s["attributes"].get("identifier"), "|", s["attributes"].get("name"), "|", s["attributes"].get("status")) for s in d.get("data", [])]' \
             || true
 
+          echo "Server startup config:"
+          curl -fsS -H "$auth" -H "Accept: application/json" "$base/servers/$SERVER_ID" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); a=d.get("attributes",d); print("identifier:", a.get("identifier")); print("invocation:", a.get("invocation")); print("docker_image:", a.get("docker_image")); print("status:", a.get("status"))' \
+            || true
+
           sleep 10
           state=$(curl -fsS -H "$auth" -H "Accept: application/json" "$base/servers/$SERVER_ID/resources" \
             | python3 -c 'import json,sys; print(json.load(sys.stdin).get("attributes",{}).get("current_state"))' \
