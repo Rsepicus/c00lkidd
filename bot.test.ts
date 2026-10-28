@@ -1395,7 +1395,13 @@ describe('embeds', () => {
     const buttons = debugPanelComponents()[0]
       .toJSON()
       .components.map(component => component.custom_id)
-    expect(buttons).toEqual(['debug:coins', 'debug:test', 'debug:arena', 'debug:status'])
+    expect(buttons).toEqual([
+      'debug:coins',
+      'debug:test',
+      'debug:arena',
+      'debug:dataset',
+      'debug:status',
+    ])
 
     const setup = {
       ownerId: '1',

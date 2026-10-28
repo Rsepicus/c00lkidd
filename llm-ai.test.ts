@@ -40,7 +40,10 @@ function battleWith(left: string, right = 'Noob') {
 const originalKey = process.env.OPENROUTER_API_KEY
 const originalGroqKey = process.env.GROQ_API_KEY
 const originalGroqKeys = process.env.GROQ_API_KEYS
+const originalLocalEnabled = process.env.LOCAL_LLM_ENABLED
 afterEach(() => {
+  if (originalLocalEnabled === undefined) delete process.env.LOCAL_LLM_ENABLED
+  else process.env.LOCAL_LLM_ENABLED = originalLocalEnabled
   if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY
   else process.env.OPENROUTER_API_KEY = originalKey
   if (originalGroqKey === undefined) delete process.env.GROQ_API_KEY
@@ -325,6 +328,9 @@ describe('LLM decision parsing', () => {
 
   test('Groq alone is enough to enable the LLM', () => {
     delete process.env.OPENROUTER_API_KEY
+    delete process.env.LOCAL_LLM_ENABLED
+    delete process.env.GROQ_API_KEYS
+    delete process.env.GROQ_KEYS
     process.env.GROQ_API_KEY = 'groq-key'
     expect(llmAiEnabled()).toBe(true)
     delete process.env.GROQ_API_KEY
@@ -452,6 +458,7 @@ describe('LLM decision parsing', () => {
     const original = process.env.LLM_PROVIDER_ORDER
     try {
       delete process.env.LLM_PROVIDER_ORDER
+      delete process.env.LOCAL_LLM_ENABLED
       expect(llmProviderOrder()).toEqual(['groq', 'openrouter'])
       process.env.LLM_PROVIDER_ORDER = 'openrouter, groq'
       expect(llmProviderOrder()).toEqual(['openrouter', 'groq'])

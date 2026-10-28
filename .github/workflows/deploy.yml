@@ -54,6 +54,9 @@ jobs:
             matchmaking.ts
             names.ts
             policy.ts
+            policy-collect.ts
+            policy-collect-llm.ts
+            policy-sim.ts
             policy-weights.json
             progress.ts
             pvp.ts

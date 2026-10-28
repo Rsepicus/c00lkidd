@@ -1136,14 +1136,15 @@ async function requestDecision(
 export async function chooseLlmTurn(
   battle: Battle,
   recentEvents: string[] = [],
-  options: { ignoreScope?: boolean } = {},
+  options: { ignoreScope?: boolean; providers?: ProviderId[] } = {},
 ): Promise<LlmTurn | null> {
   const side = battle.sides[battle.turn]
   if (!side || battle.finished || side.hp <= 0) return null
   if (side.minion || side.fake) return null
   if (side.stunned) return null
   if (!options.ignoreScope && llmScope() === 'boss' && !side.boss) return null
-  const list = providers()
+  const allowed = options.providers ? new Set(options.providers) : null
+  const list = providers().filter(provider => !allowed || allowed.has(provider.id))
   if (list.length === 0) return null
   if (inFlight >= MAX_CONCURRENT) return null
 

@@ -508,6 +508,11 @@ Discord-данных. `POLICY_LLM_HYBRID=1` добавит к меткам до�
 целей. Для проверки пайплайна без API есть `POLICY_LLM_MOCK=1`; чтобы смешать
 LLM-датасет с эвристикой, задай `POLICY_HEURISTIC_BATTLES`.
 
+Если с ПК провайдер отвечает `403 Forbidden` (ключ/регион/сеть), сбор можно
+запустить на сервере бота: `/дебаг` → «Датасет». Кнопка собирает 80 примеров
+через Groq/OpenRouter, дописывает их в `policy-dataset.jsonl` и присылает файл
+вложениями. Тот же сбор доступен командой `bun policy-collect-llm.ts` в панели.
+
 **Self-play.** `bun policy-selfplay.ts` дообучает текущие веса REINFORCE-ом
 против эвристики. Настройки: `POLICY_RL_BATTLES`, `POLICY_RL_BATCH`,
 `POLICY_RL_LR`, `POLICY_RL_TEMP`, `POLICY_RL_EVAL_BATTLES`, `POLICY_RL_OUTPUT`.

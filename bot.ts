@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ActivityType,
   ApplicationIntegrationType,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   Client,
@@ -26,7 +27,13 @@ import {
   type StringSelectMenuInteraction,
   type UserSelectMenuInteraction,
 } from 'discord.js'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
@@ -38,6 +45,7 @@ import {
   policyAvailable,
   policyWeightsPath,
 } from './policy'
+import { collectLlmExamples } from './policy-collect'
 import {
   chooseLlmTurn,
   importLlmEnv,
@@ -2616,6 +2624,11 @@ export function debugPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
     .setLabel(neural ? 'Арена ИИ' : '🧠 Арена ИИ')
     .setStyle(ButtonStyle.Secondary)
   if (neural) arenaButton.setEmoji(neural)
+  const datasetButton = new ButtonBuilder()
+    .setCustomId('debug:dataset')
+    .setLabel(neural ? 'Датасет' : '🧠 Датасет')
+    .setStyle(ButtonStyle.Secondary)
+  if (neural) datasetButton.setEmoji(neural)
   const timer = emojiData('timer')
   const statusButton = new ButtonBuilder()
     .setCustomId('debug:status')
@@ -2627,6 +2640,7 @@ export function debugPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
       coinsButton,
       testButton,
       arenaButton,
+      datasetButton,
       statusButton,
     ),
   ]
@@ -8265,6 +8279,8 @@ async function handleDebugCoinsModal(
   })
 }
 
+let policyDatasetRunning = false
+
 async function handleDebugButton(interaction: ButtonInteraction): Promise<void> {
   if (interaction.user.id !== OWNER_ID) {
     await replyError(interaction, 'Команда только для владельца бота.')
@@ -8293,6 +8309,82 @@ async function handleDebugButton(interaction: ButtonInteraction): Promise<void> 
       embeds: [arenaIntroEmbed()],
       components: arenaIntroComponents(),
     })
+    return
+  }
+  if (interaction.customId === 'debug:dataset') {
+    if (!llmAiEnabled()) {
+      await replyError(
+        interaction,
+        'Нужны ключи Groq/OpenRouter — локальная модель для датасета не подходит.',
+      )
+      return
+    }
+    if (policyDatasetRunning) {
+      await replyError(interaction, 'Сбор датасета уже идёт.')
+      return
+    }
+    policyDatasetRunning = true
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+    try {
+      await interaction.editReply({
+        content: 'Собираю датасет GPT-OSS… 0/80',
+      })
+      const result = await collectLlmExamples({
+        battles: 60,
+        maxCalls: 80,
+        maxTurns: 35,
+        seed: Date.now() >>> 0,
+        onProgress: (attempts, maxCalls, examples) => {
+          if (attempts % 10 === 0) {
+            void interaction
+              .editReply({
+                content:
+                  `Собираю датасет GPT-OSS… ${attempts}/${maxCalls}` +
+                  ` · примеров ${examples}`,
+              })
+              .catch(() => {})
+          }
+        },
+      })
+      if (result.examples.length === 0) {
+        await interaction.editReply({
+          content:
+            'Не собрано ни одного примера. Проверь ключи Groq/OpenRouter и доступ к провайдеру: ' +
+            '403 Forbidden обычно означает блокировку ключа или региона.',
+        })
+        return
+      }
+      const path = join(
+        dirname(fileURLToPath(import.meta.url)),
+        'policy-dataset.jsonl',
+      )
+      const lines =
+        result.examples.map(example => JSON.stringify(example)).join('\n') + '\n'
+      if (existsSync(path)) appendFileSync(path, lines, 'utf8')
+      else writeFileSync(path, lines, 'utf8')
+      const models =
+        Object.entries(result.models)
+          .map(([label, count]) => `${label}: ${count}`)
+          .join(', ') || '—'
+      await interaction.editReply({
+        content: [
+          `Готово: **${result.examples.length}** примеров за ${result.attempts} попыток.`,
+          `Модели: ${models}.`,
+          'Файл прикреплён. Скачай его и запусти на ПК:',
+          '`POLICY_DATASET=policy-dataset.jsonl POLICY_EPOCHS=12 POLICY_HIDDEN=24 bun policy-train.ts`',
+        ].join('\n'),
+        files: [new AttachmentBuilder(path)],
+      })
+    } catch (error) {
+      await interaction.editReply({
+        content:
+          error instanceof Error
+            ? error.message
+            : 'Не получилось собрать датасет.',
+      })
+    } finally {
+      policyDatasetRunning = false
+    }
     return
   }
   if (interaction.customId === 'debug:arena:start') {
