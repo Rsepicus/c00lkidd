@@ -319,6 +319,19 @@ describe('2 на 2', () => {
     expect(battle.sides[2].hp).toBe(60)
   })
 
+  test('a glitched dispenser falls back instead of throwing', () => {
+    const builderman = characterWithSpecial(characterByName('Builderman')!, 'Dispenser')
+    let battle = createBattle(
+      { userId: 'a', name: 'A', character: builderman },
+      { userId: 'b', name: 'B', character: heavy },
+    )
+    battle = takeTurn(battle, 'special', () => 0).battle
+    const dispenser = battle.sides.find(side => side.structure === 'dispenser')!
+    dispenser.effects.glitch = 1
+    battle.turn = 0
+    expect(() => takeTurn(battle, 'attack', () => 0)).not.toThrow()
+  })
+
   test('the turret does not apply Glitch', () => {
     const builderman = characterWithSpecial(characterByName('Builderman')!, 'Sentry')
     let battle = createBattle(

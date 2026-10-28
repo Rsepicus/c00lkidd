@@ -1824,8 +1824,12 @@ function takeTurnInternal(
       const minion = battle.sides[id]
       if (!minion || minion.hp <= 0) continue
       battle.turn = minion.id
+      // A glitched or cooling dispenser cannot cast; fall back to its attack
+      // instead of letting takeTurn throw on an unusable special.
+      const dispenserReady =
+        minion.structure === 'dispenser' && canUseSpecialNow(minion, 0)
       const decision = {
-        action: minion.structure === 'dispenser' ? ('special' as const) : ('attack' as const),
+        action: dispenserReady ? ('special' as const) : ('attack' as const),
         specialIndex: 0,
       }
       const minionTurn = takeTurnInternal(

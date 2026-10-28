@@ -8,3 +8,5 @@ errors.log
 backups/
 .remember/
 deploy.tar.gz
+policy-dataset*.jsonl
+policy-weights-*.json

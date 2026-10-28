@@ -1,12 +1,11 @@
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   chooseBossAction,
   chooseBotTurn,
   hybridizeDecision,
-  type BotDecision,
 } from './ai'
-import { CHARACTERS, type Character } from './forsaken'
 import { buildLocalCandidates } from './llm-ai'
 import {
   candidateFeatures,
@@ -14,13 +13,8 @@ import {
   scoreFeatures,
   type PolicyWeights,
 } from './policy'
-import {
-  createBattle,
-  createTeamBattle,
-  takeTurn,
-  type Battle,
-  type FighterEntry,
-} from './pvp'
+import { makeRng, randomBattle, sameDecision } from './policy-sim'
+import { takeTurn } from './pvp'
 
 /**
  * Offline behavior-cloning trainer for policy.ts.
@@ -52,66 +46,14 @@ type Weights = {
   b2: number
 }
 
-function mulberry32(seed: number): () => number {
-  let state = seed >>> 0
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0
-    let value = state
-    value = Math.imul(value ^ (value >>> 15), value | 1)
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61)
-    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296
-  }
-}
-
-function pick<T>(values: readonly T[], rng: () => number): T {
-  return values[Math.floor(rng() * values.length)]!
-}
-
-function randomCharacter(rng: () => number): Character {
-  return pick(CHARACTERS, rng)
-}
-
-function entry(
-  userId: string,
-  name: string,
-  character: Character,
-  boss = false,
-): FighterEntry {
-  return { userId, name, character, boss }
-}
-
-function randomBattle(rng: () => number): Battle {
-  const teamSize = rng() < 0.7 ? 1 : 2
-  const bossFight = rng() < 0.18
-  const makeTeam = (userId: string, name: string): FighterEntry[] =>
-    Array.from({ length: teamSize }, (_, index) =>
-      entry(
-        userId,
-        name,
-        randomCharacter(rng),
-        bossFight && userId === 'b' && index === 0,
-      ),
-    )
-  const left = makeTeam('a', 'A')
-  const right = makeTeam('b', 'B')
-  return teamSize === 2
-    ? createTeamBattle(left, right)
-    : createBattle(left[0]!, right[0]!)
-}
-
-function sameDecision(left: BotDecision, right: BotDecision): boolean {
-  return (
-    left.action === right.action &&
-    (left.specialIndex ?? 0) === (right.specialIndex ?? 0) &&
-    (left.targetIndex ?? -1) === (right.targetIndex ?? -1)
-  )
-}
-
-function generateExamples(rng: () => number): Example[] {
+function generateExamples(
+  rng: () => number,
+  battles = BATTLES,
+): Example[] {
   const examples: Example[] = []
   let turns = 0
   let skipped = 0
-  for (let battleIndex = 0; battleIndex < BATTLES; battleIndex++) {
+  for (let battleIndex = 0; battleIndex < battles; battleIndex++) {
     let battle = randomBattle(rng)
     let guard = 0
     while (!battle.finished && battle.clock < MAX_TURNS && guard++ < 120) {
@@ -150,9 +92,9 @@ function generateExamples(rng: () => number): Example[] {
       )
       battle = result.battle
     }
-    if ((battleIndex + 1) % Math.max(1, Math.floor(BATTLES / 10)) === 0) {
+    if ((battleIndex + 1) % Math.max(1, Math.floor(battles / 10)) === 0) {
       console.log(
-        `[train] battles ${battleIndex + 1}/${BATTLES} · examples ${examples.length}`,
+        `[train] battles ${battleIndex + 1}/${battles} · examples ${examples.length}`,
       )
     }
   }
@@ -268,12 +210,63 @@ function trainStep(weights: Weights, example: Example, rate: number): void {
   weights.b2 -= rate * db2
 }
 
+function loadDataset(path: string): Example[] {
+  const examples: Example[] = []
+  let skipped = 0
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    if (!line.trim()) continue
+    try {
+      const parsed = JSON.parse(line) as { xs?: unknown; y?: unknown }
+      if (!Array.isArray(parsed.xs) || !Number.isInteger(parsed.y)) {
+        skipped += 1
+        continue
+      }
+      const xs = parsed.xs as number[][]
+      const y = parsed.y as number
+      const valid =
+        y >= 0 &&
+        y < xs.length &&
+        xs.every(
+          row =>
+            Array.isArray(row) &&
+            row.length === POLICY_FEATURE_COUNT &&
+            row.every(value => typeof value === 'number' && Number.isFinite(value)),
+        )
+      if (!valid) {
+        skipped += 1
+        continue
+      }
+      examples.push({ xs, y })
+    } catch {
+      skipped += 1
+    }
+  }
+  if (skipped > 0) console.log(`[train] skipped ${skipped} malformed dataset lines`)
+  return examples
+}
+
 function main(): void {
-  const rng = mulberry32(SEED)
-  console.log(
-    `[train] generating data: ${BATTLES} battles, hidden ${HIDDEN}, ${EPOCHS} epochs`,
-  )
-  const examples = generateExamples(rng)
+  const rng = makeRng(SEED)
+  const datasetPath = process.env.POLICY_DATASET?.trim()
+  let examples: Example[]
+  if (datasetPath) {
+    if (!existsSync(datasetPath)) {
+      throw new Error(`Dataset not found: ${datasetPath}`)
+    }
+    examples = loadDataset(datasetPath)
+    const extraBattles = Number(process.env.POLICY_HEURISTIC_BATTLES) || 0
+    if (extraBattles > 0) {
+      examples = examples.concat(generateExamples(rng, extraBattles))
+    }
+    console.log(
+      `[train] dataset ${datasetPath}: ${examples.length} examples, hidden ${HIDDEN}, ${EPOCHS} epochs`,
+    )
+  } else {
+    console.log(
+      `[train] generating data: ${BATTLES} battles, hidden ${HIDDEN}, ${EPOCHS} epochs`,
+    )
+    examples = generateExamples(rng)
+  }
   if (examples.length === 0) throw new Error('No training examples collected.')
 
   const shuffled = [...examples]
@@ -330,10 +323,12 @@ function main(): void {
       trainedAt: new Date().toISOString(),
       examples: examples.length,
       accuracy: Math.round(best.accuracy * 10_000) / 10_000,
-      teacher: TEACHER,
+      teacher: datasetPath ? 'llm-dataset' : TEACHER,
     },
   }
-  const path = fileURLToPath(new URL('./policy-weights.json', import.meta.url))
+  const path = process.env.POLICY_OUTPUT?.trim()
+    ? resolve(process.env.POLICY_OUTPUT.trim())
+    : fileURLToPath(new URL('./policy-weights.json', import.meta.url))
   writeFileSync(path, `${JSON.stringify(output)}\n`, 'utf8')
   console.log(
     `[train] wrote ${path} (${examples.length} examples, ` +
