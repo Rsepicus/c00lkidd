@@ -10,3 +10,6 @@ backups/
 deploy.tar.gz
 policy-dataset*.jsonl
 policy-weights-*.json
+
+recovery-local.zip
+deploy-runtime.zip
