@@ -753,7 +753,10 @@ function enemyPriority(side: Side): number {
 }
 
 /** Legal letter choices: a tiny model picks one instead of writing JSON. */
-export function buildLocalCandidates(battle: Battle): LocalCandidate[] {
+export function buildLocalCandidates(
+  battle: Battle,
+  maxCore = 6,
+): LocalCandidate[] {
   const side = battle.sides[battle.turn]
   if (!side) return []
   const enemies = candidateTargets(battle, side, 'enemy').sort(
@@ -816,7 +819,7 @@ export function buildLocalCandidates(battle: Battle): LocalCandidate[] {
       decision: { action: 'rest', specialIndex: 0 },
     })
   }
-  return [...core.slice(0, 6), ...extras]
+  return [...core.slice(0, maxCore), ...extras]
 }
 
 export function localCandidateLetters(count: number): string[] {

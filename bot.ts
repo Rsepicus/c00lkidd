@@ -33,6 +33,12 @@ import { chooseBossAction, chooseBotTurn, type BotDecision } from './ai'
 import { ARENA_BATTLES, runLlmArena, type ArenaResult } from './arena'
 import { localLlmStatus, startLocalLlm } from './local-llm'
 import {
+  choosePolicyTurn,
+  policyAiEnabled,
+  policyAvailable,
+  policyWeightsPath,
+} from './policy'
+import {
   chooseLlmTurn,
   importLlmEnv,
   llmAiEnabled,
@@ -2627,6 +2633,7 @@ export function debugPanelComponents(): ActionRowBuilder<ButtonBuilder>[] {
 }
 
 export function arenaIntroEmbed(): EmbedBuilder {
+  const policyMode = policyAiEnabled() && policyAvailable()
   return new EmbedBuilder()
     .setColor(EMBED_COLORS.battle)
     .setTitle(`${emojiText('neural', '🧠')} Арена: нейросеть против эвристики`)
@@ -2635,9 +2642,15 @@ export function arenaIntroEmbed(): EmbedBuilder {
         `**${ARENA_BATTLES} зеркальных боёв 1 на 1.** Обе стороны играют одним и тем же персонажем; в половине боёв нейросеть ходит первой, в половине — второй.`,
         'Персонажи: Jason, Guest 1337, Two Time.',
         '',
-        'Один бой — примерно 10–20 запросов к модели. Весь прогон — **60–100 запросов**, заметная часть дневного лимита.',
-        'Если часть ходов уйдёт в эвристику из-за лимита или таймаута, результат будет смешанным.',
-      ].join('\n'),
+        policyMode
+          ? 'Сейчас включена **policy-сеть** (`POLICY_AI=1`): запросы к LLM не тратятся, бой считается мгновенно.'
+          : 'Один бой — примерно 10–20 запросов к модели. Весь прогон — **60–100 запросов**, заметная часть дневного лимита.',
+        policyMode
+          ? ''
+          : 'Если часть ходов уйдёт в эвристику из-за лимита или таймаута, результат будет смешанным.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
     )
     .setFooter({ text: 'Только для владельца · Forsaken Simulator' })
 }
@@ -2761,6 +2774,15 @@ function localLlmStatusLine(): string {
   return `Локальная модель: **${status.phase}**`
 }
 
+function policyStatusLine(): string {
+  if (!policyAiEnabled()) {
+    return policyAvailable() ? 'Policy AI: **выключена** (модель есть)' : ''
+  }
+  return policyAvailable()
+    ? `Policy AI: **включена** (${policyWeightsPath()})`
+    : 'Policy AI: **включена**, но policy-weights.json не найден'
+}
+
 export function debugStatusEmbed(client?: Client): EmbedBuilder {
   const errorSize = existsSync(ERROR_LOG_PATH) ? statSync(ERROR_LOG_PATH).size : 0
   const memory = Math.round(process.memoryUsage().rss / 1024 / 1024)
@@ -2781,6 +2803,7 @@ export function debugStatusEmbed(client?: Client): EmbedBuilder {
         `Ошибок в errors.log: **${errorSize} байт**`,
         `Память: **${memory} MB**`,
         localLlmStatusLine(),
+        policyStatusLine(),
         client?.user ? `Бот: **${client.user.tag}**` : '',
       ]
         .filter(Boolean)
@@ -4371,6 +4394,9 @@ function isAutomatedSide(side: Side): boolean {
 
 /** Whether the LLM could be asked to control any living side in this battle. */
 function battleCouldUseLlm(battle: Battle): boolean {
+  // The policy answers instantly, so the slow "neural net is thinking" state
+  // would only make battles feel laggy.
+  if (policyAiEnabled() && policyAvailable()) return false
   return battle.sides.some(
     side => isAutomatedSide(side) && llmLikelyAvailable(side),
   )
@@ -4465,13 +4491,14 @@ async function runAutomatedTurns(
       decision = { action: 'attack', specialIndex: 0 }
     } else {
       const startedAt = Date.now()
+      const policyTurn = policyAiEnabled() ? choosePolicyTurn(current) : null
       const llmTurn =
-        llmCalls < 3
+        !policyTurn && llmCalls < 3
           ? await chooseLlmTurn(current, [...history, ...events])
           : null
       const elapsedMs = Date.now() - startedAt
-      const llmDecision = llmTurn?.decision ?? null
-      noteLlmTurn(llmTurn !== null)
+      const chosen = policyTurn?.decision ?? llmTurn?.decision ?? null
+      noteLlmTurn(chosen !== null)
       if (llmTurn) llmCalls += 1
       if (llmDebugEnabled()) {
         const who = `${side.character.name} #${side.id}`
@@ -4480,7 +4507,20 @@ async function runAutomatedTurns(
           ` · ${elapsedMs} мс · модель ${counters.model} / ` +
           `эвристика ${counters.heuristic} / невалид ${counters.invalid}` +
           (llmHybridEnabled() ? ` / гибрид ${counters.hybrid}` : '')
-        if (llmTurn) {
+        if (policyTurn) {
+          const slot =
+            policyTurn.decision.action === 'special'
+              ? ` (special ${policyTurn.decision.specialIndex})`
+              : ''
+          const target =
+            policyTurn.decision.targetIndex !== undefined
+              ? ` → #${policyTurn.decision.targetIndex}`
+              : ''
+          console.log(
+            `[bot] Policy AI: ${who} — ${policyTurn.model}: ` +
+              `${policyTurn.decision.action}${slot}${target}${suffix}`,
+          )
+        } else if (llmTurn) {
           const slot =
             llmTurn.decision.action === 'special'
               ? ` (special ${llmTurn.decision.specialIndex})`
@@ -4502,7 +4542,7 @@ async function runAutomatedTurns(
         }
       }
       decision =
-        llmDecision ??
+        chosen ??
         (side.boss
           ? chooseBossAction(current, Math.random)
           : chooseBotTurn(current, Math.random))
@@ -9143,6 +9183,16 @@ async function main(): Promise<void> {
   const envPath = join(dirname(fileURLToPath(import.meta.url)), '.env')
   const envContents = existsSync(envPath) ? readFileSync(envPath, 'utf8') : null
   importLlmEnv(envContents)
+  if (policyAiEnabled()) {
+    if (policyAvailable()) {
+      console.log(`[bot] Policy AI: модель загружена — ${policyWeightsPath()}`)
+    } else {
+      console.warn(
+        `[bot] Policy AI: POLICY_AI=1, но ${policyWeightsPath()} не найден — ` +
+          'работает LLM/эвристика.',
+      )
+    }
+  }
   void startLocalLlm()
   const token = resolveToken(process.env.DISCORD_BOT_TOKEN, envContents)
   const commands = commandDefinitions()

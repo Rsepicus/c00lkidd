@@ -53,6 +53,8 @@ jobs:
             local-llm.ts
             matchmaking.ts
             names.ts
+            policy.ts
+            policy-weights.json
             progress.ts
             pvp.ts
             skins.ts

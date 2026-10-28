@@ -68,7 +68,7 @@ function healUrgency(allies: Side[], healer: Side): number {
 }
 
 /** Approximate immediate damage, ignoring modifiers, for lethal checks. */
-function immediateDamage(special: Special, side: Side): number {
+export function immediateDamage(special: Special, side: Side): number {
   switch (special.kind) {
     case 'heavy':
     case 'weakness':

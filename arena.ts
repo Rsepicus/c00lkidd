@@ -1,6 +1,7 @@
 import { chooseBotTurn, decisionQuality, type BotDecision } from './ai'
 import { characterByName, type Character } from './forsaken'
 import { chooseLlmTurn, type LlmTurn } from './llm-ai'
+import { choosePolicyTurn, policyAiEnabled, policyAvailable } from './policy'
 import {
   createBattle,
   takeTurn,
@@ -287,7 +288,24 @@ export async function runArena(
   }
 }
 
+export function runPolicyArena(options: ArenaOptions = {}): Promise<ArenaResult> {
+  return runArena(async battle => {
+    const turn = choosePolicyTurn(battle)
+    if (!turn) return null
+    return {
+      decision: turn.decision,
+      provider: turn.provider,
+      model: turn.model,
+      keyIndex: turn.keyIndex,
+      keyCount: turn.keyCount,
+    }
+  }, options)
+}
+
 export function runLlmArena(options: ArenaOptions = {}): Promise<ArenaResult> {
+  if (policyAiEnabled() && policyAvailable()) {
+    return runPolicyArena(options)
+  }
   return runArena(
     (battle, recentEvents) =>
       chooseLlmTurn(battle, recentEvents, { ignoreScope: true }),
