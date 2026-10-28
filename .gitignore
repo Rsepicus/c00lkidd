@@ -13,3 +13,5 @@ policy-weights-*.json
 
 recovery-local.zip
 deploy-runtime.zip
+
+restore-all.zip
