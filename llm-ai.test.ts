@@ -379,6 +379,23 @@ describe('LLM decision parsing', () => {
     }
   })
 
+  test('imports policy settings from .env', () => {
+    const originalAi = process.env.POLICY_AI
+    const originalWeights = process.env.POLICY_WEIGHTS
+    try {
+      delete process.env.POLICY_AI
+      delete process.env.POLICY_WEIGHTS
+      importLlmEnv('POLICY_AI=1\nPOLICY_WEIGHTS=custom.json\n')
+      expect(process.env.POLICY_AI).toBe('1')
+      expect(process.env.POLICY_WEIGHTS).toBe('custom.json')
+    } finally {
+      if (originalAi === undefined) delete process.env.POLICY_AI
+      else process.env.POLICY_AI = originalAi
+      if (originalWeights === undefined) delete process.env.POLICY_WEIGHTS
+      else process.env.POLICY_WEIGHTS = originalWeights
+    }
+  })
+
   test('daily free-model limit pauses until UTC midnight', () => {
     const noon = Date.UTC(2026, 9, 26, 12, 0, 0)
     const daily = llmPauseMs(

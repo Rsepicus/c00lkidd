@@ -184,7 +184,8 @@ export function importLlmEnv(contents: string | null): void {
       !name.startsWith('OPENROUTER_') &&
       !name.startsWith('GROQ_') &&
       !name.startsWith('LOCAL_LLM_') &&
-      !name.startsWith('LLM_')
+      !name.startsWith('LLM_') &&
+      !name.startsWith('POLICY_')
     ) {
       continue
     }
